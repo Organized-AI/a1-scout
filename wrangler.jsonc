@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "a1-scout",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./public", "run_worker_first": ["/api/*"] },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "a1-scout", "database_id": "REPLACE_WITH_D1_ID" }
+  ],
+  // Weekly scan: Mondays 13:00 UTC (8am Austin). The Mac agent can also ask for a scan on mount.
+  "triggers": { "crons": ["0 13 * * 1"] },
+  "vars": {
+    "ORG": "Organized-AI",
+    "AUTO_APPROVE": "on",
+    "AUTO_APPROVE_MAX_GB": "6",
+    "AUTO_APPROVE_MIN_SCORE": "70",
+    "AUTO_APPROVE_PER_WEEK": "3",
+    "MAX_PICK_GB": "40"
+  },
+  "observability": { "enabled": true }
+}

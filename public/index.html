@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A1 Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f0e;--panel:#151816;--line:#262b28;--ink:#e7ebe8;--mute:#8a938d;--accent:#7cf2a0;--warn:#f2c46c;--bad:#f27c7c;--chip:#1d221f;
+ --c-models:#7cf2a0;--c-datasets:#6cc4f2;--c-spaces:#f29c6c;--c-code:#b99cf2;--c-papers:#f2e36c;--c-runs:#f27cc8;--c-wheels:#8fa39a;--c-corpora:#5f6b65;--c-tooling:#4a544f;--c-other:#3e4642}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f4f5f2;--panel:#fff;--line:#dde1dc;--ink:#151816;--mute:#5f6862;--accent:#0f8a43;--warn:#a56a00;--bad:#b42323;--chip:#eef1ec;
+ --c-models:#2fae63;--c-datasets:#2b8fc4;--c-spaces:#d0702f;--c-code:#7d5bd0;--c-papers:#bba21a;--c-runs:#c2408f;--c-wheels:#7b8c84;--c-corpora:#a3aea8;--c-tooling:#bcc4bf;--c-other:#ccd2ce}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+code,pre,.mono{font-family:"IBM Plex Mono",monospace}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 80px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mark{font:600 13px "IBM Plex Mono",monospace;letter-spacing:.06em;border:1px solid var(--line);padding:2px 8px;border-radius:4px}
+h1{font:600 24px/1.2 "IBM Plex Mono",monospace;margin:0}
+.nav{margin-left:auto;display:flex;gap:6px}
+.tab{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:6px 12px;border-radius:999px;cursor:pointer;font:500 13px "IBM Plex Mono",monospace}
+.tab[aria-pressed=true]{background:var(--accent);color:#06210f;border-color:var(--accent)}
+.sub{color:var(--mute);margin:8px 0 20px;max-width:760px}
+.section{font:500 12px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.12em;margin:24px 0 10px;text-transform:uppercase}
+.drive{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
+.drive i{display:block;height:100%;width:0}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin-top:8px}
+.legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:start}
+@media (max-width:900px){.mapgrid{grid-template-columns:1fr}}
+.crumbs{font:500 13px "IBM Plex Mono",monospace;margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.crumbs button{background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;padding:0}
+.tm{position:relative;width:100%;aspect-ratio:16/10;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.cell{position:absolute;border:2px solid var(--bg);border-radius:6px;cursor:pointer;overflow:hidden;padding:8px;color:#0b0d0c;transition:filter .15s}
+.cell:hover,.cell.sel{filter:brightness(1.12)}
+.cell.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.cell .n{font:600 13px "IBM Plex Mono",monospace;word-break:break-all;line-height:1.25}
+.cell .s{font-size:11px;opacity:.75}
+.cell .g{position:absolute;right:7px;bottom:5px;font:600 11px "IBM Plex Mono",monospace;opacity:.6}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;position:sticky;top:14px}
+.card h2{font:600 17px "IBM Plex Mono",monospace;margin:0 0 2px;word-break:break-all}
+.card .kind{font:500 12px "IBM Plex Mono",monospace;color:var(--mute)}
+.card h3{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.12em;text-transform:uppercase;margin:14px 0 4px}
+.card p{margin:0}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+.facts dt{color:var(--mute)} .facts dd{margin:0;font-family:"IBM Plex Mono",monospace;word-break:break-all}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;font-size:12px;overflow:auto;white-space:pre;margin:0}
+.copy{float:right;margin:-2px 0 4px}
+.learn{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--chip);border-radius:4px;padding:1px 7px;font-size:12px;border:1px solid transparent}
+button.chip{cursor:pointer;color:var(--ink);font-family:inherit}
+button.chip:hover{border-color:var(--accent)}
+.chip.flag{color:var(--warn)}
+.concepts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}
+.concept{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:14px}
+.concept b{font-family:"IBM Plex Mono",monospace;font-size:13px;display:block;margin-bottom:4px}
+.concept.hl{border-color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.stat b{display:block;font:600 22px "IBM Plex Mono",monospace}
+.stat span{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+.theme{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.theme .bar{height:4px;background:var(--chip);border-radius:2px;margin:8px 0 6px;overflow:hidden}
+.theme .bar i{display:block;height:100%;background:var(--accent);width:0}
+.theme small{color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:11px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+.pick{display:grid;grid-template-columns:58px 1fr auto;gap:14px;align-items:start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:8px}
+.score{font:600 20px "IBM Plex Mono",monospace;text-align:center;border:1px solid var(--line);border-radius:8px;padding:8px 0}
+.repo{font:600 15px "IBM Plex Mono",monospace;word-break:break-all}
+.repo a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--mute)}
+.meta{color:var(--mute);font-size:13px;margin-top:2px}
+.summ{font-size:13px;margin-top:6px;max-width:680px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.st-approved,.st-stashed{color:var(--accent)} .st-skipped{color:var(--mute)}
+.acts{display:flex;flex-direction:column;gap:6px}
+.btn{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer;font:500 13px "IBM Plex Mono",monospace;white-space:nowrap}
+.btn.go{border-color:var(--accent);color:var(--accent)}
+.btn:hover{background:var(--chip)}
+.gate{max-width:420px;margin:12vh auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px}
+.gate input{width:100%;padding:10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:"IBM Plex Mono",monospace;margin:10px 0}
+.empty{color:var(--mute);padding:30px 0;text-align:center}
+.run{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px}
+@media (max-width:620px){.pick{grid-template-columns:48px 1fr}.acts{grid-column:1/-1;flex-direction:row}.tm{aspect-ratio:3/4}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="explain.js"></script>
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
+let view = "map", state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
+const gb = b => b == null ? "size ?" : b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(1)+" GB" : b >= 1e6 ? (b/1e6).toFixed(0)+" MB" : (b/1e3).toFixed(0)+" KB";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const color = id => `var(--c-${id in CATEGORY_INTRO ? id : "other"})`;
+
+async function call(p, opts = {}) {
+  const r = await fetch(p, { ...opts, headers: { authorization: "Bearer " + token, "content-type": "application/json" } });
+  if (r.status === 401) { gate("That token didn't work."); throw new Error("unauthorized"); }
+  return r.json();
+}
+function gate(msg = "") {
+  $("#app").innerHTML = `<div class="gate"><span class="mark">A1</span><h1 style="margin:12px 0 4px">A1 Scout</h1>
+  <div class="sub">Paste the scout token from <code>~/.nvme-stash/scout.env</code>.</div>
+  <input id="tok" type="password" placeholder="SCOUT_TOKEN" autocomplete="off"><button class="btn go" id="save">Open</button>
+  <div class="meta" style="color:var(--bad)">${esc(msg)}</div></div>`;
+  $("#save").onclick = () => { token = $("#tok").value.trim(); try { localStorage.setItem("a1-scout-token", token); } catch {} load(); };
+  gsap.from(".gate", { y: 20, opacity: 0, duration: .5, ease: "power2.out" });
+}
+async function load() {
+  if (!token) return gate();
+  [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
+  render(true);
+}
+function shell(inner) {
+  return `<div class="top"><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : "Scout"}</h1>
+   <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>${inner}`;
+}
+function render(first) {
+  $("#app").innerHTML = shell(view === "map" ? mapView() : scoutView());
+  $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
+  view === "map" ? wireMap(first) : wireScout(first);
+}
+
+/* ---------------- map ---------------- */
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((a, i) => a + i.v, 0), out = [];
+  if (!total) return out;
+  const scale = (w * h) / total;
+  let rest = items.map(i => ({ ...i, a: i.v * scale })).filter(i => i.a > 0);
+  const worst = (row, len) => { const s = row.reduce((a, r) => a + r.a, 0), mx = Math.max(...row.map(r => r.a)), mn = Math.min(...row.map(r => r.a)); return Math.max(len*len*mx/(s*s), (s*s)/(len*len*mn)); };
+  while (rest.length) {
+    const len = Math.min(w, h); let row = [rest[0]], i = 1;
+    while (i < rest.length && worst([...row, rest[i]], len) <= worst(row, len)) row.push(rest[i++]);
+    rest = rest.slice(i);
+    const s = row.reduce((a, r) => a + r.a, 0);
+    if (w >= h) { const cw = s / h; let cy = y; row.forEach(r => { const ch = r.a / cw; out.push({ ...r, x, y: cy, w: cw, h: ch }); cy += ch; }); x += cw; w -= cw; }
+    else { const ch = s / w; let cx = x; row.forEach(r => { const cw2 = r.a / ch; out.push({ ...r, x: cx, y, w: cw2, h: ch }); cx += cw2; }); y += ch; h -= ch; }
+  }
+  return out;
+}
+const abs = i => `${catalog.stash_root}/${i.path}`;
+function mapView() {
+  if (!catalog || !catalog.categories?.length) return `<div class="sub">No catalog yet. Plug in the A1 (or run <code>agent.py catalog</code>) and the map fills in.</div>`;
+  const d = catalog.drive, cat = catalog.categories.find(c => c.id === path[0]);
+  return `<div class="sub">Everything in <code>stash/</code> on the A1, sized by disk space. Click a block to drill in; every item gets a card that says what it is, why it's there, and how to try it. Catalog from ${new Date(catalog.generated).toLocaleString()}.</div>
+  <div class="drive">${catalog.categories.map(c=>`<i data-w="${c.bytes/d.total}" style="background:${color(c.id)}" title="${esc(c.label)} ${gb(c.bytes)}"></i>`).join("")}<i data-w="${d.outside_stash/d.total}" style="background:var(--line)" title="Outside stash"></i></div>
+  <div class="legend">${catalog.categories.map(c=>`<span><b style="background:${color(c.id)}"></b>${esc(c.label)} ${gb(c.bytes)}</span>`).join("")}<span><b style="background:var(--line)"></b>Outside stash (recordings etc.) ${gb(d.outside_stash)}</span><span>${gb(d.free)} free of ${gb(d.total)}</span></div>
+  <div class="section">Map</div>
+  <div class="mapgrid"><div>
+    <div class="crumbs"><button data-crumb="0">stash</button>${cat?` / <span>${esc(cat.label)}</span>`:""}</div>
+    <div class="tm" id="tm"></div></div>
+    <div class="card" id="card">${cardHtml(cat)}</div></div>
+  <div class="section">Concepts</div>
+  <div class="concepts">${Object.entries(CONCEPTS).map(([k,c])=>`<div class="concept" id="concept-${k}"><b>${esc(c.title)}</b>${esc(c.body)}</div>`).join("")}</div>`;
+}
+function cardHtml(cat) {
+  if (selected) return itemCard(selected);
+  if (cat) return `<div class="kind">CATEGORY</div><h2>${esc(cat.label)}</h2><p style="margin-top:8px">${esc(CATEGORY_INTRO[cat.id]||"")}</p>
+    <h3>What's inside</h3><dl class="facts"><dt>Items</dt><dd>${cat.items.length}</dd><dt>Size</dt><dd>${gb(cat.bytes)}</dd><dt>Path</dt><dd>${esc(catalog.stash_root)}/${esc(cat.path)}</dd></dl>
+    <h3>Start here</h3><p>Click the biggest block first. It's usually what everything else on the drive exists to support.</p>`;
+  const c = CONCEPTS["local-stack"];
+  return `<div class="kind">START HERE</div><h2>${esc(c.title)}</h2><p style="margin-top:8px">${esc(c.body)}</p>
+   <h3>How to read the map</h3><p>Each block is a category, sized by how much of the drive it uses. Click one to see its items, then click an item for its card.</p>`;
+}
+function itemCard(i) {
+  const t = TYPES[i.type] || TYPES.folder, m = i.meta || {};
+  const facts = [["Size", gb(i.bytes)], ["Files", i.files]];
+  if (i.source?.repo) facts.push(["From", i.source.repo]);
+  if (i.source?.revision) facts.push(["Revision", i.source.revision.slice(0, 12)]);
+  if (m.architecture) facts.push(["Architecture", m.architecture]);
+  if (m.bits) facts.push(["Quantization", `${m.bits}-bit, group ${m.group_size || "?"}`]);
+  if (m.context_tokens) facts.push(["Context", `${Number(m.context_tokens).toLocaleString()} tokens`]);
+  if (m.layers) facts.push(["Layers", m.layers]);
+  if (m.formats) facts.push(["Formats", Object.entries(m.formats).map(([k,v])=>`${k} ×${v}`).join(", ")]);
+  if (m.tasks) facts.push(["Tasks", [].concat(m.tasks).join(", ")]);
+  if (m.language) facts.push(["Language", m.language]);
+  if (m.commit) facts.push(["Commit", m.commit.slice(0, 12)]);
+  if (m.wheels) facts.push(["Wheels", `${m.wheels} (${(m.python||[]).join(", ")})`]);
+  if (m.highlights?.length) facts.push(["Includes", m.highlights.join(", ")]);
+  if (m.adapters) m.adapters.forEach(a => facts.push([a.name, `LoRA rank ${a.rank ?? "?"} on ${String(a.base||"?").split("/").pop()}, ${a.iters ?? "?"} iters`]));
+  if (m.license) facts.push(["License", m.license]);
+  if (m.sdk) facts.push(["App type", m.sdk]);
+  if (m.verified) facts.push(["Verified", "yes (.verified marker)"]);
+  const cmd = t.try(i, { abs });
+  const scoutPick = picks.find(p => p.stash_path === i.path);
+  return `<div class="kind">${esc(t.label.toUpperCase())}${i.group?` · ${esc(i.group)}`:""}</div><h2>${esc(i.name)}</h2>
+   <h3>What it is</h3><p>${esc(t.what)}</p>
+   ${i.summary?`<p class="meta" style="margin-top:6px">${esc(i.summary)}</p>`:""}
+   ${t.why?`<h3>Why it's on your drive</h3><p>${esc(t.why)}</p>`:""}
+   ${scoutPick?`<p class="meta" style="margin-top:6px">Scout pick (${Math.round(scoutPick.score)}): ${esc(scoutPick.reasons.join(", "))}</p>`:""}
+   <h3>Facts</h3><dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+   ${cmd?`<h3>Try it <button class="btn copy" data-copy style="padding:1px 8px">copy</button></h3><pre id="cmd">${esc(cmd)}</pre>`:""}
+   ${t.learn.length?`<h3>Learn the concepts</h3><div class="learn">${t.learn.map(k=>`<button class="chip" data-concept="${k}">${esc(CONCEPTS[k].title)}</button>`).join("")}</div>`:""}
+   <h3>Path</h3><pre>${esc(abs(i))}</pre>`;
+}
+function wireMap(first) {
+  if (!catalog?.categories?.length) return;
+  const tm = $("#tm"), W = tm.clientWidth, H = tm.clientHeight;
+  const cat = catalog.categories.find(c => c.id === path[0]);
+  const nodes = cat ? cat.items.map(i => ({ v: Math.max(i.bytes, cat.bytes * .004), item: i, label: i.name, id: cat.id, glyph: (TYPES[i.type]||TYPES.folder).glyph }))
+                    : catalog.categories.map(c => ({ v: Math.max(c.bytes, 1), cat: c, label: c.label, id: c.id, glyph: c.items.length }));
+  const rects = squarify(nodes.sort((a,b)=>b.v-a.v), 0, 0, W, H);
+  tm.innerHTML = rects.map((r, k) => `<div class="cell ${selected && r.item === selected ? "sel" : ""}" data-k="${k}" style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${color(r.id)}">
+     ${r.w > 60 && r.h > 34 ? `<div class="n">${esc(r.label)}</div><div class="s">${gb(r.item ? r.item.bytes : r.cat.bytes)}</div>` : ""}${r.w > 40 && r.h > 22 ? `<div class="g">${esc(r.glyph)}</div>` : ""}</div>`).join("");
+  $$(".cell").forEach(el => el.onclick = () => {
+    const r = rects[+el.dataset.k];
+    if (r.cat) { path = [r.cat.id]; selected = null; return render(); }
+    selected = r.item; $("#card").innerHTML = cardHtml(cat); wireCard(); $$(".cell").forEach(c => c.classList.toggle("sel", c === el));
+    gsap.from("#card > *", { opacity: 0, y: 6, duration: .25, stagger: .02 });
+  });
+  $$("[data-crumb]").forEach(b => b.onclick = () => { path = []; selected = null; render(); });
+  wireCard();
+  $$(".drive i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : 0, ease: "power3.out" }));
+  gsap.from(".cell", { scale: .85, opacity: 0, duration: .45, stagger: { each: .015, from: "start" }, ease: "power2.out", transformOrigin: "center" });
+  if (first) gsap.from(".concept", { y: 10, opacity: 0, duration: .4, stagger: .02, scrollTrigger: undefined });
+}
+function wireCard() {
+  $$("[data-concept]").forEach(b => b.onclick = () => {
+    const el = $("#concept-" + b.dataset.concept); el.scrollIntoView({ behavior: "smooth", block: "center" });
+    $$(".concept").forEach(c => c.classList.remove("hl")); el.classList.add("hl");
+    gsap.fromTo(el, { scale: .97 }, { scale: 1, duration: .5, ease: "elastic.out(1,.5)" });
+  });
+  const cp = $("[data-copy]");
+  if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#cmd").textContent); cp.textContent = "copied"; } catch { cp.textContent = "select + copy"; } };
+}
+window.addEventListener("resize", () => { if (view === "map" && catalog) wireMap(false); });
+
+/* ---------------- scout ---------------- */
+const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection" };
+function scoutView() {
+  const c = state.counts || {}, lr = state.last_run;
+  const shown = picks.filter(p => filter === "all" || p.status === filter);
+  return `<div class="sub">Hugging Face models, datasets, Spaces, papers and collections scored against ${state.repos} Organized-AI repos. Approved picks download to the A1 the next time it's plugged in. Approving a collection queues each of its items here for review.</div>
+  <div class="stats">
+    <div class="stat"><b data-n="${c.new||0}">0</b><span>to review</span></div>
+    <div class="stat"><b data-n="${c.approved||0}">0</b><span>approved, waiting</span></div>
+    <div class="stat"><b data-n="${c.stashed||0}">0</b><span>on the A1</span></div>
+    <div class="stat"><b>${state.free_bytes!=null? gb(state.free_bytes):"—"}</b><span>A1 free at last mount</span></div>
+  </div>
+  <div class="run">${lr ? `Last scan ${new Date(lr.started).toLocaleString()} (${esc(lr.trigger)}): ${lr.candidates} candidates, ${lr.new_picks} new, ${lr.auto_approved} auto-approved${lr.note? " · "+esc(lr.note):""}` : "No scan yet."}
+   · <button class="btn" id="scan" style="padding:2px 8px">Scan now</button></div>
+  <div class="section">What the repos are building</div>
+  <div class="themes">${state.themes.slice().sort((a,b)=>b.weight-a.weight).map(t=>`<div class="theme"><div>${esc(t.label)}</div>
+    <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
+  <div class="section">Picks</div>
+  <div class="tabs">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(c[f]||0):""}</button>`).join("")}</div>
+  <div id="list">${shown.length? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>`;
+}
+function hubUrl(p) {
+  return p.kind === "dataset" ? `https://huggingface.co/datasets/${p.repo}` : p.kind === "space" ? `https://huggingface.co/spaces/${p.repo}`
+    : p.kind === "paper" ? `https://huggingface.co/papers/${p.repo}` : p.kind === "collection" ? `https://huggingface.co/collections/${p.repo}` : `https://huggingface.co/${p.repo}`;
+}
+function row(p) {
+  const approveLabel = p.kind === "collection" ? "Queue items" : "Approve";
+  const btns = p.status === "stashed" ? "" : p.status === "approved"
+    ? `<button class="btn" data-act="new" data-id="${esc(p.id)}">Unapprove</button>`
+    : `<button class="btn go" data-act="approved" data-id="${esc(p.id)}">${approveLabel}</button>${p.status!=="skipped"?`<button class="btn" data-act="skipped" data-id="${esc(p.id)}">Skip</button>`:""}`;
+  const items = p.kind === "collection" && p.extra?.items ? `<div class="meta" style="margin-top:6px">${p.extra.items.slice(0,6).map(i=>`${esc(i.type)}: ${esc(i.id)}`).join(" · ")}${p.extra.items.length>6?" …":""}</div>` : "";
+  return `<div class="pick"><div class="score">${Math.round(p.score)}</div>
+   <div><div class="repo"><a href="${hubUrl(p)}" target="_blank" rel="noopener">${esc(p.title || p.repo)}</a></div>
+   <div class="meta">${KIND_LABEL[p.kind]||p.kind}${p.title?` · ${esc(p.repo)}`:""}${p.kind!=="paper"&&p.kind!=="collection"?` · ${gb(p.size_bytes)}`:""}${p.license?` · ${esc(p.license)}`:""}${p.extra?.sdk?` · ${esc(p.extra.sdk)}`:""}${p.auto?" · auto-approved":""}${p.stash_path?" · "+esc(p.stash_path):""}</div>
+   ${p.summary && p.kind!=="model"?`<div class="summ">${esc(p.summary.slice(0,260))}${p.summary.length>260?"…":""}</div>`:""}
+   <div class="chips"><span class="chip st-${p.status}">${p.status}</span>${p.reasons.map(r=>`<span class="chip">${esc(r)}</span>`).join("")}${p.flags.map(f=>`<span class="chip flag">${esc(f)}</span>`).join("")}</div>
+   ${items}${p.matched_repos.length?`<div class="meta" style="margin-top:6px">For: ${p.matched_repos.map(esc).join(", ")}</div>`:""}</div>
+   <div class="acts">${btns}</div></div>`;
+}
+function wireScout(first) {
+  $$(".tabs .tab").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
+  $$("[data-act]").forEach(b => b.onclick = () => act(b.dataset.id, b.dataset.act, b.closest(".pick")));
+  $("#scan").onclick = async e => { e.target.textContent = "Scanning…"; await call("/api/scan?trigger=page", { method: "POST" }); await load(); view = "scout"; render(); };
+  $$(".bar i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : .3, ease: "power3.out" }));
+  $$("[data-n]").forEach(el => { const o = { v: first ? 0 : +el.dataset.n }; gsap.to(o, { v: +el.dataset.n, duration: first ? .9 : 0, onUpdate: () => el.textContent = Math.round(o.v) }); });
+  gsap.from(".pick", { y: 14, opacity: 0, duration: .35, stagger: .025, ease: "power2.out" });
+  if (first) gsap.from(".stat,.theme", { y: 10, opacity: 0, duration: .4, stagger: .03 });
+}
+async function act(id, status, el) {
+  await gsap.to(el, { x: status === "skipped" ? -30 : 30, opacity: 0, duration: .25, ease: "power2.in" });
+  const r = await call("/api/picks/status", { method: "POST", body: JSON.stringify({ id, status }) });
+  if (r.expanded) { picks = await call("/api/picks"); }
+  else { const p = picks.find(x => x.id === id); if (p) p.status = status; }
+  state.counts = picks.reduce((a, x) => (a[x.status] = (a[x.status]||0)+1, a), {});
+  render();
+}
+load();
+</script>
+</body>
+</html>

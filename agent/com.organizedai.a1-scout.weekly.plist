@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.organizedai.a1-scout.weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>/Users/supabowl/nvme-stash/a1-scout/agent/agent.py</string>
+    <string>weekly</string>
+  </array>
+  <!-- Monday 9:05am local, after the Worker's Monday scan. Fills the drive if the A1 is in, otherwise nudges you to plug it in. -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+  <key>StandardOutPath</key><string>/Users/supabowl/.nvme-stash/scout-launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/supabowl/.nvme-stash/scout-launchd.log</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>
