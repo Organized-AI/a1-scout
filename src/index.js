@@ -67,7 +67,7 @@ const THEMES = [
   },
   {
     id: "markets", label: "Markets, energy & time series",
-    repoKw: ["trader", "market", "ercot", "grid", "maritime", "signal", "fund", "prop", "diligence", "capital"],
+    repoKw: ["trader", "trading", "ercot", "gridmarket", "maritime", "token-fund", "prop-forge", "diligence", "capital", "organized-market"],
     models: [{ search: "time series", author: null }, { search: "chronos", author: null }],
     datasets: ["time series", "financial news", "energy"],
     spaces: ["time series forecasting"],
@@ -122,7 +122,7 @@ function themeWeights(profile) {
     w[t.id] = s;
   }
   const max = Math.max(...Object.values(w), 1);
-  for (const k in w) w[k] = w[k] / max;
+  for (const k in w) w[k] = Math.sqrt(w[k] / max);
   return { w, hits };
 }
 
@@ -152,7 +152,7 @@ function scoreCandidate(c, weight) {
   let s = weight * 40;
   const pop = Math.min(20, Math.log10((c.likes || 0) + 1) * (c.kind === "paper" ? 9 : 7));
   const trend = Math.min(15, Math.log10((c.trending || 0) + 1) * 8);
-  const fresh = freshness(c.lastModified);
+  const fresh = c.kind === "paper" ? 0 : freshness(c.lastModified);
   s += pop + trend + fresh;
   if (c.kind === "paper" && c.kwHits) { s += Math.min(15, c.kwHits * 6); reasons.push(`mentions ${c.kwWords.slice(0, 2).join(", ")}`); }
   if (c.kind === "model" && c.mlx) { s += 10; reasons.push("runs on MLX"); }
@@ -226,7 +226,7 @@ async function collect(env, weights) {
       const words = t.paperKw.filter(k => text.includes(k));
       if (words.length && (!best || words.length * (weights[t.id] + 0.2) > best.n * (weights[best.t] + 0.2))) best = { t: t.id, n: words.length, words };
     }
-    if (!best) return;
+    if (!best || (best.n < 2 && (p.upvotes || 0) < 15)) return;
     add({
       id: `paper:${p.id}`, kind: "paper", repo: p.id, sha: null, title: p.title,
       summary: (p.summary || "").replace(/\s+/g, " ").trim().slice(0, 400), extra: { github: p.githubRepo || null },
@@ -274,24 +274,33 @@ async function scan(env, trigger) {
   const { candidates, errors } = await collect(env, w);
   const maxBytes = Number(env.MAX_PICK_GB || 40) * 1e9;
 
-  let kept = 0;
-  const stmts = [];
+  const QUOTA = { model: 6, dataset: 5, space: 3, paper: 3, collection: 2 };
+  const scored = [];
   for (const c of candidates) {
     if (invExact.has(c.repo.toLowerCase()) || invBase.has(baseName(c.repo))) continue;
     if (c.size_bytes && c.size_bytes > maxBytes) continue;
     if (c.kind === "dataset" && c.size_bytes !== null && c.size_bytes < 50_000) continue; // empty stubs
     const { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
     if (score < 35) continue;
-    kept++;
-    const theme = THEMES.find(t => t.id === c.theme);
-    reasons.unshift(`fits ${theme.label.toLowerCase()}`);
-    stmts.push(upsertPick(env, c, score, reasons, (hits[c.theme] || []).slice(0, 4), flags, started));
+    scored.push({ c, score, reasons, flags });
   }
+  // Keep the best few of each kind per theme so every theme gets models and datasets, not just papers.
+  scored.sort((a, b) => b.score - a.score);
+  const taken = {};
+  const stmts = [];
+  for (const s of scored) {
+    const k = `${s.c.theme}:${s.c.kind}`;
+    if ((taken[k] = (taken[k] || 0) + 1) > (QUOTA[s.c.kind] || 3)) continue;
+    const theme = THEMES.find(t => t.id === s.c.theme);
+    s.reasons.unshift(`fits ${theme.label.toLowerCase()}`);
+    stmts.push(upsertPick(env, s.c, s.score, s.reasons, (hits[s.c.theme] || []).slice(0, 4), s.flags, started));
+  }
+  const kept = stmts.length;
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
   const fresh = (await env.DB.prepare("SELECT COUNT(*) n FROM picks WHERE first_seen=?").bind(started).first()).n;
 
-  // Auto-approve a few small, clean, high-scoring models/datasets/papers so the drive fills
-  // without a visit to the page. Spaces and collections always wait for a human.
+  // Auto-approve a few small, clean, high-scoring models/datasets so the drive fills without a
+  // visit to the page. Spaces, papers and collections always wait for you.
   let auto = 0;
   if (env.AUTO_APPROVE === "on") {
     const weekAgo = new Date(Date.now() - 7 * DAY).toISOString();
@@ -299,7 +308,7 @@ async function scan(env, trigger) {
     const room = Math.max(0, Number(env.AUTO_APPROVE_PER_WEEK || 3) - used);
     if (room) {
       const rows = (await env.DB.prepare(`SELECT id FROM picks WHERE status='new' AND flags='[]' AND score>=?
-        AND ((kind IN ('model','dataset') AND size_bytes<=?) OR kind='paper') ORDER BY score DESC LIMIT ?`)
+        AND kind IN ('model','dataset') AND size_bytes<=? ORDER BY score DESC LIMIT ?`)
         .bind(Number(env.AUTO_APPROVE_MIN_SCORE || 70), Number(env.AUTO_APPROVE_MAX_GB || 6) * 1e9, room).all()).results;
       for (const r of rows) await env.DB.prepare("UPDATE picks SET status='approved', auto=1 WHERE id=?").bind(r.id).run();
       auto = rows.length;
