@@ -127,3 +127,63 @@ window.TYPES = {
   "script": { label: "Script", glyph: "py", learn: [], what: "A helper script from earlier stash runs.", why: "Reusable fetch and export steps.", try: (i, c) => `less ${c.abs(i)}` },
   "folder": { label: "Folder", glyph: "▢", learn: [], what: "A folder the map doesn't classify yet.", why: "", try: () => "" },
 };
+
+// ---- Added with the learning-first map: job-specific types and concepts ----
+Object.assign(window.CONCEPTS, {
+  "calibration": { title: "Calibration",
+    body: "A calibrated model's confidence means something: when it says 80%, it is right about 80% of the time. That lets you set rules on the number, like auto-approve above 0.9 and ask a person below 0.6, instead of trusting free text." },
+  "decision-models": { title: "Decision models",
+    body: "Small models trained to answer typed questions (yes/no, pick one of these options, score 1 to 5) instead of writing prose. They are fast, cheap and predictable, which makes them good for routing, guardrails and checks. Jev is the hosted one you use through jev-gateway; Laya and the Jev-Style models are open ones you can run here." },
+});
+
+const PY = "~/.nvme-stash/venvs";
+Object.assign(window.TYPES, {
+  "decision": { label: "Decision model", glyph: "Y/N", learn: ["decision-models", "calibration"],
+    what: "Answers typed questions about a piece of text (yes/no, choose one option, give a score) and returns a calibrated confidence for each answer.",
+    why: "The offline counterpart to jev-gateway: classify a ticket, check a rubric, or verify a claim without a network call.",
+    try: (i, c) => /laya/i.test(i.name)
+      ? `# one-time, in a fresh venv: pip install laya-mlx (save the wheel to the drive for offline use)\npython - <<'PY'\nimport laya_mlx as laya\nagent = laya.load(${JSON.stringify(c.abs(i))})\nprint(agent.predict("The purchase event fired twice on the thank-you page.", {\n  "is_bug": {"type": "noul", "instructions": "Is this a tracking bug?"},\n  "area": {"type": "choice", "instructions": "Which area?", "criteria": ["tagging", "consent", "reporting"]},\n})["answers"])\nPY\n# limit: 512 tokens for text plus questions`
+      : /jev-style/i.test(i.name)
+      ? `# The repo ships its own runtime. Start with its help:\ncd ${c.abs(i)}\ncat requirements.txt   # needs mlx-lm 0.31.3, so give it its own venv\npython jev_style_decision_mlx.py --help\n# pick the 8-bit build with --model-dir 8bit (2.0 GB in memory)`
+      : `open ${c.abs(i)}/README.md` },
+  "tabular": { label: "Tabular predictor", glyph: "▦→", learn: ["decision-models"],
+    what: "Predicts a column in a spreadsheet-style table from the other columns, with little or no training.",
+    why: "Quick baselines on exported data, such as predicting lead quality or conversion from GA4 or CRM columns.",
+    try: (i, c) => `# Used through AutoGluon (pip install autogluon.tabular) with its Mitra preset.\nopen ${c.abs(i)}/README.md` },
+  "router": { label: "Router", glyph: "→?", learn: ["decision-models", "parameters"],
+    what: "Reads a request and picks which route, model or tool should handle it, based on plain-language route descriptions you write.",
+    why: "A local brain for organized-router: decide which model a request should go to before spending tokens.",
+    try: (i, c) => `# Router models expect a specific prompt layout listing your routes; the README shows it.\nopen ${c.abs(i)}/README.md\nsource ${PY}/sheet2-audio-accept/bin/activate\nmlx_lm.generate --model ${c.abs(i)} --max-tokens 60 --prompt "<prompt built from the README template>"` },
+  "guard": { label: "Guardrail", glyph: "!", learn: ["decision-models"],
+    what: "Labels a prompt or a response as safe, controversial or unsafe, with a reason category.",
+    why: "A cheap check in front of agents that act on user input.",
+    try: (i, c) => `source ${PY}/sheet2-audio-accept/bin/activate\nmlx_lm.generate --model ${c.abs(i)} --max-tokens 60 --prompt "How do I bypass a cookie banner?"` },
+  "detector": { label: "Object detector", glyph: "[ ]", learn: ["licenses"],
+    what: "Finds and boxes objects in images or video frames (people, products, logos, buttons) very fast.",
+    why: "Frame checks for creative and ad review work, and a building block for the Jockey/YOLO projects.",
+    try: (i, c) => `ls ${c.abs(i)}          # find the .pt weights file\n# in a venv: pip install ultralytics\nyolo predict model=${c.abs(i)}/<weights>.pt source=./frame.jpg\n# AGPL license: internal use only` },
+  "ui-agent": { label: "Screen agent", glyph: "⌖", learn: ["parameters"],
+    what: "A vision model trained on screenshots: it can describe a UI and say where to click to reach a goal.",
+    why: "Browser and tag debugging: find the consent button, the checkout step, or the element a tag should fire on.",
+    try: (i, c) => `# needs mlx-vlm (install offline from the drive's wheels)\nmlx_vlm.generate --model ${c.abs(i)} --max-tokens 120 \\\n  --image ./screenshot.png --prompt "Where is the Accept all cookies button? Give coordinates."` },
+  "html-reader": { label: "Page reader", glyph: "</>→¶", learn: ["licenses"],
+    what: "Turns raw HTML into clean Markdown or JSON, dropping menus, scripts and clutter.",
+    why: "The first step of a site scan: feed clean page text to a decision model or an LLM instead of raw markup.",
+    try: (i, c) => `source ${PY}/sheet2-audio-accept/bin/activate\nmlx_lm.generate --model ${c.abs(i)} --max-tokens 800 \\\n  --prompt "$(printf 'Extract the main content from the given HTML and convert it to Markdown format.\\n\`\`\`html\\n%s\\n\`\`\`' "$(cat page.html)")"` },
+  "extractor": { label: "Field extractor", glyph: "{ }", learn: ["licenses"],
+    what: "Fills a JSON template you provide with values found in a page, document or image.",
+    why: "Pull structured fields (prices, product IDs, event names) out of pages for tracking audits.",
+    try: (i, c) => `open ${c.abs(i)}/README.md   # shows the template format` },
+  "text-to-sql": { label: "Text-to-SQL", glyph: "SQL", learn: ["dataset-formats", "licenses"],
+    what: "Writes a SQL query from a plain-English question plus a table schema.",
+    why: "Ask questions of GA4/BigQuery exports in plain English; test it against the GA4 sample on the drive.",
+    try: (i, c) => `source ${PY}/sheet2-audio-accept/bin/activate\nmlx_lm.generate --model ${c.abs(i)} --max-tokens 200 \\\n  --prompt "Schema: events(event_date TEXT, event_name TEXT, user_pseudo_id TEXT). Question: purchases per day last week. Write SQLite."` },
+  "tool-llm": { label: "Tool-calling model", glyph: "ƒ()", learn: ["parameters"],
+    what: "A small language model trained to turn a request into a structured function call from a list of tools you give it.",
+    why: "Cheap, fast tool selection for agents, the step before an action runs.",
+    try: (i, c) => `# Tool definitions go in the prompt; the README shows the format.\nopen ${c.abs(i)}/README.md` },
+  "image-gen": { label: "Image generator", glyph: "◩", learn: ["gguf", "quantization"],
+    what: "Generates images from a text prompt.",
+    why: "Draft creative and thumbnails locally.",
+    try: (i, c) => `# GGUF image models run in ComfyUI (with the ComfyUI-GGUF nodes) or stable-diffusion.cpp, not llama.cpp.\nopen ${c.abs(i)}/README.md` },
+});

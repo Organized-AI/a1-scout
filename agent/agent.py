@@ -341,6 +341,7 @@ def build_catalog():
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "machine": os.uname().nodename,
         "drive": {"total": usage.total, "free": usage.free, "stash": stash_bytes, "outside_stash": max(0, usage.used - stash_bytes)},
         "mount": str(MOUNT), "stash_root": str(STASH), "venvs": venvs, "categories": cats,
+        "ram_bytes": int((sh(["sysctl", "-n", "hw.memsize"]).stdout or "0").strip() or 0),
     }
 
 

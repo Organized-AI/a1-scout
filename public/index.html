@@ -91,6 +91,7 @@ button.chip:hover{border-color:var(--accent)}
 <div class="wrap" id="app"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="explain.js"></script>
+<script src="map.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
@@ -122,114 +123,10 @@ function shell(inner) {
    <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>${inner}`;
 }
 function render(first) {
-  $("#app").innerHTML = shell(view === "map" ? mapView() : scoutView());
+  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
-  view === "map" ? wireMap(first) : wireScout(first);
+  view === "map" ? MapView.wire(first, () => render()) : wireScout(first);
 }
-
-/* ---------------- map ---------------- */
-function squarify(items, x, y, w, h) {
-  const total = items.reduce((a, i) => a + i.v, 0), out = [];
-  if (!total) return out;
-  const scale = (w * h) / total;
-  let rest = items.map(i => ({ ...i, a: i.v * scale })).filter(i => i.a > 0);
-  const worst = (row, len) => { const s = row.reduce((a, r) => a + r.a, 0), mx = Math.max(...row.map(r => r.a)), mn = Math.min(...row.map(r => r.a)); return Math.max(len*len*mx/(s*s), (s*s)/(len*len*mn)); };
-  while (rest.length) {
-    const len = Math.min(w, h); let row = [rest[0]], i = 1;
-    while (i < rest.length && worst([...row, rest[i]], len) <= worst(row, len)) row.push(rest[i++]);
-    rest = rest.slice(i);
-    const s = row.reduce((a, r) => a + r.a, 0);
-    if (w >= h) { const cw = s / h; let cy = y; row.forEach(r => { const ch = r.a / cw; out.push({ ...r, x, y: cy, w: cw, h: ch }); cy += ch; }); x += cw; w -= cw; }
-    else { const ch = s / w; let cx = x; row.forEach(r => { const cw2 = r.a / ch; out.push({ ...r, x: cx, y, w: cw2, h: ch }); cx += cw2; }); y += ch; h -= ch; }
-  }
-  return out;
-}
-const abs = i => `${catalog.stash_root}/${i.path}`;
-function mapView() {
-  if (!catalog || !catalog.categories?.length) return `<div class="sub">No catalog yet. Plug in the A1 (or run <code>agent.py catalog</code>) and the map fills in.</div>`;
-  const d = catalog.drive, cat = catalog.categories.find(c => c.id === path[0]);
-  return `<div class="sub">Everything in <code>stash/</code> on the A1. Blocks are sized by disk space (square-root scaled so small things stay clickable; the legend has true sizes). Click a block to drill in; every item gets a card that says what it is, why it's there, and how to try it. Catalog from ${new Date(catalog.generated).toLocaleString()}.</div>
-  <div class="drive">${catalog.categories.map(c=>`<i data-w="${c.bytes/d.total}" style="background:${color(c.id)}" title="${esc(c.label)} ${gb(c.bytes)}"></i>`).join("")}<i data-w="${d.outside_stash/d.total}" style="background:var(--line)" title="Outside stash"></i></div>
-  <div class="legend">${catalog.categories.map(c=>`<span><b style="background:${color(c.id)}"></b>${esc(c.label)} ${gb(c.bytes)}</span>`).join("")}<span><b style="background:var(--line)"></b>Outside stash (recordings etc.) ${gb(d.outside_stash)}</span><span>${gb(d.free)} free of ${gb(d.total)}</span></div>
-  <div class="section">Map</div>
-  <div class="mapgrid"><div>
-    <div class="crumbs"><button data-crumb="0">stash</button>${cat?` / <span>${esc(cat.label)}</span>`:""}</div>
-    <div class="tm" id="tm"></div></div>
-    <div class="card" id="card">${cardHtml(cat)}</div></div>
-  <div class="section">Concepts</div>
-  <div class="concepts">${Object.entries(CONCEPTS).map(([k,c])=>`<div class="concept" id="concept-${k}"><b>${esc(c.title)}</b>${esc(c.body)}</div>`).join("")}</div>`;
-}
-function cardHtml(cat) {
-  if (selected) return itemCard(selected);
-  if (cat) return `<div class="kind">CATEGORY</div><h2>${esc(cat.label)}</h2><p style="margin-top:8px">${esc(CATEGORY_INTRO[cat.id]||"")}</p>
-    <h3>What's inside</h3><dl class="facts"><dt>Items</dt><dd>${cat.items.length}</dd><dt>Size</dt><dd>${gb(cat.bytes)}</dd><dt>Path</dt><dd>${esc(catalog.stash_root)}/${esc(cat.path)}</dd></dl>
-    <h3>Start here</h3><p>Click the biggest block first. It's usually what everything else on the drive exists to support.</p>`;
-  const c = CONCEPTS["local-stack"];
-  return `<div class="kind">START HERE</div><h2>${esc(c.title)}</h2><p style="margin-top:8px">${esc(c.body)}</p>
-   <h3>How to read the map</h3><p>Each block is a category, sized by how much of the drive it uses. Click one to see its items, then click an item for its card.</p>`;
-}
-function itemCard(i) {
-  const t = TYPES[i.type] || TYPES.folder, m = i.meta || {};
-  const facts = [["Size", gb(i.bytes)], ["Files", i.files]];
-  if (i.source?.repo) facts.push(["From", i.source.repo]);
-  if (i.source?.revision) facts.push(["Revision", i.source.revision.slice(0, 12)]);
-  if (m.architecture) facts.push(["Architecture", m.architecture]);
-  if (m.bits) facts.push(["Quantization", `${m.bits}-bit, group ${m.group_size || "?"}`]);
-  if (m.context_tokens) facts.push(["Context", `${Number(m.context_tokens).toLocaleString()} tokens`]);
-  if (m.layers) facts.push(["Layers", m.layers]);
-  if (m.formats) facts.push(["Formats", Object.entries(m.formats).map(([k,v])=>`${k} ×${v}`).join(", ")]);
-  if (m.tasks) facts.push(["Tasks", [].concat(m.tasks).join(", ")]);
-  if (m.language) facts.push(["Language", m.language]);
-  if (m.commit) facts.push(["Commit", m.commit.slice(0, 12)]);
-  if (m.wheels) facts.push(["Wheels", `${m.wheels} (${(m.python||[]).join(", ")})`]);
-  if (m.highlights?.length) facts.push(["Includes", m.highlights.join(", ")]);
-  if (m.adapters) m.adapters.forEach(a => facts.push([a.name, `LoRA rank ${a.rank ?? "?"} on ${String(a.base||"?").split("/").pop()}, ${a.iters ?? "?"} iters`]));
-  if (m.license) facts.push(["License", m.license]);
-  if (m.sdk) facts.push(["App type", m.sdk]);
-  if (m.verified) facts.push(["Verified", "yes (.verified marker)"]);
-  const cmd = t.try(i, { abs });
-  const scoutPick = picks.find(p => p.stash_path === i.path);
-  return `<div class="kind">${esc(t.label.toUpperCase())}${i.group?` · ${esc(i.group)}`:""}</div><h2>${esc(i.name)}</h2>
-   <h3>What it is</h3><p>${esc(t.what)}</p>
-   ${i.summary?`<p class="meta" style="margin-top:6px">${esc(i.summary)}</p>`:""}
-   ${t.why?`<h3>Why it's on your drive</h3><p>${esc(t.why)}</p>`:""}
-   ${scoutPick?`<p class="meta" style="margin-top:6px">Scout pick (${Math.round(scoutPick.score)}): ${esc(scoutPick.reasons.join(", "))}</p>`:""}
-   <h3>Facts</h3><dl class="facts">${facts.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
-   ${cmd?`<h3>Try it <button class="btn copy" data-copy style="padding:1px 8px">copy</button></h3><pre id="cmd">${esc(cmd)}</pre>`:""}
-   ${t.learn.length?`<h3>Learn the concepts</h3><div class="learn">${t.learn.map(k=>`<button class="chip" data-concept="${k}">${esc(CONCEPTS[k].title)}</button>`).join("")}</div>`:""}
-   <h3>Path</h3><pre>${esc(abs(i))}</pre>`;
-}
-function wireMap(first) {
-  if (!catalog?.categories?.length) return;
-  const tm = $("#tm"), W = tm.clientWidth, H = tm.clientHeight;
-  const cat = catalog.categories.find(c => c.id === path[0]);
-  // Area follows the square root of size: big things still look big, small things stay clickable.
-  const nodes = cat ? cat.items.map(i => ({ v: Math.sqrt(Math.max(i.bytes, cat.bytes * .002)), item: i, label: i.name, id: cat.id, glyph: (TYPES[i.type]||TYPES.folder).glyph }))
-                    : catalog.categories.map(c => ({ v: Math.sqrt(Math.max(c.bytes, 1)), cat: c, label: c.label, id: c.id, glyph: c.items.length + " items" }));
-  const rects = squarify(nodes.sort((a,b)=>b.v-a.v), 0, 0, W, H);
-  tm.innerHTML = rects.map((r, k) => `<div class="cell ${selected && r.item === selected ? "sel" : ""}" data-k="${k}" style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${color(r.id)}">
-     ${r.w > 60 && r.h > 34 ? `<div class="n">${esc(r.label)}</div><div class="s">${gb(r.item ? r.item.bytes : r.cat.bytes)}</div>` : ""}${r.w > 40 && r.h > 22 ? `<div class="g">${esc(r.glyph)}</div>` : ""}</div>`).join("");
-  $$(".cell").forEach(el => el.onclick = () => {
-    const r = rects[+el.dataset.k];
-    if (r.cat) { path = [r.cat.id]; selected = null; return render(); }
-    selected = r.item; $("#card").innerHTML = cardHtml(cat); wireCard(); $$(".cell").forEach(c => c.classList.toggle("sel", c === el));
-    gsap.fromTo("#card > *", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .2, stagger: .015, clearProps: "all" });
-  });
-  $$("[data-crumb]").forEach(b => b.onclick = () => { path = []; selected = null; render(); });
-  wireCard();
-  $$(".drive i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : 0, ease: "power3.out" }));
-  gsap.fromTo(".cell", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .3, stagger: .012, ease: "power2.out", clearProps: "all" });
-}
-function wireCard() {
-  $$("[data-concept]").forEach(b => b.onclick = () => {
-    const el = $("#concept-" + b.dataset.concept); el.scrollIntoView({ behavior: "smooth", block: "center" });
-    $$(".concept").forEach(c => c.classList.remove("hl")); el.classList.add("hl");
-    gsap.fromTo(el, { scale: .97 }, { scale: 1, duration: .5, ease: "elastic.out(1,.5)" });
-  });
-  const cp = $("[data-copy]");
-  if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#cmd").textContent); cp.textContent = "copied"; } catch { cp.textContent = "select + copy"; } };
-}
-window.addEventListener("resize", () => { if (view === "map" && catalog) wireMap(false); });
 
 /* ---------------- scout ---------------- */
 const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection" };
