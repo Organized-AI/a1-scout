@@ -271,7 +271,7 @@ def build_catalog():
     cat("datasets", "Datasets", ds)
 
     sp = []
-    for d in sorted((STASH / "spaces").glob("*/")) if (STASH / "spaces").is_dir() else []:
+    for d in sorted(x for x in (STASH / "spaces").glob("*/") if not x.name.startswith(".")) if (STASH / "spaces").is_dir() else []:
         fm, para = front_matter(d / "README.md")
         sp.append(item(d.name, f"spaces/{d.name}", "space", d, {k: fm.get(k) for k in ("sdk", "title", "license", "app_file") if fm.get(k)}, para, None, prov))
     cat("spaces", "Spaces (apps)", sp)
@@ -284,18 +284,18 @@ def build_catalog():
                                     ("go.mod", "Go"), ("CMakeLists.txt", "C/C++"), ("Cargo.toml", "Rust")) if (d / f).exists()), None)
         _, para = front_matter(d / "README.md")
         code.append(item(d.name, f"code/{d.name}", "code-repo", d, {k: v for k, v in {"commit": commit, "language": lang}.items() if v}, para))
-    for f in sorted(croot.glob("*.md")) if croot.is_dir() else []:
+    for f in sorted(x for x in croot.glob("*.md") if not x.name.startswith(".")) if croot.is_dir() else []:
         code.append(item(f.stem, f"code/{f.name}", "doc", f, {}, ""))
     cat("code", "Source code", code)
 
     papers = []
-    for f in sorted((STASH / "papers").glob("*.pdf")) if (STASH / "papers").is_dir() else []:
+    for f in sorted(x for x in (STASH / "papers").glob("*.pdf") if not x.name.startswith(".")) if (STASH / "papers").is_dir() else []:
         p = prov.get(f"papers/{f.name}") or {}
         papers.append(item(f.stem, f"papers/{f.name}", "paper", f, {"arxiv": f.stem, "title": p.get("title")} if p.get("title") else {"arxiv": f.stem}, ""))
     cat("papers", "Papers", papers)
 
     runs = []
-    for d in sorted((STASH / "runs").glob("*/")) if (STASH / "runs").is_dir() else []:
+    for d in sorted(x for x in (STASH / "runs").glob("*/") if not x.name.startswith(".")) if (STASH / "runs").is_dir() else []:
         adapters = []
         for a in sorted(d.glob("adapters*")):
             try:
@@ -307,8 +307,8 @@ def build_catalog():
     cat("runs", "Fine-tuning runs", runs)
 
     wheels = []
-    for d in sorted((STASH / "wheels").glob("*/")) if (STASH / "wheels").is_dir() else []:
-        whl = [f.name for f in d.glob("*.whl")]
+    for d in sorted(x for x in (STASH / "wheels").glob("*/") if not x.name.startswith(".")) if (STASH / "wheels").is_dir() else []:
+        whl = [f.name for f in d.glob("*.whl") if not f.name.startswith(".")]
         pys = sorted({m.group(1) for w in whl for m in [re.search(r"-(cp\d+)-", w)] if m})
         pkgs = sorted({w.split("-")[0].lower() for w in whl})
         wheels.append(item(d.name, f"wheels/{d.name}", "wheels", d, {"wheels": len(whl), "python": pys,
@@ -316,14 +316,14 @@ def build_catalog():
     cat("wheels", "Offline Python wheels", wheels)
 
     corp = []
-    for d in sorted(p for p in (STASH / "corpora").glob("*/*") if p.is_dir() or p.suffix == ".md"):
+    for d in sorted(p for p in (STASH / "corpora").glob("*/*") if not p.name.startswith(".") and (p.is_dir() or p.suffix == ".md")):
         corp.append(item(d.name, f"corpora/{d.parent.name}/{d.name}", "private-corpus", d, {}, ""))  # names and sizes only
     cat("corpora", "Your own corpora (private)", corp)
 
     misc = []
     if (STASH / "manifests").is_dir():
         misc.append(item("manifests", "manifests", "manifests", STASH / "manifests", {}, ""))
-    scripts = [f for f in list((STASH / "scripts").glob("*.py")) + list(STASH.glob("*.py"))]
+    scripts = [f for f in list((STASH / "scripts").glob("*.py")) + list(STASH.glob("*.py")) if not f.name.startswith(".")]
     for f in scripts:
         misc.append(item(f.name, str(f.relative_to(STASH)), "script", f, {}, ""))
     cat("tooling", "Manifests & scripts", misc)
