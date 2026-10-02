@@ -415,6 +415,28 @@ async function api(req, env, url) {
     await env.DB.prepare("UPDATE picks SET status=? WHERE id=?").bind(status, id).run();
     return json({ ok: true });
   }
+  // Add a specific Hub repo as a pick (from chat or the page). It lands as "new" for review.
+  if (p === "/api/picks/add" && req.method === "POST") {
+    const { repo, kind, theme, note } = await req.json();
+    if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space) required" }, 400);
+    const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(`${kind}:${repo}`).first();
+    if (existing?.status === "stashed") return json({ ok: true, id: `${kind}:${repo}`, already: "stashed" });
+    const info = await hf(`/${kind}s/${repo}?${qs({}, ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "library_name", "tags", "trendingScore"])}`, env);
+    const gated = info.gated && info.gated !== false;
+    const c = {
+      id: `${kind}:${repo}`, kind, repo, sha: info.sha, title: info.cardData?.title || null, summary: note || null,
+      extra: { added: "chat", sdk: info.sdk }, size_bytes: gated ? null : (info.usedStorage || null),
+      likes: info.likes, trending: info.trendingScore, lastModified: info.lastModified, gated: String(info.gated),
+      license: info.cardData?.license ? [].concat(info.cardData.license).join(",") : null,
+      mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
+      theme: THEMES.some(t => t.id === theme) ? theme : "agents",
+    };
+    const { score, reasons, flags } = scoreCandidate(c, 1);
+    reasons.unshift("added from chat");
+    if (note) reasons.push(note);
+    await upsertPick(env, c, score, reasons, [], flags, now()).run();
+    return json({ ok: true, id: c.id, score, flags, size_bytes: c.size_bytes, license: c.license });
+  }
   if (p === "/api/stashed" && req.method === "POST") {
     const { id, sha, path, size_bytes } = await req.json();
     await env.DB.prepare("UPDATE picks SET status='stashed', stashed_at=?, stashed_sha=?, stash_path=?, size_bytes=COALESCE(?, size_bytes) WHERE id=?")
