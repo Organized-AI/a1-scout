@@ -187,3 +187,9 @@ Object.assign(window.TYPES, {
     why: "Draft creative and thumbnails locally.",
     try: (i, c) => `# GGUF image models run in ComfyUI (with the ComfyUI-GGUF nodes) or stable-diffusion.cpp, not llama.cpp.\nopen ${c.abs(i)}/README.md` },
 });
+Object.assign(window.TYPES, {
+  "forecaster": { label: "Time-series forecaster", glyph: "∿", learn: ["parameters"],
+    what: "Predicts the next values of a series (traffic, conversions, prices, grid load) from its history, with uncertainty bands, without training on your data first.",
+    why: "Quick forecasts for ERCOT and market work, or for spotting when a tracking metric drops below what history says it should be.",
+    try: (i, c) => `# Chronos runs through its own package (pip install chronos-forecasting) on PyTorch, not MLX.\nopen ${c.abs(i)}/README.md` },
+});

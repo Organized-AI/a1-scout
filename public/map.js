@@ -13,7 +13,8 @@
   // Jobs, in the order a newcomer meets them.
   const ROLES = [
     { id: "talk", label: "Talk and write", blurb: "Language models. Chat, draft, summarize, write code, call tools.", types: ["llm", "llm-code", "tool-llm"] },
-    { id: "decide", label: "Decide and guard", blurb: "Small models that answer typed questions with calibrated confidence, pick a route, or flag risk. Your Jev primitives, offline.", types: ["decision", "router", "guard", "tabular"] },
+    { id: "decide", label: "Decide and guard", blurb: "Small models that answer typed questions with calibrated confidence, pick a route, or flag risk. Your Jev primitives, offline.", types: ["decision", "router", "guard"] },
+    { id: "predict", label: "Predict numbers", blurb: "Forecast a time series (prices, load, traffic) or predict a column in a table.", types: ["forecaster", "tabular"] },
     { id: "find", label: "Find and match", blurb: "Embeddings and rerankers: search by meaning, pick the right skill or document.", types: ["embedding", "reranker"] },
     { id: "see", label: "See", blurb: "Models that look at images, screenshots and UIs.", types: ["vlm", "ui-agent", "detector"] },
     { id: "pages", label: "Turn pages into data", blurb: "HTML to Markdown, fields to JSON, questions to SQL. The measurement-side helpers.", types: ["html-reader", "extractor", "text-to-sql"] },
@@ -26,7 +27,7 @@
     { id: "build", label: "Build it offline", blurb: "Source code, offline Python packages and the drive's bookkeeping.", types: ["code-repo", "doc", "wheels", "gguf", "manifests", "script", "folder"] },
   ];
   const roleOf = t => ROLES.find(r => r.types.includes(t)) || ROLES[ROLES.length - 1];
-  const ROLE_COLOR = { talk: "#7cf2a0", decide: "#f2c46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#e6e36c", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
+  const ROLE_COLOR = { talk: "#7cf2a0", decide: "#f2c46c", predict: "#e0a46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#e6e36c", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
 
   // The agent tags models from their config; names tell us more about the job.
   function classify(i) {
@@ -34,6 +35,7 @@
     if (!i.path.startsWith("models")) return i.type;
     if (/laya|jev|decision/.test(n)) return "decision";
     if (/mitra|tabpfn/.test(n)) return "tabular";
+    if (/chronos|timesfm|moirai|time-?series/.test(n)) return "forecaster";
     if (/router/.test(n)) return "router";
     if (/guard/.test(n)) return "guard";
     if (/yolo/.test(n)) return "detector";
@@ -55,7 +57,8 @@
   const saveTried = () => store.set("a1-tried", [...tried]);
   const items = () => catalog.categories.flatMap(c => c.items.map(i => ({ ...i, cat: c.id, kind: classify(i) })));
   const abs = i => `${catalog.stash_root}/${i.path}`;
-  const ram = () => catalog.ram_bytes || 16e9;
+  const ram = () => catalog.ram_bytes || 16 * 2 ** 30;
+  const ramLabel = () => `${Math.round(ram() / 2 ** 30)} GB`;
 
   function fit(i) {
     const t = TYPES[i.kind] || {};
@@ -65,9 +68,9 @@
     const need = (multi ? 2.0e9 : i.bytes) * 1.2;
     const r = need / ram();
     const label = `${gb(need)} of memory`;
-    if (r < 0.5) return { cls: "ok", text: "Runs easily", detail: `Needs roughly ${label}. Plenty of room on your ${gb(ram())} Mac.` };
-    if (r < 0.8) return { cls: "warn", text: "Fits, close other apps", detail: `Needs roughly ${label} of your ${gb(ram())}. Close big apps first.` };
-    return { cls: "bad", text: "Too big for this Mac", detail: `Needs roughly ${label}; your Mac has ${gb(ram())}. Save it for a bigger machine.` };
+    if (r < 0.5) return { cls: "ok", text: "Runs easily", detail: `Needs roughly ${label}. Plenty of room on your ${ramLabel()} Mac.` };
+    if (r < 0.8) return { cls: "warn", text: "Fits, close other apps", detail: `Needs roughly ${label} of your ${ramLabel()}. Close big apps first.` };
+    return { cls: "bad", text: "Too big for this Mac", detail: `Needs roughly ${label}; your Mac has ${ramLabel()}. Save it for a bigger machine.` };
   }
   function license(i) {
     const l = String(i.meta?.license || "").toLowerCase();
@@ -214,7 +217,7 @@
         <button class="btn m-close" aria-label="Close">Close</button></div>
       <div class="m-pbadges">${f ? `<span class="b-${f.cls}">${f.text}</span>` : ""}${lic ? `<span class="b-${lic.cls}">${esc(lic.text)}</span>` : ""}</div>
       <h3>What it is</h3><p>${esc(t.what)}</p>
-      ${i.summary ? `<p class="meta" style="margin-top:6px">${esc(i.summary)}</p>` : ""}
+      ${i.summary ? `<p class="meta" style="margin-top:6px">${esc(i.summary.replace(/\*\*|__|`/g, ""))}</p>` : ""}
       ${t.why ? `<h3>Why it's on your drive</h3><p>${esc(t.why)}</p>` : ""}
       ${f || lic ? `<h3>Can I use it?</h3>${f ? `<p>${esc(f.detail)}</p>` : ""}${lic ? `<p style="margin-top:4px">${esc(lic.detail)}</p>` : ""}` : ""}
       ${cmd ? `<h3>Try it <button class="btn copy" data-copy>Copy</button></h3><pre id="m-cmd">${esc(cmd)}</pre>` : ""}
@@ -269,7 +272,8 @@
     $$("#m-body [data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     $$("#m-body [data-step]").forEach(b => b.onclick = () => { const s = b.dataset.step; stepsDone.has(s) ? stepsDone.delete(s) : stepsDone.add(s); store.set("a1-steps", [...stepsDone]); rerender(); });
     if (mode === "space") drawTreemap();
-    if (first) gsap.fromTo("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup", { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: { each: .012, amount: .5 }, ease: "power2.out", clearProps: "all" });
+    // Animate only what is near the top; everything else is visible at rest.
+    if (first) gsap.fromTo($$("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup").slice(0, 24), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .015, ease: "power2.out", clearProps: "all" });
   }
   window.addEventListener("resize", () => { if (mode === "space") drawTreemap(); });
 
