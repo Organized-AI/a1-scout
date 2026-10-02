@@ -78,7 +78,7 @@ const THEMES = [
 const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embedding", "agents"];
 
 const DTYPE_BYTES = { F64: 8, I64: 8, U64: 8, F32: 4, I32: 4, U32: 4, BF16: 2, F16: 2, I16: 2, U16: 2, I8: 1, U8: 1, F8_E4M3: 1, F8_E5M2: 1, BOOL: 1 };
-const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl)/i;
+const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl|^other$|unknown)/i;
 const SKIP_NAME = /(uncensored|abliterat|nsfw|erotic|jailbreak)/i;
 
 const json = (data, status = 200) =>
@@ -421,7 +421,10 @@ async function api(req, env, url) {
     if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space) required" }, 400);
     const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(`${kind}:${repo}`).first();
     if (existing?.status === "stashed") return json({ ok: true, id: `${kind}:${repo}`, already: "stashed" });
-    const info = await hf(`/${kind}s/${repo}?${qs({}, ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "library_name", "tags", "trendingScore"])}`, env);
+    const fields = kind === "model" ? ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "library_name", "tags", "trendingScore"]
+      : kind === "dataset" ? ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "tags", "trendingScore"]
+      : ["usedStorage", "sha", "cardData", "likes", "lastModified", "sdk", "trendingScore"];
+    const info = await hf(`/${kind}s/${repo}?${qs({}, fields)}`, env);
     const gated = info.gated && info.gated !== false;
     const c = {
       id: `${kind}:${repo}`, kind, repo, sha: info.sha, title: info.cardData?.title || null, summary: note || null,
