@@ -206,8 +206,7 @@ async function collect(env, weights) {
       }).forEach(d => add({
         id: `dataset:${d.id}`, kind: "dataset", repo: d.id, sha: d.sha, title: null,
         summary: (d.description || "").replace(/\s+/g, " ").trim().slice(0, 280) || null, extra: {},
-        // Gated repos report only their public files (often just the README), so their size is unknown.
-        size_bytes: d.gated && d.gated !== false ? null : (d.mainSize ?? null), likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
+        size_bytes: d.mainSize ?? null, likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
         gated: String(d.gated), license: d.cardData?.license ? [].concat(d.cardData.license).join(",") : null,
       }, t.id)));
     }
@@ -359,7 +358,7 @@ async function expandCollection(env, pick) {
           mlx: m.library_name === "mlx" || (m.tags || []).includes("mlx") });
       } else if (it.type === "dataset") {
         const d = await hf(`/datasets/${it.id}?${qs({}, ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified"])}`, env);
-        Object.assign(c, { sha: d.sha, size_bytes: (d.gated && d.gated !== false) ? null : (d.usedStorage || null), gated: String(d.gated), likes: d.likes, lastModified: d.lastModified,
+        Object.assign(c, { sha: d.sha, size_bytes: d.usedStorage || null, gated: String(d.gated), likes: d.likes, lastModified: d.lastModified,
           license: d.cardData?.license ? [].concat(d.cardData.license).join(",") : null });
       } else if (it.type === "space") {
         const s = await hf(`/spaces/${it.id}`, env);
@@ -425,10 +424,9 @@ async function api(req, env, url) {
       : kind === "dataset" ? ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "tags", "trendingScore"]
       : ["usedStorage", "sha", "cardData", "likes", "lastModified", "sdk", "trendingScore"];
     const info = await hf(`/${kind}s/${repo}?${qs({}, fields)}`, env);
-    const gated = info.gated && info.gated !== false;
     const c = {
       id: `${kind}:${repo}`, kind, repo, sha: info.sha, title: info.cardData?.title || null, summary: note || null,
-      extra: { added: "chat", sdk: info.sdk }, size_bytes: gated ? null : (info.usedStorage || null),
+      extra: { added: "chat", sdk: info.sdk }, size_bytes: info.usedStorage || null,
       likes: info.likes, trending: info.trendingScore, lastModified: info.lastModified, gated: String(info.gated),
       license: info.cardData?.license ? [].concat(info.cardData.license).join(",") : null,
       mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
