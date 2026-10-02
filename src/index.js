@@ -206,7 +206,8 @@ async function collect(env, weights) {
       }).forEach(d => add({
         id: `dataset:${d.id}`, kind: "dataset", repo: d.id, sha: d.sha, title: null,
         summary: (d.description || "").replace(/\s+/g, " ").trim().slice(0, 280) || null, extra: {},
-        size_bytes: d.mainSize ?? null, likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
+        // Gated repos report only their public files (often just the README), so their size is unknown.
+        size_bytes: d.gated && d.gated !== false ? null : (d.mainSize ?? null), likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
         gated: String(d.gated), license: d.cardData?.license ? [].concat(d.cardData.license).join(",") : null,
       }, t.id)));
     }
@@ -353,12 +354,12 @@ async function expandCollection(env, pick) {
     try {
       if (it.type === "model") {
         const m = await hf(`/models/${it.id}?${qs({}, ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "library_name", "tags", "pipeline_tag"])}`, env);
-        Object.assign(c, { sha: m.sha, size_bytes: m.usedStorage ?? null, gated: String(m.gated), license: m.cardData?.license || null,
+        Object.assign(c, { sha: m.sha, size_bytes: m.usedStorage || null, gated: String(m.gated), license: m.cardData?.license || null,
           likes: m.likes, lastModified: m.lastModified, summary: m.pipeline_tag || null,
           mlx: m.library_name === "mlx" || (m.tags || []).includes("mlx") });
       } else if (it.type === "dataset") {
         const d = await hf(`/datasets/${it.id}?${qs({}, ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified"])}`, env);
-        Object.assign(c, { sha: d.sha, size_bytes: d.usedStorage ?? null, gated: String(d.gated), likes: d.likes, lastModified: d.lastModified,
+        Object.assign(c, { sha: d.sha, size_bytes: (d.gated && d.gated !== false) ? null : (d.usedStorage || null), gated: String(d.gated), likes: d.likes, lastModified: d.lastModified,
           license: d.cardData?.license ? [].concat(d.cardData.license).join(",") : null });
       } else if (it.type === "space") {
         const s = await hf(`/spaces/${it.id}`, env);
