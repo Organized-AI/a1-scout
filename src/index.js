@@ -78,7 +78,8 @@ const THEMES = [
 const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embedding", "agents"];
 
 const DTYPE_BYTES = { F64: 8, I64: 8, U64: 8, F32: 4, I32: 4, U32: 4, BF16: 2, F16: 2, I16: 2, U16: 2, I8: 1, U8: 1, F8_E4M3: 1, F8_E5M2: 1, BOOL: 1 };
-const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma)/i;
+const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl)/i;
+const SKIP_NAME = /(uncensored|abliterat|nsfw|erotic|jailbreak)/i;
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
@@ -100,7 +101,7 @@ async function kvSet(env, k, v) {
 // Normalize a repo name so quant/format variants of something already stashed are skipped.
 function baseName(repo) {
   let n = String(repo).split("/").pop().toLowerCase();
-  for (let i = 0; i < 3; i++) n = n.replace(/[-_.](\d+bit|bf16|fp16|f16|dwq|mlx|gguf|q\d(_k)?(_[ms])?|awq|gptq|pdf)$/g, "");
+  for (let i = 0; i < 4; i++) n = n.replace(/[-_.](\d+bit|bf16|fp16|f16|fp8|dwq|mlx|gguf|mxfp\d|nvfp\d|int\d|q\d(_k)?(_[ms])?|awq|gptq|pdf|hf)$/g, "");
   return n.replace(/[^a-z0-9.]+/g, "-");
 }
 
@@ -198,8 +199,11 @@ async function collect(env, weights) {
       }, t.id)));
     }
     for (const search of t.datasets) {
-      const params = qs({ search, sort: "trendingScore", limit: "10" }, ["mainSize", "likes", "sha", "gated", "cardData", "trendingScore", "lastModified", "description"]);
-      run(hf(`/datasets?${params}`, env), list => list.forEach(d => add({
+      const params = qs({ search, sort: "trendingScore", limit: "10" }, ["mainSize", "likes", "sha", "gated", "cardData", "trendingScore", "lastModified", "description", "tags"]);
+      run(hf(`/datasets?${params}`, env), list => list.filter(d => {
+        const langs = (d.tags || []).filter(t => t.startsWith("language:"));
+        return !langs.length || langs.includes("language:en");
+      }).forEach(d => add({
         id: `dataset:${d.id}`, kind: "dataset", repo: d.id, sha: d.sha, title: null,
         summary: (d.description || "").replace(/\s+/g, " ").trim().slice(0, 280) || null, extra: {},
         size_bytes: d.mainSize ?? null, likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
@@ -277,6 +281,7 @@ async function scan(env, trigger) {
   const QUOTA = { model: 6, dataset: 5, space: 3, paper: 3, collection: 2 };
   const scored = [];
   for (const c of candidates) {
+    if (SKIP_NAME.test(`${c.repo} ${c.title || ""}`)) continue;
     if (invExact.has(c.repo.toLowerCase()) || invBase.has(baseName(c.repo))) continue;
     if (c.size_bytes && c.size_bytes > maxBytes) continue;
     if (c.kind === "dataset" && c.size_bytes !== null && c.size_bytes < 50_000) continue; // empty stubs
@@ -284,13 +289,31 @@ async function scan(env, trigger) {
     if (score < 35) continue;
     scored.push({ c, score, reasons, flags });
   }
-  // Keep the best few of each kind per theme so every theme gets models and datasets, not just papers.
+  // Keep the best few of each kind per theme so every theme gets models and datasets, not just papers,
+  // and only one quantization variant of any model.
   scored.sort((a, b) => b.score - a.score);
-  const taken = {};
-  const stmts = [];
+  const taken = {}, variants = new Set(), keep = [];
   for (const s of scored) {
+    const v = `${s.c.kind}:${baseName(s.c.repo)}`;
+    if (variants.has(v)) continue;
     const k = `${s.c.theme}:${s.c.kind}`;
     if ((taken[k] = (taken[k] || 0) + 1) > (QUOTA[s.c.kind] || 3)) continue;
+    variants.add(v); keep.push(s);
+  }
+  // Safetensors metadata over-counts packed MLX quants, so ask the Hub for real on-disk size.
+  await Promise.all(keep.filter(s => s.c.kind === "model").map(async s => {
+    try {
+      const m = await hf(`/models/${s.c.repo}?expand[]=usedStorage`, env);
+      if (m.usedStorage) {
+        s.c.size_bytes = m.usedStorage;
+        s.flags = s.flags.filter(f => f !== "size-unknown" && f !== "large");
+        if (m.usedStorage > 20e9) s.flags.push("large");
+      }
+    } catch {}
+  }));
+  const stmts = [];
+  for (const s of keep) {
+    if (s.c.size_bytes && s.c.size_bytes > maxBytes) continue;
     const theme = THEMES.find(t => t.id === s.c.theme);
     s.reasons.unshift(`fits ${theme.label.toLowerCase()}`);
     stmts.push(upsertPick(env, s.c, s.score, s.reasons, (hits[s.c.theme] || []).slice(0, 4), s.flags, started));
