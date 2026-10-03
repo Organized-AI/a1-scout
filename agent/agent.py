@@ -496,6 +496,72 @@ def plan_queue(picks, spent, cap):
     return q
 
 
+def run_from_log(busy):
+    """Rebuild the current run's progress from scout.log: done items, the item downloading now (measured on disk), what's left."""
+    try:
+        lines = LOG.read_text(errors="ignore").splitlines()[-600:]
+    except OSError:
+        return None
+    starts = [i for i, l in enumerate(lines) if " A1 present (" in l]
+    if not starts:
+        return None
+    seg = lines[starts[-1]:]
+    when = lambda l: datetime.fromisoformat(l[:19]).astimezone().isoformat(timespec="seconds")
+    run = {"started_at": when(seg[0]), "phase": "Reading the drive", "done": [], "current": None, "dl_started_at": None, "finished": False}
+    for l in seg:
+        if "update check:" in l:
+            run["phase"] = "Checking stashed items for updates"
+        elif " scan" in l and ("scan:" in l or "scan skipped" in l):
+            run["phase"] = "Scanning Hugging Face for new picks"
+        m = re.search(r" downloading (\w+) (\S+) @ \S+ -> (\S+) \(~([\d.]+) GB\)", l)
+        u = re.search(r" updating (\w+) (\S+) \w+ -> \w+: .*?~([\d.]+) GB to download", l)
+        if m:
+            run["phase"] = "Downloading approved picks"
+            run["current"] = {"repo": m.group(2), "kind": m.group(1), "action": "Downloading", "dest": m.group(3),
+                              "total_bytes": float(m.group(4)) * 1e9, "started_at": when(l)}
+            run["dl_started_at"] = run["dl_started_at"] or when(l)
+        elif u:
+            run["phase"] = "Updating stashed items"
+            run["current"] = {"repo": u.group(2), "kind": u.group(1), "action": "Updating", "total_bytes": float(u.group(3)) * 1e9, "started_at": when(l)}
+            run["dl_started_at"] = run["dl_started_at"] or when(l)
+        s2 = re.search(r"  stashed ([\d.]+) GB", l)
+        if (s2 or "  updated; previous" in l) and run["current"]:
+            c = run["current"]
+            run["done"].append({"repo": c["repo"], "bytes": float(s2.group(1)) * 1e9 if s2 else c["total_bytes"],
+                                "what": "added" if s2 else "updated", "started_at": c["started_at"], "finished_at": when(l)})
+            run["current"] = None
+        if "  waiting:" in l:
+            run["finished"] = True
+    c = run["current"]
+    if c and c.get("dest") and busy:
+        d = STASH / c["dest"]
+        c["done_bytes"] = walk_size(d)[0] if d.exists() else 0
+    if not busy:
+        run["current"] = None
+        run["finished"] = True
+    return run
+
+
+def queue_after(run, cap):
+    """Approved picks still to come, split into this run (fits the cap) and the next plug-in."""
+    try:
+        picks = api("/api/picks?status=approved")
+    except Exception:
+        return []
+    taken = {d["repo"] for d in run["done"]} | ({run["current"]["repo"]} if run.get("current") else set())
+    spent = sum(d["bytes"] for d in run["done"]) + ((run.get("current") or {}).get("total_bytes") or 0)
+    q = []
+    for p in picks:
+        if p["repo"] in taken:
+            continue
+        size = p.get("size_bytes") or 0
+        fits = spent + size <= cap
+        if fits:
+            spent += size
+        q.append({"repo": p["repo"], "kind": p["kind"], "bytes": size, "when": "now" if fits else "next plug-in"})
+    return q
+
+
 def fetch_approved(spent=0):
     picks = api("/api/picks?status=approved")
     who = sh(["hf", "auth", "whoami"])
@@ -525,6 +591,7 @@ def fetch_approved(spent=0):
             waiting.append((p["repo"], f"would leave under {ENV['FREE_FLOOR_GB']} GB free")); continue
 
         log(f"downloading {p['kind']} {p['repo']} @ {(p.get('sha') or 'latest')[:10]} -> {dest.relative_to(STASH)} (~{size/1e9:.2f} GB)")
+        ACT.setdefault("dl_started_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         activity(force=True, current={"repo": p["repo"], "kind": p["kind"], "action": "Downloading", "total_bytes": size,
                                       "done_bytes": 0, "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")},
                  queue=[q for q in ACT.get("queue", []) if q["repo"] != p["repo"]])
@@ -718,6 +785,7 @@ def apply_update(pl, report, spent, cap, floor):
                 mb = tmp / ".cache/huggingface/download" / f"{f}.metadata"
                 mb.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ma, mb)
+    ACT.setdefault("dl_started_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     activity(force=True, phase="Updating stashed items", current={"repo": pl["repo"], "kind": pl["kind"], "action": "Updating",
              "total_bytes": pl["total_bytes"], "done_bytes": walk_size(tmp)[0], "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     r = hf_download(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)], tmp, pl["total_bytes"])
@@ -884,7 +952,10 @@ def main():
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(probe, fcntl.LOCK_UN)
             except BlockingIOError:
                 busy = True
-        api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy,
+        logrun = run_from_log(busy) if present else None
+        if logrun and busy:
+            logrun["queue"] = queue_after(logrun, float(ENV["RUN_CAP_GB"]) * 1e9)
+        api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
                                       "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"])})
         return
     lock = open(LOCK, "w")
