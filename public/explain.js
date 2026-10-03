@@ -195,3 +195,47 @@ Object.assign(window.TYPES, {
     why: "Quick forecasts for ERCOT and market work, or for spotting when a tracking metric drops below what history says it should be.",
     try: (i, c) => `# Chronos runs through its own package (pip install chronos-forecasting) on PyTorch, not MLX.\nopen ${c.abs(i)}/README.md` },
 });
+
+// ---- Interpretability track: full-precision models, SAEs, attribution ----
+const IVENV = "~/.nvme-stash/venvs/interp/bin/python";   // torch, transformer_lens, sae-lens, nnsight, captum, shap
+Object.assign(window.CONCEPTS, {
+  "attribution": { title: "Attribution",
+    body: "Splitting one output among its inputs: how much did each column, word or pixel push the answer up or down. It answers 'why this prediction?' for a single case, which is what explainable-AI work is asked for most often." },
+  "shap": { title: "SHAP values",
+    body: "An attribution method from game theory: each input's value is its average contribution across every order the inputs could have been added in. The values add up to the gap between this prediction and the average one, which makes them easy to put in a chart for a client." },
+  "counterfactual": { title: "Counterfactuals",
+    body: "Change one input, keep everything else, and see if the output flips. The simplest causal test there is, and it works on any model you can call, including hosted ones like Jev." },
+  "full-precision": { title: "Why interpretability wants full precision",
+    body: "4-bit models are great for running, but compression rounds every weight and adds noise to the activations you're trying to study. Interpretability work loads the original 16- or 32-bit weights (the models/hf copies), which is why the drive keeps a full-precision Qwen3-0.6B beside the 4-bit one." },
+  "residual-stream": { title: "Residual stream",
+    body: "The running vector each token carries through the network. Every attention layer and MLP reads from it and adds its result back. Most interpretability tools are ways of reading, editing or decomposing this one stream." },
+  "logit-lens": { title: "Logit lens",
+    body: "Apply the model's final unembedding to the residual stream at an earlier layer and see what it would predict if it stopped there. Shows the layer where the answer first appears." },
+  "probes": { title: "Linear probes",
+    body: "A small classifier trained on a layer's activations to predict some property of the input (is this a city name, is the sentence negated). If a straight line can find it, the model represents it at that layer. That's 'predicting outputs from inputs' turned inward." },
+  "activation-patching": { title: "Activation patching",
+    body: "Run a clean prompt and a corrupted one, then copy one component's activation from clean into corrupted. If the right answer comes back, that component carries it. The core causal tool of mechanistic interpretability." },
+  "attribution-patching": { title: "Attribution patching",
+    body: "A fast gradient-based approximation of activation patching: one backward pass estimates every component's effect at once. Use it to shortlist, then confirm with real patching." },
+  "circuits": { title: "Circuits",
+    body: "A small set of heads and neurons that together implement one behavior, like copying a name or completing a pattern. Indirect-object identification in GPT-2 small is the classic worked example." },
+  "superposition": { title: "Superposition",
+    body: "Models represent more concepts than they have dimensions by overlapping them, so single neurons rarely mean one thing. That's why reading individual neurons fails and sparse autoencoders exist." },
+  "sae": { title: "Sparse autoencoders (SAEs)",
+    body: "A wide, mostly-zero layer trained to rebuild a model's activations. Each of its units tends to fire for one human-readable concept, so you can see which concepts are active on a given token and steer them. Gemma Scope is Google's published set for Gemma 2." },
+});
+const TL_NAME = n => /pythia-160m/i.test(n) ? "pythia-160m-deduped" : /pythia-70m/i.test(n) ? "pythia-70m-deduped" : /gemma-2-2b/i.test(n) ? "gemma-2-2b" : "gpt2";
+Object.assign(window.TYPES, {
+  "interp-model": { label: "Model to look inside", glyph: "◉→", learn: ["full-precision", "residual-stream", "logit-lens"],
+    what: "A language model kept at full precision so you can read and edit what happens inside it, layer by layer.",
+    why: "The target for interpretability practice. GPT-2 small and Pythia are where most published circuits were found; Gemma 2 2B pairs with Gemma Scope SAEs; Qwen3-0.6B is the full-precision twin of a model you already run in 4-bit.",
+    try: (i, c) => /qwen3/i.test(i.name)
+      ? `# nnsight works on any Hugging Face model, including ones TransformerLens doesn't know yet.\n${IVENV} - <<'PY'\nfrom nnsight import LanguageModel\nm = LanguageModel(${JSON.stringify(c.abs(i))}, device_map="cpu")\nwith m.trace("The Eiffel Tower is in the city of"):\n    acts = [m.model.layers[k].output[0].save() for k in (0, 7, 14, 27)]\n    logits = m.lm_head.output.save()\nprint([tuple(a.shape) for a in acts])\nprint(m.tokenizer.decode(logits[0, -1].argmax()))\nPY`
+      : `${IVENV} - <<'PY'\n# Load local weights into TransformerLens (no download), run once, cache every activation.\nfrom transformers import AutoModelForCausalLM, AutoTokenizer\nfrom transformer_lens import HookedTransformer\np = ${JSON.stringify(c.abs(i))}\nm = HookedTransformer.from_pretrained("${TL_NAME(i.name)}", hf_model=AutoModelForCausalLM.from_pretrained(p),\n                                      tokenizer=AutoTokenizer.from_pretrained(p), device="cpu")\nlogits, cache = m.run_with_cache("The Eiffel Tower is in the city of")\nprint("answer:", m.to_string(logits[0, -1].argmax()))\n# logit lens: what each layer would predict if the model stopped there\nfor L in range(m.cfg.n_layers):\n    r = m.ln_final(cache[f"blocks.{L}.hook_resid_post"][:, -1:])\n    print(L, repr(m.to_string(m.unembed(r)[0, -1].argmax())))\nPY` },
+  "sae": { label: "Sparse autoencoder", glyph: "⋮⋱", learn: ["superposition", "sae", "residual-stream"],
+    what: "A trained dictionary that splits one layer's activations into thousands of mostly-off features, each tending to mean one thing.",
+    why: "Turns 'neuron 1,437 is at 0.8' into 'the Paris feature and the landmark feature are on'. The bridge from raw activations to explanations a person can read.",
+    try: (i, c) => /gemma-scope/i.test(i.name)
+      ? `# Gemma Scope SAEs are plain npz files (JumpReLU): encode = relu(x @ W_enc + b_enc) * (pre > threshold)\n${IVENV} - <<'PY'\nimport numpy as np, glob\nf = glob.glob(${JSON.stringify(c.abs(i))} + "/**/params.npz", recursive=True)[0]\nw = np.load(f); print(f); print({k: v.shape for k, v in w.items()})\nPY\n# Pair with models/hf/gemma-2-2b at layer 12 (hook: blocks.12.hook_resid_post).`
+      : `${IVENV} - <<'PY'\nfrom sae_lens import SAE\nsae = SAE.load_from_disk(${JSON.stringify(c.abs(i) + "/blocks.8.hook_resid_pre")}, device="cpu")\nprint(sae.cfg.d_in, "->", sae.cfg.d_sae, "features at", sae.cfg.hook_name)\n# Next: run GPT-2 with run_with_cache, take cache[sae.cfg.hook_name], call sae.encode(...),\n# and list the top features on each token. ARENA chapter 1.3 does exactly this.\nPY` },
+});

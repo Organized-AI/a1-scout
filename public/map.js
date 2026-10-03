@@ -15,6 +15,7 @@
     { id: "talk", label: "Talk and write", blurb: "Language models. Chat, draft, summarize, write code, call tools.", types: ["llm", "llm-code", "tool-llm"] },
     { id: "decide", label: "Decide and guard", blurb: "Small models that answer typed questions with calibrated confidence, pick a route, or flag risk. Your Jev primitives, offline.", types: ["decision", "router", "guard"] },
     { id: "predict", label: "Predict numbers", blurb: "Forecast a time series (prices, load, traffic) or predict a column in a table.", types: ["forecaster", "tabular"] },
+    { id: "inside", label: "Look inside models", blurb: "Full-precision models and sparse autoencoders for interpretability: read activations, patch them, explain what drove an output.", types: ["interp-model", "sae"] },
     { id: "find", label: "Find and match", blurb: "Embeddings and rerankers: search by meaning, pick the right skill or document.", types: ["embedding", "reranker"] },
     { id: "see", label: "See", blurb: "Models that look at images, screenshots and UIs.", types: ["vlm", "ui-agent", "detector"] },
     { id: "pages", label: "Turn pages into data", blurb: "HTML to Markdown, fields to JSON, questions to SQL. The measurement-side helpers.", types: ["html-reader", "extractor", "text-to-sql"] },
@@ -27,12 +28,14 @@
     { id: "build", label: "Build it offline", blurb: "Source code, offline Python packages and the drive's bookkeeping.", types: ["code-repo", "doc", "wheels", "gguf", "manifests", "script", "folder"] },
   ];
   const roleOf = t => ROLES.find(r => r.types.includes(t)) || ROLES[ROLES.length - 1];
-  const ROLE_COLOR = { talk: "#fbe04d", decide: "#f2c46c", predict: "#e0a46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#7cf2a0", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
+  const ROLE_COLOR = { inside: "#ff8f6b", talk: "#fbe04d", decide: "#f2c46c", predict: "#e0a46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#7cf2a0", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
 
   // The agent tags models from their config; names tell us more about the job.
   function classify(i) {
     const n = i.name.toLowerCase();
     if (!i.path.startsWith("models")) return i.type;
+    if (/sae|gemma-scope/.test(n)) return "sae";
+    if (i.path.startsWith("models/hf") && /^(gpt2|pythia-|gemma-2-2b$|qwen3-0\.6b$)/.test(n)) return "interp-model";
     if (/laya|jev|decision|clef/.test(n)) return "decision";
     if (/mitra|tabpfn/.test(n)) return "tabular";
     if (/chronos|timesfm|moirai|time-?series/.test(n)) return "forecaster";
@@ -120,6 +123,11 @@
     { id: "s8", title: "Teach a model something", goal: "See what a LoRA fine-tune produced and load it on top of its base model.", find: all => all.filter(i => i.kind === "lora-run"), concepts: ["lora"] },
     { id: "s9", title: "Hear and speak", goal: "Transcribe a clip, then speak a line back.", find: all => all.filter(i => ["asr", "tts"].includes(i.kind)).slice(0, 2), concepts: [] },
     { id: "s10", title: "Work with the network off", goal: "Install packages from the drive and know which venv to use.", find: all => all.filter(i => i.kind === "wheels").slice(0, 1), concepts: ["wheels", "venv", "pinning"] },
+    { id: "s11", title: "Explain a prediction", goal: "Take one prediction and show which inputs drove it: SHAP values on a tabular model, then the same question asked of a decision model by changing one input at a time.", find: all => all.filter(i => ["tabular", "decision", "dataset-analytics"].includes(i.kind)).slice(0, 3), concepts: ["attribution", "shap", "counterfactual"] },
+    { id: "s12", title: "Open up a network", goal: "Load GPT-2 small at full precision, run a prompt, and read the activations at every layer. Then ask each layer what it would predict (the logit lens).", find: all => all.filter(i => i.kind === "interp-model").sort((a, b) => a.bytes - b.bytes).slice(0, 3), concepts: ["full-precision", "residual-stream", "logit-lens"] },
+    { id: "s13", title: "Predict outputs from inputs", goal: "Train a linear probe on cached activations to predict a property of the input, and compare probes across Pythia's layers and sizes.", find: all => all.filter(i => /pythia|pile-10k/i.test(i.name)).slice(0, 3), concepts: ["probes", "residual-stream"] },
+    { id: "s14", title: "Find a circuit", goal: "Reproduce indirect-object identification on GPT-2: patch activations from a corrupted prompt and find the heads that carry the answer. ARENA chapter 1 walks through it.", find: all => all.filter(i => /gpt2$|arena|transformerlens/i.test(i.name)).slice(0, 3), concepts: ["activation-patching", "attribution-patching", "circuits"] },
+    { id: "s15", title: "Read features with SAEs", goal: "Decompose GPT-2's residual stream with a sparse autoencoder, find a feature that fires on one concept, then do the same on Gemma 2 2B with a Gemma Scope SAE.", find: all => all.filter(i => i.kind === "sae" || /gemma-2-2b/i.test(i.name)).slice(0, 3), concepts: ["superposition", "sae"] },
   ];
 
   /* ---------- views ---------- */
@@ -374,6 +382,12 @@
       { id: "latency", q: "How long per decision?", type: "choice", options: ["Under 100 ms", "Under 1 s", "1 to 5 s", "Slower"] },
       { id: "replace", q: "Could it replace a jev-gateway or Claude call?", type: "choice", options: ["Yes", "For some cases", "No"] },
       { id: "edge", q: "An edge case that tripped it", type: "long" }],
+    inside: [
+      { id: "goal", q: "What were you trying to find out about the model?", type: "text", hint: "e.g. which layer knows the answer, which heads matter" },
+      { id: "method", q: "Methods you used", type: "multi", options: ["Read activations", "Logit lens", "Linear probe", "Activation patching", "Attribution / SHAP", "Sparse autoencoder"] },
+      { id: "found", q: "Did you find something you could explain to someone else?", type: "choice", options: ["Yes, clearly", "Partly", "Not yet"] },
+      { id: "tooling", q: "How much fighting with the tools (versions, devices, memory)?", type: "scale", lo: "Constant", hi: "None" },
+      { id: "next", q: "What would you try next?", type: "long" }],
     predict: [
       { id: "input", q: "What data did you feed it?", type: "text", hint: "e.g. ERCOT load, GA4 sessions, ad spend" },
       { id: "target", q: "What were you predicting, and how far ahead?", type: "text" },

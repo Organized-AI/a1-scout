@@ -15,7 +15,7 @@ When the A1 is not present on the weekly timer, it only reminds you to plug it i
 
 Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]]
 """
-import fcntl, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
+import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -204,7 +204,7 @@ def provenance():
             for p in json.loads(f.read_text()):
                 tgt = p.get("path")
                 key = (tgt or ("models/mlx/" if p.get("type") == "model" else "datasets/raw/") + p["repo"].split("/")[-1]).strip("/")
-                rec = {"repo": p["repo"], "revision": p.get("revision"), "title": p.get("title")}
+                rec = {"repo": p["repo"], "revision": p.get("revision"), "title": p.get("title"), "include": p.get("include")}
                 if f.name == "scout-pins.json":
                     prov[key] = {**prov.get(key, {}), **{k: v for k, v in rec.items() if v}}  # newest entry wins
                 else:
@@ -409,6 +409,12 @@ def inventory_from(catalog):
 
 # ---------------------------------------------------------------- downloads
 
+def include_of(p):
+    """Globs limiting a pick to part of its repo (hf download --include); empty means the whole repo."""
+    inc = (p.get("extra") or {}).get("include") or p.get("include") or []
+    return [g for g in inc if isinstance(g, str) and g and ".." not in g]
+
+
 def dest_for(p):
     name = p["repo"].split("/")[-1]
     if p["kind"] == "model":
@@ -563,7 +569,7 @@ def queue_after(run, cap):
 
 
 def fetch_approved(spent=0):
-    picks = api("/api/picks?status=approved")
+    picks = api("/api/picks?status=approved&include_ok=1")
     who = sh(["hf", "auth", "whoami"])
     hf_logged_in = who.returncode == 0 and "Not logged in" not in (who.stdout + who.stderr)
     cap = float(ENV["RUN_CAP_GB"]) * 1e9
@@ -612,6 +618,8 @@ def fetch_approved(spent=0):
             args = ["caffeinate", "-i", "hf", "download", p["repo"], "--repo-type", p["kind"], "--local-dir", str(dest)]
             if p.get("sha"):
                 args += ["--revision", p["sha"]]
+            for g in include_of(p):
+                args += ["--include", g]
             r = hf_download(args, dest, size)
             ok = r.returncode == 0
             if not ok:
@@ -630,7 +638,8 @@ def fetch_approved(spent=0):
         except Exception:
             pins = []
         pins.append({"repo": p["repo"], "type": p["kind"], "revision": p.get("sha"), "path": str(dest.relative_to(STASH)),
-                     "bytes": got, "title": p.get("title"), "added": today, "score": p.get("score")})
+                     "bytes": got, "title": p.get("title"), "added": today, "score": p.get("score"),
+                     **({"include": include_of(p)} if include_of(p) else {})})
         pins_file.write_text(json.dumps(pins, indent=2))
         api("/api/stashed", "POST", {"id": p["id"], "sha": p.get("sha"), "path": str(dest.relative_to(STASH)), "size_bytes": got})
         done.append((p["repo"], got))
@@ -710,7 +719,8 @@ def tracked_items(catalog):
                     rev = sha
                     adopted.append({"repo": repo, "type": kind, "revision": sha, "path": i["path"], "added": datetime.now().strftime("%Y-%m-%d"), "adopted": True})
             if repo and rev:
-                items.append({"repo": repo, "kind": kind, "revision": rev, "path": i["path"].strip("/"), "bytes": i["bytes"]})
+                items.append({"repo": repo, "kind": kind, "revision": rev, "path": i["path"].strip("/"), "bytes": i["bytes"],
+                              "include": include_of(p)})
             else:
                 untracked.append(i["path"])
     return items, untracked, adopted
@@ -742,6 +752,9 @@ def check_updates(catalog):
             old_t = hub_tree(it["kind"], it["repo"], it["revision"])
         except Exception:
             old_t = {}  # old revision gone from history: treat every file as changed
+        if it.get("include"):  # partial pins only care about the files they asked for
+            keep = lambda t: {f: v for f, v in t.items() if any(fnmatch.fnmatch(f, g) for g in it["include"])}
+            new_t, old_t = keep(new_t), keep(old_t)
         changed = [f for f, v in new_t.items() if old_t.get(f, (None,))[0] != v[0]]
         removed = [f for f in old_t if f not in new_t]
         if not changed and not removed:
@@ -788,7 +801,8 @@ def apply_update(pl, report, spent, cap, floor):
     ACT.setdefault("dl_started_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     activity(force=True, phase="Updating stashed items", current={"repo": pl["repo"], "kind": pl["kind"], "action": "Updating",
              "total_bytes": pl["total_bytes"], "done_bytes": walk_size(tmp)[0], "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
-    r = hf_download(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)], tmp, pl["total_bytes"])
+    r = hf_download(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)]
+                    + [a for g in pl.get("include") or [] for a in ("--include", g)], tmp, pl["total_bytes"])
     if r.returncode != 0:
         log(f"  hf download failed: {(r.stderr or r.stdout)[-300:]}")
         wait("download failed; resumes next mount"); return 0

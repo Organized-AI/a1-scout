@@ -73,9 +73,17 @@ const THEMES = [
     spaces: ["time series forecasting"],
     paperKw: ["time series", "forecasting", "financial", "trading", "energy", "power grid"],
   },
+  {
+    id: "interp", label: "Interpretability & explainable AI",
+    repoKw: ["interp", "explain", "xai", "seekr", "attribution", "sae", "probe", "circuit"],
+    models: [{ search: "sparse autoencoder", author: null }, { search: "sae", author: null }],
+    datasets: ["interpretability", "sae activations", "probing"],
+    spaces: ["sparse autoencoder", "interpretability"],
+    paperKw: ["interpretability", "sparse autoencoder", "circuit", "attribution", "probing", "mechanistic", "explainable"],
+  },
 ];
 // Collections are searched once across the board; they are curated bundles, good for learning a stack.
-const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embedding", "agents"];
+const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embedding", "agents", "interpretability"];
 
 const DTYPE_BYTES = { F64: 8, I64: 8, U64: 8, F32: 4, I32: 4, U32: 4, BF16: 2, F16: 2, I16: 2, U16: 2, I8: 1, U8: 1, F8_E4M3: 1, F8_E5M2: 1, BOOL: 1 };
 const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl|^other$|unknown)/i;
@@ -133,6 +141,25 @@ async function hf(path, env) {
   const r = await fetch(`${HF}${path}`, { headers });
   if (!r.ok) throw new Error(`HF ${r.status} on ${path.slice(0, 80)}`);
   return r.json();
+}
+// Size of what a download will actually fetch: files at this revision, optionally filtered by fnmatch-style globs
+// (as the hf CLI's --include does: * also crosses folders). usedStorage counts every revision, so it overstates.
+const globRe = g => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+async function treeSize(env, kind, repo, sha, include = []) {
+  const res = include.map(globRe);
+  const dirs = include.length ? [...new Set(include.map(g => { const lit = g.split(/[*?[]/)[0]; return lit.includes("/") ? lit.slice(0, lit.lastIndexOf("/")) : ""; }))] : [""];
+  const headers = { "user-agent": "a1-scout (organized-ai)" };
+  if (env.HF_TOKEN) headers.authorization = `Bearer ${env.HF_TOKEN}`;
+  let total = 0; const seen = new Set();
+  for (const d of dirs) {
+    let next = `${HF}/${kind}s/${repo}/tree/${sha || "main"}${d ? "/" + d.split("/").map(encodeURIComponent).join("/") : ""}?recursive=true&limit=1000`;
+    for (let page = 0; next && page < 30; page++) {
+      const r = await fetch(next, { headers }); if (!r.ok) throw new Error(`tree ${r.status}`);
+      for (const f of await r.json()) if (f.type === "file" && !seen.has(f.path) && (!res.length || res.some(x => x.test(f.path)))) { seen.add(f.path); total += f.size || 0; }
+      next = (r.headers.get("link") || "").match(/<([^>]+)>;\s*rel="next"/)?.[1] || null;
+    }
+  }
+  return total;
 }
 const qs = (base, expand) => { const p = new URLSearchParams(base); expand.forEach(e => p.append("expand[]", e)); return p; };
 
@@ -404,7 +431,10 @@ async function api(req, env, url) {
     const q = status
       ? env.DB.prepare("SELECT * FROM picks WHERE status=? ORDER BY score DESC LIMIT 300").bind(status)
       : env.DB.prepare("SELECT * FROM picks ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC LIMIT 400");
-    return json((await q.all()).results.map(shapePick));
+    let rows = (await q.all()).results.map(shapePick);
+    // An agent that can't honor include lists would download whole repos (Gemma Scope is hundreds of GB): hold those back.
+    if (status === "approved" && url.searchParams.get("include_ok") !== "1") rows = rows.filter(r => !r.extra?.include);
+    return json(rows);
   }
   if (p === "/api/picks/status" && req.method === "POST") {
     const { id, status } = await req.json();
@@ -417,7 +447,7 @@ async function api(req, env, url) {
   }
   // Add a specific Hub repo as a pick (from chat or the page). It lands as "new" for review.
   if (p === "/api/picks/add" && req.method === "POST") {
-    const { repo, kind, theme, note, source, status } = await req.json();
+    const { repo, kind, theme, note, source, status, include } = await req.json();
     if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space) required" }, 400);
     const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(`${kind}:${repo}`).first();
     if (existing?.status === "stashed") return json({ ok: true, id: `${kind}:${repo}`, already: "stashed" });
@@ -425,9 +455,12 @@ async function api(req, env, url) {
       : kind === "dataset" ? ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "tags", "trendingScore"]
       : ["usedStorage", "sha", "cardData", "likes", "lastModified", "sdk", "trendingScore"];
     const info = await hf(`/${kind}s/${repo}?${qs({}, fields)}`, env);
+    // An include list downloads only part of a repo (one SAE out of hundreds, one weight format out of six).
+    const inc = Array.isArray(include) ? include.filter(g => typeof g === "string" && g && !g.includes("..")).slice(0, 20) : [];
+    const sized = await treeSize(env, kind, repo, info.sha, inc).catch(() => null);
     const c = {
       id: `${kind}:${repo}`, kind, repo, sha: info.sha, title: info.cardData?.title || null, summary: note || null,
-      extra: { added: "chat", sdk: info.sdk }, size_bytes: info.usedStorage || null,
+      extra: { added: "chat", sdk: info.sdk, ...(inc.length ? { include: inc } : {}) }, size_bytes: sized ?? info.usedStorage ?? null,
       likes: info.likes, trending: info.trendingScore, lastModified: info.lastModified, gated: String(info.gated ?? false),
       license: info.cardData?.license ? [].concat(info.cardData.license).join(",") : null,
       mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
