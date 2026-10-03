@@ -60,6 +60,28 @@
   const ram = () => catalog.ram_bytes || 16 * 2 ** 30;
   const ramLabel = () => `${Math.round(ram() / 2 ** 30)} GB`;
 
+  // The Macs Jordan owns or is weighing. macOS lets the GPU use about 75% of memory by default.
+  const MACHINES = [
+    { id: "m1", label: "M1 16GB", gb: 16 }, { id: "m4", label: "M4 16GB", gb: 16 },
+    { id: "m6", label: "M6 32GB", gb: 32 }, { id: "m5p", label: "M5 Pro 64GB", gb: 64 },
+  ];
+  const memNeed = (bytes, name) => (/jev-style-2b-decision-v3/i.test(name || "") ? 2.0e9 : bytes) * 1.2;
+  function fitsOn(bytes, name) {
+    const need = memNeed(bytes, name);
+    return MACHINES.map(m => ({ ...m, need, fits: need <= m.gb * 2 ** 30 * 0.75 }));
+  }
+  window.MachineFit = fitsOn;
+  function machineTags(i) {
+    if (!i.path.startsWith("models") || !i.bytes) return "";
+    const ok = fitsOn(i.bytes, i.name).filter(x => x.fits);
+    return ok.length ? ok.map(x => `<em class="b-ok">fits ${x.label}</em>`).join("") : `<em class="b-bad">fits none of your Macs</em>`;
+  }
+  function machineTable(i) {
+    if (!i.path.startsWith("models") || !i.bytes) return "";
+    const rows = fitsOn(i.bytes, i.name);
+    return `<p>Needs roughly ${gb(rows[0].need)} of memory to run. macOS lets models use about three quarters of a Mac's memory.</p>
+      <dl class="facts" style="margin-top:6px">${rows.map(r => `<dt>${r.label}</dt><dd class="${r.fits ? "b-ok" : "b-bad"}">${r.fits ? "fits" : "too big"}</dd>`).join("")}</dl>`;
+  }
   function fit(i) {
     const t = TYPES[i.kind] || {};
     if (!i.path.startsWith("models") || !i.bytes) return null;
@@ -131,7 +153,7 @@
       <span class="m-glyph">${esc(t.glyph)}</span>
       <span class="m-cname">${esc(i.name)}</span>
       <span class="m-kind">${esc(t.label)} · ${gb(i.bytes)}</span>
-      <span class="m-badges">${f ? `<em class="b-${f.cls}">${f.text}</em>` : ""}${lic && lic.cls !== "ok" ? `<em class="b-${lic.cls}">${lic.cls === "bad" ? "Non-commercial" : "License: check"}</em>` : ""}${tried.has(i.path) ? `<em class="b-tried">Tried</em>` : ""}</span>
+      <span class="m-badges">${machineTags(i)}${lic && lic.cls !== "ok" ? `<em class="b-${lic.cls}">${lic.cls === "bad" ? "Non-commercial" : "License: check"}</em>` : ""}${tried.has(i.path) ? `<em class="b-tried">Tried</em>` : ""}</span>
     </button>`;
   }
 
@@ -215,11 +237,11 @@
     return `<div class="m-phead"><span class="m-glyph" style="--role:${ROLE_COLOR[role.id]}">${esc(t.glyph)}</span>
         <div><div class="kind">${esc(role.label)} · ${esc(t.label)}</div><h2>${esc(i.name)}</h2></div>
         <button class="btn m-close" aria-label="Close">Close</button></div>
-      <div class="m-pbadges">${f ? `<span class="b-${f.cls}">${f.text}</span>` : ""}${lic ? `<span class="b-${lic.cls}">${esc(lic.text)}</span>` : ""}</div>
+      <div class="m-pbadges">${machineTags(i).replace(/<em /g, "<span ").replace(/<\/em>/g, "</span>")}${lic ? `<span class="b-${lic.cls}">${esc(lic.text)}</span>` : ""}</div>
       <h3>What it is</h3><p>${esc(t.what)}</p>
       ${i.summary ? `<p class="meta" style="margin-top:6px">${esc(i.summary.replace(/\*\*|__|`/g, ""))}</p>` : ""}
       ${t.why ? `<h3>Why it's on your drive</h3><p>${esc(t.why)}</p>` : ""}
-      ${f || lic ? `<h3>Can I use it?</h3>${f ? `<p>${esc(f.detail)}</p>` : ""}${lic ? `<p style="margin-top:4px">${esc(lic.detail)}</p>` : ""}` : ""}
+      ${f || lic ? `<h3>Which Macs can run it?</h3>${machineTable(i)}${lic ? `<h3>Can I use it for clients?</h3><p>${esc(lic.detail)}</p>` : ""}` : ""}
       ${cmd ? `<h3>Try it <button class="btn copy" data-copy>Copy</button></h3><pre id="m-cmd">${esc(cmd)}</pre>` : ""}
       ${t.learn?.length ? `<h3>Concepts behind it</h3><div class="learn">${t.learn.map(k => `<button class="chip" data-concept="${k}">${esc(CONCEPTS[k]?.title || k)}</button>`).join("")}</div>` : ""}
       <h3>Facts</h3><dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>

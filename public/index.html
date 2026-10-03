@@ -163,7 +163,7 @@ function row(p) {
    <div><div class="repo"><a href="${hubUrl(p)}" target="_blank" rel="noopener">${esc(p.title || p.repo)}</a></div>
    <div class="meta">${KIND_LABEL[p.kind]||p.kind}${p.title?` · ${esc(p.repo)}`:""}${p.kind!=="paper"&&p.kind!=="collection"?` · ${gb(p.size_bytes)}`:""}${p.license?` · ${esc(p.license)}`:""}${p.extra?.sdk?` · ${esc(p.extra.sdk)}`:""}${p.auto?" · auto-approved":""}${p.stash_path?" · "+esc(p.stash_path):""}</div>
    ${p.summary && p.kind!=="model"?`<div class="summ">${esc(p.summary.slice(0,260))}${p.summary.length>260?"…":""}</div>`:""}
-   <div class="chips"><span class="chip st-${p.status}">${p.status}</span>${p.reasons.map(r=>`<span class="chip">${esc(r)}</span>`).join("")}${p.flags.map(f=>`<span class="chip flag">${esc(f)}</span>`).join("")}</div>
+   <div class="chips"><span class="chip st-${p.status}">${p.status}</span>${p.kind==="model"&&p.size_bytes&&window.MachineFit?(window.MachineFit(p.size_bytes,p.repo).filter(x=>x.fits).map(x=>`<span class="chip">fits ${x.label}</span>`).join("")||'<span class="chip flag">fits none of your Macs</span>'):""}${p.reasons.map(r=>`<span class="chip">${esc(r)}</span>`).join("")}${p.flags.map(f=>`<span class="chip flag">${esc(f)}</span>`).join("")}</div>
    ${items}${p.matched_repos.length?`<div class="meta" style="margin-top:6px">For: ${p.matched_repos.map(esc).join(", ")}</div>`:""}</div>
    <div class="acts">${btns}</div></div>`;
 }
