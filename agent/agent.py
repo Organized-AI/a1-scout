@@ -686,6 +686,10 @@ def vt(v):
     return tuple(int(x) for x in v.split("."))
 
 
+def norm_rest(r):
+    return re.sub(r"-mlx(?=-|$)", "", r.lower())  # "-4B-MLX-4bit" and "-4B-4bit" are the same model, two naming styles
+
+
 def find_successors(items, report):
     """Newer releases of stashed model families: same author, family, size and quant, higher version number."""
     have = {}
@@ -695,7 +699,7 @@ def find_successors(items, report):
         author, name = it["repo"].split("/", 1)
         m = VER.match(name)
         if m:
-            key = (author, m.group(1).lower(), m.group(3).lower())
+            key = (author, m.group(1).lower(), norm_rest(m.group(3)))
             have[key] = max(have.get(key, (0,)), vt(m.group(2)))
     for (author, fam, rest), best in have.items():
         try:
@@ -706,12 +710,12 @@ def find_successors(items, report):
         top = None
         for r in res:
             m = VER.match(r["id"].split("/", 1)[1])
-            if m and m.group(1).lower() == fam and m.group(3).lower() == rest and vt(m.group(2)) > best and (not top or vt(m.group(2)) > top[0]):
+            if m and m.group(1).lower() == fam and norm_rest(m.group(3)) == rest and vt(m.group(2)) > best and (not top or vt(m.group(2)) > top[0]):
                 top = (vt(m.group(2)), r["id"])
         if not top:
             continue
         of = next(it["repo"] for it in items if it["kind"] == "model" and it["repo"].lower().startswith(author.lower() + "/" + fam)
-                  and it["repo"].lower().endswith(rest))
+                  and norm_rest(it["repo"]).endswith(rest))
         approve = ENV["AUTO_SUCCESSORS"] == "on"
         try:
             res = api("/api/picks/add", "POST", {"repo": top[1], "kind": "model", "theme": "code" if "coder" in rest else "agents",
