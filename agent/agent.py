@@ -648,7 +648,8 @@ def apply_update(pl, report, spent, cap, floor):
         if f in pl["changed"]:
             continue
         a, b = src / f, tmp / f
-        if a.is_file() and not b.exists() and a.stat().st_size == size:
+        # Only large files are worth copying: on exFAT, thousands of small copies are slower than re-downloading them.
+        if size >= 50e6 and a.is_file() and not b.exists() and a.stat().st_size == size:
             b.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(a, b)
             ma = src / ".cache/huggingface/download" / f"{f}.metadata"
