@@ -153,7 +153,7 @@
       <span class="m-glyph">${esc(t.glyph)}</span>
       <span class="m-cname">${esc(i.name)}</span>
       <span class="m-kind">${esc(t.label)} · ${gb(i.bytes)}</span>
-      <span class="m-badges">${machineTags(i)}${lic && lic.cls !== "ok" ? `<em class="b-${lic.cls}">${lic.cls === "bad" ? "Non-commercial" : "License: check"}</em>` : ""}${tried.has(i.path) ? `<em class="b-tried">Tried</em>` : ""}</span>
+      <span class="m-badges">${machineTags(i)}${lic && lic.cls !== "ok" ? `<em class="b-${lic.cls}">${lic.cls === "bad" ? "Non-commercial" : "License: check"}</em>` : ""}${tried.has(i.path) ? `<em class="b-tried">Tried${notes[i.path]?.answers?.overall ? ` · ${notes[i.path].answers.overall}/5` : ""}</em>` : ""}</span>
     </button>`;
   }
 
@@ -214,6 +214,176 @@
     }).join("");
   }
 
+  /* ---------- "I tried this" surveys ---------- */
+  // One question set per job. Shared openers and closers wrap the job-specific middle.
+  const MACS = [...MACHINES.map(m => m.label), "Other"];
+  const S = {
+    mac: { id: "mac", q: "Which Mac did you run it on?", type: "choice", options: MACS },
+    speed: { id: "speed", q: "How fast did it feel?", type: "scale", lo: "Unusably slow", hi: "Instant" },
+  };
+  const SURVEYS = {
+    talk: [S.mac,
+      { id: "tasks", q: "What did you ask it to do?", type: "multi", options: ["Chat / Q&A", "Summarize", "Write code", "Call tools / return JSON", "Draft copy", "Something else"] },
+      S.speed,
+      { id: "tps", q: "Tokens per second, if you saw it", type: "text", hint: "mlx_lm prints this after each answer" },
+      { id: "quality", q: "How good were the answers?", type: "scale", lo: "Wrong or rambling", hi: "As good as a cloud model" },
+      { id: "format", q: "Did it follow format instructions (JSON, length, style)?", type: "choice", options: ["Yes", "Mostly", "No", "Didn't test"] },
+      { id: "prompt", q: "Best prompt, or where it went wrong", type: "long" },
+      { id: "fit", q: "Where would it fit?", type: "multi", options: ["Client deliverables", "Internal agents", "Workshops / demos", "Offline backup", "Nowhere yet"] }],
+    decide: [S.mac,
+      { id: "question", q: "What question did you ask it?", type: "long", hint: "Paste the typed question and the options" },
+      { id: "match", q: "Did the answer match what you expected?", type: "choice", options: ["Yes", "Partly", "No"] },
+      { id: "calibration", q: "Did its confidence look believable?", type: "scale", lo: "Confident nonsense", hi: "Well calibrated" },
+      { id: "latency", q: "How long per decision?", type: "choice", options: ["Under 100 ms", "Under 1 s", "1 to 5 s", "Slower"] },
+      { id: "replace", q: "Could it replace a jev-gateway or Claude call?", type: "choice", options: ["Yes", "For some cases", "No"] },
+      { id: "edge", q: "An edge case that tripped it", type: "long" }],
+    predict: [
+      { id: "input", q: "What data did you feed it?", type: "text", hint: "e.g. ERCOT load, GA4 sessions, ad spend" },
+      { id: "target", q: "What were you predicting, and how far ahead?", type: "text" },
+      { id: "baseline", q: "Compared with a naive baseline (last value, seasonal average)", type: "choice", options: ["Better", "About the same", "Worse", "Didn't compare"] },
+      { id: "shape", q: "How hard was getting the data into the right shape?", type: "scale", lo: "Painful", hi: "Easy" },
+      { id: "use", q: "Useful for", type: "multi", options: ["ERCOT / grid", "Ad spend pacing", "Traffic forecasting", "Client reporting", "Other"] }],
+    find: [
+      { id: "corpus", q: "What did you search over?", type: "text", hint: "e.g. skill descriptions, docs, GTM tags" },
+      { id: "relevance", q: "Did the top results make sense?", type: "scale", lo: "Random", hi: "Spot on" },
+      { id: "vs", q: "Compared with keyword search", type: "choice", options: ["Better", "About the same", "Worse", "Didn't compare"] },
+      S.speed,
+      { id: "use", q: "Use it for", type: "multi", options: ["Skill / tool selection", "Doc search (RAG)", "Deduping", "Clustering", "Reranking results"] }],
+    see: [S.mac,
+      { id: "inputs", q: "What did you show it?", type: "multi", options: ["Screenshot", "Web page", "Photo", "Chart", "Document / PDF page"] },
+      { id: "accuracy", q: "Did it describe or locate things correctly?", type: "scale", lo: "Mostly wrong", hi: "Right every time" },
+      { id: "ui", q: "Did it find the right UI element or coordinates?", type: "choice", options: ["Yes", "Partly", "No", "Didn't test"] },
+      S.speed,
+      { id: "license", q: "Is the license OK for how you'd use it?", type: "choice", options: ["Yes", "Internal only", "Unsure"] }],
+    pages: [
+      { id: "input", q: "What page or input did you use?", type: "text", hint: "URL or a description" },
+      { id: "clean", q: "How clean was the output?", type: "scale", lo: "Messy", hi: "Ready to use" },
+      { id: "kept", q: "Did it keep what tracking needs (forms, CTAs, prices, product IDs)?", type: "choice", options: ["Yes", "Partly", "No"] },
+      { id: "invented", q: "Did it invent fields or values?", type: "choice", options: ["None", "A few", "Many"] },
+      { id: "scanner", q: "Could it slot into the GTM page scanner?", type: "choice", options: ["Yes", "Internal only (license)", "No"] }],
+    hear: [S.mac,
+      { id: "input", q: "What audio or text did you use?", type: "text" },
+      { id: "accuracy", q: "Transcript accuracy or voice naturalness", type: "scale", lo: "Poor", hi: "Indistinguishable" },
+      { id: "rt", q: "Speed versus real time", type: "choice", options: ["Faster than real time", "About real time", "Slower"] },
+      { id: "quirks", q: "Names, accents or words it got wrong", type: "long" },
+      { id: "use", q: "Use it for", type: "multi", options: ["Meeting notes", "Voice agent", "Reels / content", "Workshops", "Other"] }],
+    create: [S.mac,
+      { id: "prompt", q: "Prompt you used", type: "long" },
+      { id: "quality", q: "Image quality", type: "scale", lo: "Unusable", hi: "Publishable" },
+      { id: "time", q: "Seconds per image", type: "text" },
+      { id: "use", q: "Good enough for", type: "multi", options: ["Social posts", "Slides", "Mockups", "Nothing yet"] }],
+    data: [
+      { id: "did", q: "What did you do with it?", type: "multi", options: ["Browsed it", "Queried it (DuckDB / SQL)", "Fine-tuned on it", "Used it as an eval set", "Used it in a demo"] },
+      { id: "quality", q: "Data quality", type: "scale", lo: "Noisy", hi: "Clean" },
+      { id: "fit", q: "Best fit", type: "multi", options: ["Client demo", "Workshop exercise", "Training data", "Testing / evals", "None"] },
+      { id: "snippet", q: "A query or snippet worth keeping", type: "long" }],
+    apps: [
+      { id: "ran", q: "Did it run locally?", type: "choice", options: ["Yes, as is", "After fixes", "No"] },
+      { id: "fixes", q: "What did you have to fix?", type: "long" },
+      { id: "steal", q: "What pattern is worth stealing?", type: "long" },
+      { id: "cf", q: "Rebuild it on Cloudflare Workers?", type: "choice", options: ["Yes", "Maybe", "No"] }],
+    research: [
+      { id: "takeaway", q: "One-sentence takeaway", type: "text" },
+      { id: "understood", q: "How much did you understand?", type: "scale", lo: "Lost", hi: "Could teach it" },
+      { id: "applies", q: "Applies to", type: "multi", options: ["Decision models", "Retrieval", "Agents", "Measurement / GTM", "Not yet"] },
+      { id: "try", q: "Something to try from it", type: "long" }],
+    yours: [
+      { id: "vs", q: "Compared with the base model, the result is", type: "choice", options: ["Better", "About the same", "Worse", "Not compared"] },
+      { id: "changed", q: "What changed in the output?", type: "long" },
+      { id: "next", q: "The next run should change", type: "multi", options: ["More or better data", "More steps", "Different rank", "Different base model"] }],
+    build: [
+      { id: "installed", q: "Did it install or build offline?", type: "choice", options: ["Yes", "With fixes", "No"] },
+      { id: "broke", q: "What broke?", type: "long" },
+      { id: "commands", q: "Commands that worked", type: "long", hint: "Saved so next time is copy and paste" },
+      { id: "for", q: "What you'd use it for", type: "text" }],
+  };
+  const CLOSERS = [
+    { id: "overall", q: "Overall, how useful is this to you?", type: "scale", lo: "Not useful", hi: "Essential" },
+    { id: "again", q: "Would you use it again?", type: "choice", options: ["Yes", "Maybe", "No"] },
+    { id: "next", q: "Next step or anything else", type: "long" },
+  ];
+  const surveyFor = i => [...(SURVEYS[roleOf(i.kind).id] || SURVEYS.build), ...CLOSERS];
+
+  let notes = {}, notesLoaded = false, editing = null, quietOpen = false;
+  async function loadNotes() {
+    try { notes = await window.call("/api/notes"); notesLoaded = true; Object.keys(notes).forEach(k => tried.add(k)); saveTried(); }
+    catch { notes = {}; }
+  }
+  function qHtml(q, v) {
+    const n = `sv-${q.id}`;
+    const input = q.type === "scale"
+      ? `<div class="sv-scale">${[1, 2, 3, 4, 5].map(k => `<label><input type="radio" name="${n}" value="${k}"${+v === k ? " checked" : ""}><span>${k}</span></label>`).join("")}</div>
+         <div class="sv-ends"><small>${esc(q.lo)}</small><small>${esc(q.hi)}</small></div>`
+      : q.type === "choice" || q.type === "multi"
+      ? `<div class="sv-opts">${q.options.map(o => `<label><input type="${q.type === "multi" ? "checkbox" : "radio"}" name="${n}" value="${esc(o)}"${(q.type === "multi" ? (v || []).includes(o) : v === o) ? " checked" : ""}><span>${esc(o)}</span></label>`).join("")}</div>`
+      : q.type === "long"
+      ? `<textarea name="${n}" rows="3" placeholder="${esc(q.hint || "")}">${esc(v || "")}</textarea>`
+      : `<input type="text" name="${n}" value="${esc(v || "")}" placeholder="${esc(q.hint || "")}">`;
+    return `<fieldset class="sv-q"><legend>${esc(q.q)}</legend>${input}</fieldset>`;
+  }
+  function readSurvey(form, qs) {
+    const out = {};
+    for (const q of qs) {
+      const n = `sv-${q.id}`;
+      if (q.type === "multi") { const v = [...form.querySelectorAll(`[name="${n}"]:checked`)].map(x => x.value); if (v.length) out[q.id] = v; }
+      else if (q.type === "scale" || q.type === "choice") { const x = form.querySelector(`[name="${n}"]:checked`); if (x) out[q.id] = q.type === "scale" ? +x.value : x.value; }
+      else { const x = form.querySelector(`[name="${n}"]`); if (x && x.value.trim()) out[q.id] = x.value.trim(); }
+    }
+    return out;
+  }
+  function fmtAnswer(q, v) {
+    if (q.type === "scale") return `${v} / 5 ${v >= 4 ? "· " + q.hi : v <= 2 ? "· " + q.lo : ""}`;
+    return Array.isArray(v) ? v.join(", ") : String(v);
+  }
+  function notesHtml(i) {
+    const qs = surveyFor(i), n = notes[i.path];
+    if (editing === i.path) {
+      return `<h3>Notes · ${esc(roleOf(i.kind).label)}</h3>
+        <form class="sv" id="m-survey"><p class="meta">A few questions for this kind of item. Skip any; everything is optional.</p>
+        ${qs.map(q => qHtml(q, n?.answers?.[q.id])).join("")}
+        <div class="sv-acts"><button type="submit" class="btn go">Save notes</button><button type="button" class="btn" data-cancel>Cancel</button></div>
+        <p class="meta sv-status" aria-live="polite"></p></form>`;
+    }
+    if (n) {
+      const rows = qs.filter(q => n.answers[q.id] != null).map(q => `<dt>${esc(q.q)}</dt><dd>${esc(fmtAnswer(q, n.answers[q.id]))}</dd>`).join("");
+      return `<h3>Your notes <span class="meta" style="letter-spacing:0;text-transform:none">${new Date(n.updated).toLocaleDateString()}</span></h3>
+        <dl class="facts sv-saved">${rows || "<dt>No answers yet</dt><dd></dd>"}</dl>
+        <div class="m-pfoot sv-acts"><button class="btn" data-edit>Edit notes</button><button class="btn" data-remove>Remove notes</button></div>`;
+    }
+    return `<div class="m-pfoot sv-acts"><button class="btn go" data-start>I tried this</button>
+      ${tried.has(i.path) ? `<button class="btn" data-untry>Mark not tried</button>` : ""}</div>`;
+  }
+  function wireNotes(i) {
+    const p = $("#m-panel");
+    // Redraw the map (badges, progress) and reopen this panel in place, without the slide-in, scrolled to the notes.
+    const reopen = () => { quietOpen = true; rerender(); if (openPath !== i.path) openPanel(i.path); const el = $("#m-panel #m-notes"); el && el.scrollIntoView({ block: "start" }); };
+    const start = p.querySelector("[data-start]"), edit = p.querySelector("[data-edit]");
+    [start, edit].forEach(b => b && (b.onclick = () => { editing = i.path; reopen(); }));
+    const untry = p.querySelector("[data-untry]");
+    if (untry) untry.onclick = () => { tried.delete(i.path); saveTried(); reopen(); };
+    const rm = p.querySelector("[data-remove]");
+    if (rm) rm.onclick = async () => {
+      if (rm.dataset.armed !== "1") { rm.dataset.armed = "1"; rm.textContent = "Click again to remove"; return; }
+      await window.call(`/api/notes?path=${encodeURIComponent(i.path)}`, { method: "DELETE" });
+      delete notes[i.path]; tried.delete(i.path); saveTried(); reopen();
+    };
+    const form = p.querySelector("#m-survey");
+    if (!form) return;
+    gsap.fromTo(form.querySelectorAll(".sv-q"), { y: 6, opacity: 0 }, { y: 0, opacity: 1, duration: .2, stagger: .03, ease: "power2.out", clearProps: "all" });
+    form.querySelector("[data-cancel]").onclick = () => { editing = null; reopen(); };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const answers = readSurvey(form, surveyFor(i)), status = form.querySelector(".sv-status");
+      status.textContent = "Saving…";
+      try {
+        const r = await window.call("/api/notes", { method: "POST", body: JSON.stringify({ path: i.path, name: i.name, role: roleOf(i.kind).id, kind: i.kind, answers }) });
+        if (!r.ok) throw new Error(r.error || "not saved");
+        notes[i.path] = { path: i.path, answers, updated: r.updated };
+        tried.add(i.path); saveTried(); editing = null; reopen();
+      } catch (err) { status.textContent = `Couldn't save: ${err.message}. Your answers are still in the form.`; }
+    };
+  }
+
   /* ---------- detail panel ---------- */
   function panelHtml(i) {
     const t = TYPES[i.kind] || TYPES.folder, m = i.meta || {}, f = fit(i), lic = license(i), role = roleOf(i.kind), hub = hubUrl(i);
@@ -248,17 +418,19 @@
       <h3>Where it lives</h3><pre>${esc(abs(i))}</pre>
       ${hub ? `<p style="margin-top:8px"><a href="${hub}" target="_blank" rel="noopener">Open on Hugging Face</a></p>` : ""}
       ${related.length ? `<h3>Also in ${esc(role.label)}</h3><div class="learn">${related.map(x => `<button class="chip" data-open="${esc(x.path)}">${esc(x.name)}</button>`).join("")}</div>` : ""}
-      <div class="m-pfoot"><button class="btn ${tried.has(i.path) ? "" : "go"}" data-tried="${esc(i.path)}">${tried.has(i.path) ? "Mark not tried" : "I tried this"}</button></div>`;
+      <section id="m-notes">${notesHtml(i)}</section>`;
   }
   function openPanel(path) {
     const i = items().find(x => x.path === path); if (!i) return;
+    if (editing && editing !== path) editing = null;
     openPath = path;
     const p = $("#m-panel"), s = $("#m-scrim");
     p.innerHTML = panelHtml(i); p.hidden = false; s.hidden = false; p.scrollTop = 0;
-    gsap.fromTo(p, { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: .25, ease: "power2.out", clearProps: "transform,opacity" });
+    if (quietOpen) quietOpen = false;
+    else gsap.fromTo(p, { x: 24, opacity: 0 }, { x: 0, opacity: 1, duration: .25, ease: "power2.out", clearProps: "transform,opacity" });
     wirePanel(); p.querySelector(".m-close").focus();
   }
-  function closePanel() { openPath = null; const p = $("#m-panel"); if (p) { p.hidden = true; $("#m-scrim").hidden = true; } }
+  function closePanel() { openPath = null; editing = null; const p = $("#m-panel"); if (p) { p.hidden = true; $("#m-scrim").hidden = true; } }
   function wirePanel() {
     const p = $("#m-panel");
     p.querySelector(".m-close").onclick = closePanel;
@@ -266,8 +438,7 @@
     p.querySelectorAll("[data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     const cp = p.querySelector("[data-copy]");
     if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#m-cmd").textContent); cp.textContent = "Copied"; } catch { const r = document.createRange(); r.selectNodeContents($("#m-cmd")); getSelection().removeAllRanges(); getSelection().addRange(r); cp.textContent = "Selected"; } };
-    const tb = p.querySelector("[data-tried]");
-    tb.onclick = () => { const k = tb.dataset.tried; tried.has(k) ? tried.delete(k) : tried.add(k); saveTried(); rerender(); openPanel(k); };
+    wireNotes(items().find(x => x.path === openPath));
   }
   function showConcept(k) {
     closePanel();
@@ -280,6 +451,7 @@
   let rerender = () => {};
   function wire(first, redraw) {
     rerender = redraw;
+    if (!notesLoaded) { notesLoaded = true; loadNotes().then(() => redraw()); }
     $$("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; store.set("a1-map-mode", mode); redraw(); });
     const q = $("#m-q");
     if (q) q.oninput = () => { query = q.value; $("#m-body").innerHTML = mode === "path" ? pathView(items()) : mode === "space" ? spaceView() : jobsView(items()); wireBody(); };
@@ -351,6 +523,21 @@
   .m-pbadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
   .m-pfoot{margin-top:22px}
   .m-panel .copy{padding:2px 10px;font-size:12px}
+  .sv{display:grid;gap:14px;margin-top:4px}
+  .sv-q{border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px;margin:0;min-width:0}
+  .sv-q legend{font:500 13px "IBM Plex Sans",sans-serif;color:var(--ink);padding:0 4px}
+  .sv-scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px}
+  .sv-scale label,.sv-opts label{cursor:pointer}
+  .sv-scale input,.sv-opts input{position:absolute;opacity:0;pointer-events:none}
+  .sv-scale span{display:block;text-align:center;padding:8px 0;border:1px solid var(--line);border-radius:8px;font:600 13px "IBM Plex Mono",monospace}
+  .sv-opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .sv-opts span{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:13px}
+  .sv-scale input:checked+span,.sv-opts input:checked+span{background:color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent);color:var(--ink)}
+  .sv-scale input:focus-visible+span,.sv-opts input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+  .sv-ends{display:flex;justify-content:space-between;color:var(--mute);margin-top:4px}
+  .sv textarea,.sv input[type=text]{width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:14px "IBM Plex Sans",sans-serif;resize:vertical}
+  .sv-acts{display:flex;gap:8px;flex-wrap:wrap}
+  .sv-saved dt{white-space:normal}
   @media (prefers-reduced-motion: reduce){.m-card{transition:none}}
   `;
   document.head.appendChild(css);

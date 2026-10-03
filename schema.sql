@@ -35,3 +35,11 @@ CREATE TABLE IF NOT EXISTS runs (
   auto_approved INTEGER,
   note TEXT
 );
+
+-- "I tried this" survey answers from the drive map (also created on first use by the Worker).
+CREATE TABLE IF NOT EXISTS notes (
+  path TEXT PRIMARY KEY,      -- stash-relative path of the item
+  name TEXT, role TEXT, kind TEXT,
+  answers TEXT NOT NULL,      -- JSON {question id: answer}
+  created TEXT NOT NULL, updated TEXT NOT NULL
+);

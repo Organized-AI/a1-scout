@@ -465,6 +465,29 @@ async function api(req, env, url) {
     }
     return json((await kvGet(env, "catalog")) || { categories: [] });
   }
+  // "I tried this" survey answers from the drive map, one row per stashed item.
+  if (p === "/api/notes") {
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, name TEXT, role TEXT, kind TEXT,
+      answers TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)`).run();
+    if (req.method === "GET") {
+      const rows = (await env.DB.prepare("SELECT * FROM notes ORDER BY updated DESC").all()).results;
+      return json(Object.fromEntries(rows.map(r => [r.path, { ...r, answers: JSON.parse(r.answers) }])));
+    }
+    if (req.method === "POST") {
+      const { path, name, role, kind, answers } = await req.json();
+      const body = JSON.stringify(answers || {});
+      if (!path || body.length > 20000) return json({ error: "path required, answers under 20 KB" }, 400);
+      const ts = now();
+      await env.DB.prepare(`INSERT INTO notes (path,name,role,kind,answers,created,updated) VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(path) DO UPDATE SET name=excluded.name, role=excluded.role, kind=excluded.kind, answers=excluded.answers, updated=excluded.updated`)
+        .bind(path, name ?? null, role ?? null, kind ?? null, body, ts, ts).run();
+      return json({ ok: true, updated: ts });
+    }
+    if (req.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM notes WHERE path=?").bind(url.searchParams.get("path") || "").run();
+      return json({ ok: true });
+    }
+  }
   // What the agent found when it checked the A1 for newer revisions of stashed items.
   if (p === "/api/updates") {
     if (req.method === "POST") {
