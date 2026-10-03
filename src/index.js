@@ -428,7 +428,7 @@ async function api(req, env, url) {
     const c = {
       id: `${kind}:${repo}`, kind, repo, sha: info.sha, title: info.cardData?.title || null, summary: note || null,
       extra: { added: "chat", sdk: info.sdk }, size_bytes: info.usedStorage || null,
-      likes: info.likes, trending: info.trendingScore, lastModified: info.lastModified, gated: String(info.gated),
+      likes: info.likes, trending: info.trendingScore, lastModified: info.lastModified, gated: String(info.gated ?? false),
       license: info.cardData?.license ? [].concat(info.cardData.license).join(",") : null,
       mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
       theme: THEMES.some(t => t.id === theme) ? theme : "agents",
