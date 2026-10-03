@@ -499,14 +499,36 @@ async function api(req, env, url) {
     return json((await kvGet(env, "catalog")) || { categories: [] });
   }
   // Live A1 activity for the status bar. The agent posts run progress; a 2-minute heartbeat posts presence.
+  // "Run now" from the dashboard: the Mac's heartbeat picks the request up within a minute and starts a run.
+  if (p === "/api/run-request" && req.method === "POST") {
+    const presence = await kvGet(env, "presence");
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    if (!fresh || !presence.present) return json({ ok: false, error: "The A1 isn't plugged in, or the Mac hasn't checked in for a few minutes." }, 409);
+    if (presence.busy) return json({ ok: false, error: "A run is already going." }, 409);
+    const rr = { state: "pending", at: now() };
+    await kvSet(env, "run_request", rr);
+    return json({ ok: true, run_request: rr });
+  }
+  if (p === "/api/run-request/ack" && req.method === "POST") {
+    const { state, note } = await req.json();
+    const rr = await kvGet(env, "run_request");
+    if (rr) await kvSet(env, "run_request", { ...rr, state: ["started", "busy", "absent", "failed"].includes(state) ? state : "failed", note: note || null, acked_at: now() });
+    return json({ ok: true });
+  }
   if (p === "/api/activity") {
     if (req.method === "POST") {
       const body = await req.json();
-      if (body.kind === "presence") await kvSet(env, "presence", { ...body, at: now() });
-      else await kvSet(env, "activity", { ...body, at: now() });
+      if (body.kind === "presence") {
+        await kvSet(env, "presence", { ...body, at: now() });
+        // hand a pending dashboard request to the heartbeat (ignored after 10 minutes)
+        const rr = await kvGet(env, "run_request");
+        const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
+        return json({ ok: true, run_request: live ? rr : null });
+      }
+      await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
     }
-    const [activity, presence] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence")]);
+    const [activity, presence, run_request] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence"), kvGet(env, "run_request")]);
     // What the next plug-in will download: same order and cap rule as the agent (one over-cap item may go first).
     const approved = (await env.DB.prepare("SELECT repo, kind, size_bytes FROM picks WHERE status='approved' ORDER BY score DESC").all()).results;
     const cap = (presence?.cap_gb || 60) * 1e9;
@@ -519,7 +541,7 @@ async function api(req, env, url) {
       if (fits) spent += size;
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
     });
-    return json({ activity, presence, next, server_time: now() });
+    return json({ activity, presence, next, run_request, server_time: now() });
   }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {

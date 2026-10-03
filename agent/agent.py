@@ -969,8 +969,21 @@ def main():
         logrun = run_from_log(busy) if present else None
         if logrun and busy:
             logrun["queue"] = queue_after(logrun, float(ENV["RUN_CAP_GB"]) * 1e9)
-        api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
-                                      "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"])})
+        resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
+                                             "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"])})
+        rr = (resp or {}).get("run_request")
+        if rr and rr.get("state") == "pending":
+            # "Run now" from the dashboard: same run a plug-in starts, via the mount LaunchAgent, minus the 10-minute debounce.
+            if not present:
+                api("/api/run-request/ack", "POST", {"state": "absent", "note": "A1 not plugged in"})
+            elif busy:
+                api("/api/run-request/ack", "POST", {"state": "busy", "note": "a run was already going"})
+            else:
+                st = load_state(); st.pop("last_mount_run", None); st["next_trigger"] = "dashboard"; save_state(st)
+                r = sh(["launchctl", "kickstart", f"gui/{os.getuid()}/com.organizedai.a1-scout.mount"], timeout=30)
+                log(f"run requested from the dashboard: kickstart {'ok' if r.returncode == 0 else 'failed ' + (r.stderr or '')[-160:]}")
+                api("/api/run-request/ack", "POST", {"state": "started" if r.returncode == 0 else "failed",
+                                                     "note": None if r.returncode == 0 else (r.stderr or "")[-200:]})
         return
     lock = open(LOCK, "w")
     try:
@@ -993,10 +1006,14 @@ def main():
         # launchd fires this on every volume mount; only act for the A1, and not twice in 10 minutes.
         if not present:
             return
-        if time.time() - load_state().get("last_mount_run", 0) < 600:
+        st = load_state()
+        if time.time() - st.get("last_mount_run", 0) < 600:
             return
-        time.sleep(5)  # let Spotlight and the filesystem settle after mount
-        return run_mounted("mount")
+        trigger = st.pop("next_trigger", None) or "mount"
+        save_state(st)
+        if trigger == "mount":
+            time.sleep(5)  # let Spotlight and the filesystem settle after mount
+        return run_mounted(trigger)
     if mode == "weekly":
         if present:
             return run_mounted("weekly")

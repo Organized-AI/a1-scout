@@ -116,6 +116,20 @@ button.chip:hover{border-color:var(--accent)}
   .a1-track.indet i { width: 30%; position: absolute; animation: a1slide 1.6s ease-in-out infinite; }
   @keyframes a1slide { 0% { left: -30%; } 100% { left: 100%; } }
   .a1-last { color: var(--mute); }
+  .a1-cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .a1-run-btn { --sheen: -60%; position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 10px; border: 0; border-radius: 10px; padding: 10px 16px 10px 12px; cursor: pointer;
+    background: var(--brand); color: var(--on-brand); font: 600 14px "IBM Plex Mono", monospace; box-shadow: 0 0 0 0 transparent; transition: box-shadow .2s; }
+  .a1-run-btn::after { content: ""; position: absolute; top: 0; bottom: 0; left: var(--sheen); width: 40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); pointer-events: none; }
+  .a1-run-btn:hover:not([disabled]) { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 30%, transparent); }
+  .a1-run-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .a1-run-btn[disabled] { cursor: default; background: color-mix(in srgb, var(--brand) 55%, var(--panel)); }
+  .a1-run-btn small { font: 500 11.5px "IBM Plex Mono", monospace; opacity: .75; border-left: 1px solid rgba(0,0,0,.25); padding-left: 10px; }
+  .a1-run-ic { width: 22px; height: 22px; border-radius: 50%; background: var(--on-brand); display: grid; place-items: center; flex: none; }
+  .a1-run-ic i { width: 0; height: 0; border-left: 7px solid var(--brand); border-top: 5px solid transparent; border-bottom: 5px solid transparent; margin-left: 2px; }
+  .a1-run-btn[disabled] .a1-run-ic { background: transparent; border: 2px solid rgba(0,0,0,.25); }
+  .a1-run-btn[disabled] .a1-run-ic i { width: 14px; height: 14px; border: 2px solid transparent; border-top-color: var(--on-brand); border-radius: 50%; margin: 0; }
+  .a1-cta-note { color: var(--mute); font-size: 12.5px; max-width: 52ch; }
+  .a1-cta-note.err { color: var(--bad); }
   .a1-run { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
   .a1-big b { display: block; font: 600 34px/1 "IBM Plex Mono", monospace; }
   .a1-big span { color: var(--mute); font-size: 12px; }
@@ -238,7 +252,7 @@ const dur = s => s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${
 async function pollActivity() {
   try { a1act = await call("/api/activity"); paintBar(true); } catch {}
   clearTimeout(actTimer);
-  const busy = a1act?.activity?.state === "running" || a1act?.presence?.busy;
+  const busy = a1act?.activity?.state === "running" || a1act?.presence?.busy || ["pending", "started"].includes(a1act?.run_request?.state);
   if (!document.hidden) actTimer = setTimeout(pollActivity, busy ? 10000 : 45000);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && token) pollActivity(); });
@@ -374,8 +388,25 @@ function paintBar(animate) {
     actPrev = { ...actPrev, runKey, doneSet, curRepo: run.current?.repo, fresh: fresh_, prevDone: actPrev.prevDone };
   } else {
     const upNext = a1act.next || [];
-    body = `${a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
-      ${upNext.length ? `<div class="a1-lists"><div><span class="a1-lbl">Next plug-in</span>${upNext.filter(q => q.when !== "later").slice(0, 5).map(q => `<span class="a1-chip" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}
+    const nowList = upNext.filter(q => q.when !== "later");
+    const rr = a1act.run_request, rrT = rr ? Date.parse(rr.acked_at || rr.at) : 0;
+    const pending = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
+    const starting = rr?.state === "started" && Date.now() - rrT < 3 * 60e3;
+    const bounced = rr && ["busy", "absent", "failed"].includes(rr.state) && Date.now() - rrT < 10 * 60e3;
+    const cta = st.key === "ok" && (nowList.length || pending || starting) ? `
+      <div class="a1-cta${pending || starting ? " wait" : ""}">
+        <button type="button" class="a1-run-btn" data-runnow${pending || starting ? " disabled" : ""}>
+          <span class="a1-run-ic" aria-hidden="true"><i></i></span>
+          <span class="a1-run-t">${starting ? "Starting the run…" : pending ? "Requested" : "Run now"}</span>
+          ${nowList.length ? `<small>${nowList.length} approved, waiting · ${gb(nowList.reduce((t, q) => t + (q.bytes || 0), 0))}</small>` : ""}
+        </button>
+        <span class="a1-cta-note" data-runnote>${pending ? `Sent ${esc(ago(rr.at))}. The Mac checks in every minute and starts it; keep the A1 plugged in.`
+          : starting ? "The Mac started it. Progress shows here in a few seconds."
+          : bounced ? esc(rr.state === "busy" ? "A run was already going on the Mac." : rr.state === "absent" ? "The Mac couldn't see the A1. Check it's plugged in." : `The Mac couldn't start it${rr.note ? `: ${rr.note}` : "."}`)
+          : "Downloads the approved picks now, the same run a re-plug starts. No unplugging needed."}</span>
+      </div>` : "";
+    body = `${cta}${a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
+      ${upNext.length ? `<div class="a1-lists"><div><span class="a1-lbl">${st.key === "ok" ? "Next run" : "Next plug-in"}</span>${upNext.filter(q => q.when !== "later").slice(0, 5).map(q => `<span class="a1-chip" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}
         ${upNext.some(q => q.when === "later") ? `<span class="a1-more">+${upNext.filter(q => q.when === "later").length} later</span>` : ""}
         <span class="a1-more">${gb(upNext.filter(q => q.when !== "later").reduce((t, q) => t + (q.bytes || 0), 0))} total</span></div></div>` : ""}
       ${freeNote ? `<div class="a1-foot">${esc(freeNote)}</div>` : ""}`;
@@ -383,6 +414,20 @@ function paintBar(animate) {
   el.dataset.state = st.key;
   el.innerHTML = `<div class="a1-head"><span class="a1-dot"><i class="a1-ripple"></i></span><b class="a1-label">A1 ${esc(st.label)}</b>${st.sub ? `<span class="a1-sub">${esc(st.sub)}</span>` : ""}${run?.phase ? `<span class="a1-sub a1-phase">· ${esc(run.phase)}</span>` : ""}</div>${body}`;
   animateBar(el, st, live, { first, animate, prevKey: actPrev.key, prevPhase: actPrev.phase, phase: run?.phase });
+  const rb = el.querySelector("[data-runnow]");
+  if (rb && !rb.disabled) rb.onclick = async () => {
+    rb.disabled = true;
+    if (!RM()) { gsap.to(rb, { scale: .96, duration: .1, yoyo: true, repeat: 1 }); const [x, y] = centerOf(rb); burst(x, y, 12, 50); }
+    try {
+      const r = await call("/api/run-request", { method: "POST", body: "{}" });
+      if (!r.ok) throw new Error(r.error || "Couldn't send the request.");
+      a1act.run_request = r.run_request; paintBar(false);
+      clearTimeout(actTimer); actTimer = setTimeout(pollActivity, 10000);
+    } catch (e) {
+      rb.disabled = false;
+      const n = el.querySelector("[data-runnote]"); if (n) { n.textContent = e.message; n.classList.add("err"); if (!RM()) gsap.fromTo(n, { x: -6 }, { x: 0, duration: .4, ease: "elastic.out(1, .4)" }); }
+    }
+  };
   actPrev.key = st.key; actPrev.phase = run?.phase; actPrev.painted = true;
 }
 function animateBar(el, st, live, o) {
@@ -427,6 +472,17 @@ function animateBar(el, st, live, o) {
     }
   }
   if (rm) return;
+  // 1b. the Run now button: arrives with a bounce, a sheen sweeps it now and then; once requested the icon becomes a spinner
+  const rb = el.querySelector(".a1-run-btn");
+  if (rb) {
+    if (o.first || o.prevKey !== st.key) gsap.from(rb, { scale: .85, opacity: 0, duration: .55, ease: "back.out(2.2)", clearProps: "transform,opacity" });
+    if (rb.disabled) barLoops.push(gsap.to(rb.querySelector(".a1-run-ic i"), { rotation: 360, duration: 1, repeat: -1, ease: "none" }));
+    else {
+      barLoops.push(gsap.fromTo(rb, { "--sheen": "-60%" }, { "--sheen": "160%", duration: 1.1, ease: "power2.inOut", repeat: -1, repeatDelay: 3.2 }));
+      rb.onmouseenter = () => gsap.to(rb.querySelector(".a1-run-ic"), { x: 3, duration: .25, ease: "power2.out" });
+      rb.onmouseleave = () => gsap.to(rb.querySelector(".a1-run-ic"), { x: 0, duration: .25, ease: "power2.out" });
+    }
+  }
   // 2. entrance on first paint
   if (o.first) {
     gsap.from(el, { y: -10, opacity: 0, duration: .5, ease: "power2.out", clearProps: "transform,opacity" });
