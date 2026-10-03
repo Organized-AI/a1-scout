@@ -13,7 +13,7 @@ When the A1 drive (matched by volume UUID, not just name) is present it:
   7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
 
-Usage: agent.py [mount|weekly|now|catalog|status|updates [--dry-run]]
+Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]]
 """
 import fcntl, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
@@ -446,6 +446,56 @@ def sha256_lines(root: Path, rel_root: Path):
     return lines
 
 
+# ---------------------------------------------------------------- live activity (drives the status bar on the site)
+
+ACT = {}
+_last_post = [0.0]
+
+
+def activity(force=False, **kw):
+    """Merge kw into the current run state and send it to the Worker (at most every ~8 s unless forced)."""
+    ACT.update(kw)
+    ACT["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if not force and time.time() - _last_post[0] < 8:
+        return
+    _last_post[0] = time.time()
+    try:
+        api("/api/activity", "POST", {"kind": "run", **ACT})
+    except Exception:
+        pass  # the status bar is nice-to-have; never let it break a run
+
+
+def hf_download(args, dest: Path, total: int):
+    """Run `hf download` and report bytes on disk, speed and time left while it runs."""
+    e = dict(os.environ, PATH=PATH_EXTRA + ":" + os.environ.get("PATH", ""))
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=e)
+    samples = []
+    while True:
+        try:
+            out, err = proc.communicate(timeout=15)
+            break
+        except subprocess.TimeoutExpired:
+            cur = walk_size(dest)[0] if dest.exists() else 0
+            samples = (samples + [(time.time(), cur)])[-8:]
+            dt = samples[-1][0] - samples[0][0]
+            rate = (samples[-1][1] - samples[0][1]) / dt if dt > 0 else 0
+            eta = (total - cur) / rate if rate > 0 and total > cur else None
+            activity(current={**(ACT.get("current") or {}), "done_bytes": cur, "rate": rate, "eta_s": eta})
+    return subprocess.CompletedProcess(args, proc.returncode, out, err)
+
+
+def plan_queue(picks, spent, cap):
+    """Mirror fetch_approved's ordering and cap so the site can show what downloads now and what waits."""
+    q, s = [], spent
+    for p in picks:
+        size = p.get("size_bytes") or 0
+        now = not (s + size > cap and not (s == 0 and size > cap))
+        if now:
+            s += size
+        q.append({"repo": p["repo"], "kind": p["kind"], "bytes": size, "when": "now" if now else "next plug-in"})
+    return q
+
+
 def fetch_approved(spent=0):
     picks = api("/api/picks?status=approved")
     who = sh(["hf", "auth", "whoami"])
@@ -460,6 +510,7 @@ def fetch_approved(spent=0):
             picks = [big[0]] + [p for p in picks if p is not big[0]]
     today = datetime.now().strftime("%Y-%m-%d")
     pins_file = STASH / "manifests/scout-pins.json"
+    activity(force=True, phase="Downloading approved picks", queue=plan_queue(picks, spent, cap))
     for p in picks:
         dest = dest_for(p)
         if not dest or not inside_stash(dest):
@@ -474,6 +525,9 @@ def fetch_approved(spent=0):
             waiting.append((p["repo"], f"would leave under {ENV['FREE_FLOOR_GB']} GB free")); continue
 
         log(f"downloading {p['kind']} {p['repo']} @ {(p.get('sha') or 'latest')[:10]} -> {dest.relative_to(STASH)} (~{size/1e9:.2f} GB)")
+        activity(force=True, current={"repo": p["repo"], "kind": p["kind"], "action": "Downloading", "total_bytes": size,
+                                      "done_bytes": 0, "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")},
+                 queue=[q for q in ACT.get("queue", []) if q["repo"] != p["repo"]])
         if p["kind"] == "paper":
             dest.parent.mkdir(parents=True, exist_ok=True)
             tmp = dest.with_suffix(".part")
@@ -491,7 +545,7 @@ def fetch_approved(spent=0):
             args = ["caffeinate", "-i", "hf", "download", p["repo"], "--repo-type", p["kind"], "--local-dir", str(dest)]
             if p.get("sha"):
                 args += ["--revision", p["sha"]]
-            r = sh(args)
+            r = hf_download(args, dest, size)
             ok = r.returncode == 0
             if not ok:
                 log(f"  hf download failed: {(r.stderr or r.stdout)[-400:]}")
@@ -514,6 +568,7 @@ def fetch_approved(spent=0):
         api("/api/stashed", "POST", {"id": p["id"], "sha": p.get("sha"), "path": str(dest.relative_to(STASH)), "size_bytes": got})
         done.append((p["repo"], got))
         log(f"  stashed {got/1e9:.2f} GB")
+        activity(force=True, current=None, done=(ACT.get("done") or []) + [{"repo": p["repo"], "bytes": got, "what": "added"}])
     return done, waiting
 
 
@@ -663,7 +718,9 @@ def apply_update(pl, report, spent, cap, floor):
                 mb = tmp / ".cache/huggingface/download" / f"{f}.metadata"
                 mb.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ma, mb)
-    r = sh(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)])
+    activity(force=True, phase="Updating stashed items", current={"repo": pl["repo"], "kind": pl["kind"], "action": "Updating",
+             "total_bytes": pl["total_bytes"], "done_bytes": walk_size(tmp)[0], "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    r = hf_download(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)], tmp, pl["total_bytes"])
     if r.returncode != 0:
         log(f"  hf download failed: {(r.stderr or r.stdout)[-300:]}")
         wait("download failed; resumes next mount"); return 0
@@ -683,6 +740,7 @@ def apply_update(pl, report, spent, cap, floor):
              "updated_from": pl["revision"], "previous_path": str(prev.relative_to(STASH))})
     report["updated"].append({"repo": pl["repo"], "from": pl["revision"], "to": pl["new"], "bytes": got, "previous_path": str(prev.relative_to(STASH))})
     log(f"  updated; previous version kept at {prev.relative_to(STASH)}")
+    activity(force=True, current=None, done=(ACT.get("done") or []) + [{"repo": pl["repo"], "bytes": got, "what": "updated"}])
     return pl["download_bytes"]
 
 
@@ -771,10 +829,15 @@ def run_updates(catalog, dry=False):
 
 def run_mounted(trigger):
     log(f"A1 present ({trigger}); stash at {STASH}")
+    ACT.clear()
+    activity(force=True, state="running", trigger=trigger, started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             phase="Reading the drive", current=None, queue=[], done=[], waiting=[], summary=None)
     catalog = build_catalog()
     push_catalog(catalog)
     push_profile(catalog)
+    activity(force=True, phase="Checking stashed items for updates")
     report, spent = run_updates(catalog)
+    activity(force=True, phase="Scanning Hugging Face for new picks", current=None)
     scan = api(f"/api/scan?if_stale=1&min_hours={ENV['SCAN_MIN_HOURS']}&trigger={trigger}", "POST")
     if "skipped" in scan:
         log(f"scan skipped: {scan['skipped']}")
@@ -803,12 +866,27 @@ def run_mounted(trigger):
     notify("A1 Scout", " · ".join(parts))
     for r, why in waiting:
         log(f"  waiting: {r} ({why})")
+    activity(force=True, state="idle", phase="Finished", current=None, queue=[],
+             finished_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), summary=" · ".join(parts),
+             waiting=[{"repo": r, "why": why} for r, why in waiting])
     s = load_state(); s["last_mount_run"] = time.time(); save_state(s)
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "now"
     STATE_DIR.mkdir(exist_ok=True)
+    if mode == "heartbeat":
+        # Every 2 minutes from launchd: tell the site whether the A1 is plugged in and whether a run is busy.
+        present = a1_present()
+        busy = False
+        with open(LOCK, "a") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(probe, fcntl.LOCK_UN)
+            except BlockingIOError:
+                busy = True
+        api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy,
+                                      "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"])})
+        return
     lock = open(LOCK, "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

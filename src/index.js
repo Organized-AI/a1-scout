@@ -465,6 +465,29 @@ async function api(req, env, url) {
     }
     return json((await kvGet(env, "catalog")) || { categories: [] });
   }
+  // Live A1 activity for the status bar. The agent posts run progress; a 2-minute heartbeat posts presence.
+  if (p === "/api/activity") {
+    if (req.method === "POST") {
+      const body = await req.json();
+      if (body.kind === "presence") await kvSet(env, "presence", { ...body, at: now() });
+      else await kvSet(env, "activity", { ...body, at: now() });
+      return json({ ok: true });
+    }
+    const [activity, presence] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence")]);
+    // What the next plug-in will download: same order and cap rule as the agent (one over-cap item may go first).
+    const approved = (await env.DB.prepare("SELECT repo, kind, size_bytes FROM picks WHERE status='approved' ORDER BY score DESC").all()).results;
+    const cap = (presence?.cap_gb || 60) * 1e9;
+    const big = approved.find(x => (x.size_bytes || 0) > cap);
+    const ordered = big ? [big, ...approved.filter(x => x !== big)] : approved;
+    let spent = 0;
+    const next = ordered.map(x => {
+      const size = x.size_bytes || 0;
+      const fits = !(spent + size > cap && !(spent === 0 && size > cap));
+      if (fits) spent += size;
+      return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
+    });
+    return json({ activity, presence, next, server_time: now() });
+  }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, name TEXT, role TEXT, kind TEXT,

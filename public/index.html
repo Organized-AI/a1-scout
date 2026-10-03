@@ -85,6 +85,31 @@ button.chip:hover{border-color:var(--accent)}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 .run{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px}
 @media (max-width:620px){.pick{grid-template-columns:48px 1fr}.acts{grid-column:1/-1;flex-direction:row}.tm{aspect-ratio:3/4}}
+  .a1bar { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 12px 14px; margin: 0 0 18px; display: grid; gap: 8px; font-size: 13px; }
+  .a1bar:empty { display: none; }
+  .a1-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .a1-head b { font: 600 13px "IBM Plex Mono", monospace; }
+  .a1-sub { color: var(--mute); }
+  .a1-count { margin-left: auto; color: var(--mute); font: 12px "IBM Plex Mono", monospace; }
+  .a1-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); flex: none; }
+  .a1bar[data-state="ok"] .a1-dot { background: var(--accent); }
+  .a1bar[data-state="busy"] .a1-dot { background: var(--accent); animation: a1pulse 1.4s ease-in-out infinite; }
+  .a1bar[data-state="warn"] .a1-dot { background: var(--warn); }
+  @keyframes a1pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+  .a1-line { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 5px; }
+  .a1-line b { font-family: "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
+  .a1-nums { color: var(--mute); font: 12px "IBM Plex Mono", monospace; }
+  .a1-track { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; position: relative; }
+  .a1-track i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .a1-track.indet i { width: 30%; position: absolute; animation: a1slide 1.6s ease-in-out infinite; }
+  @keyframes a1slide { 0% { left: -30%; } 100% { left: 100%; } }
+  .a1-last { color: var(--mute); }
+  .a1-next { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--mute); }
+  .a1-chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; color: var(--ink); font-size: 12px; }
+  .a1-chip small { color: var(--mute); }
+  .a1-chip.later { opacity: .6; }
+  .a1-more { font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { .a1bar[data-state="busy"] .a1-dot, .a1-track.indet i { animation: none; } }
   .pick[data-pick] { cursor: pointer; transition: border-color .15s; }
   .pick[data-pick]:hover { border-color: var(--accent); }
   .pick[data-pick]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -122,15 +147,64 @@ async function load() {
   if (!token) return gate();
   [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
   render(true);
+  pollActivity();
 }
 function shell(inner) {
   return `<div class="top"><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : "Scout"}</h1>
-   <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>${inner}`;
+   <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
+   <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}`;
 }
 function render(first) {
   $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
   view === "map" ? MapView.wire(first, () => render()) : wireScout(first);
+  paintBar(false);
+}
+
+/* ---------------- A1 status bar ---------------- */
+// Polls /api/activity: the Mac agent reports what it's doing; a 2-minute heartbeat says whether the A1 is plugged in.
+let a1act = null, actTimer = null, actPrev = {};
+const short = r => String(r || "").split("/").pop();
+const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(iso).toLocaleDateString(); };
+const clock = iso => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const dur = s => s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+async function pollActivity() {
+  try { a1act = await call("/api/activity"); paintBar(true); } catch {}
+  clearTimeout(actTimer);
+  const busy = a1act?.activity?.state === "running";
+  if (!document.hidden) actTimer = setTimeout(pollActivity, busy ? 10000 : 45000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && token) pollActivity(); });
+function barState() {
+  const p = a1act?.presence || {}, a = a1act?.activity || {};
+  const fresh = p.at && Date.now() - Date.parse(p.at) < 6 * 60e3;
+  const plugged = !!(fresh && p.present);
+  const running = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 15 * 60e3;
+  if (running && plugged) return { key: "busy", plugged, running, label: "Plugged in", sub: a.phase || "Working" };
+  if (running && !plugged) return { key: "warn", plugged, running, label: fresh ? "Unplugged mid-run" : "Working, no heartbeat yet", sub: fresh ? "Anything unfinished resumes on the next plug-in" : (a.phase || "") };
+  if (plugged) return { key: "ok", plugged, running, label: "Plugged in", sub: p.busy ? "Starting up" : "Idle · safe to eject" };
+  return { key: "off", plugged, running, label: "Unplugged", sub: p.at ? `Last seen ${ago(p.at)}` : "Waiting for the first heartbeat from the Mac" };
+}
+function paintBar(animate) {
+  const el = $("#a1bar"); if (!el || !a1act) return;
+  const st = barState(), a = a1act.activity || {}, c = st.running ? a.current : null;
+  const pct = c && c.total_bytes ? Math.min(100, c.done_bytes / c.total_bytes * 100) : 0;
+  const upNext = st.running ? (a.queue || []) : (a1act.next || []);
+  const doneList = a.done || [];
+  const freeNote = a1act.presence?.free_bytes != null ? ` · ${gb(a1act.presence.free_bytes)} free` : "";
+  el.dataset.state = st.key;
+  el.innerHTML = `<div class="a1-head"><span class="a1-dot"></span><b>A1 ${esc(st.label)}</b><span class="a1-sub">${esc(st.sub)}${st.plugged ? esc(freeNote) : ""}</span>
+      ${st.running && doneList.length ? `<span class="a1-count">${doneList.length} done this run</span>` : ""}</div>
+    ${c ? `<div class="a1-item"><div class="a1-line"><span>${esc(c.action || "Downloading")} <b>${esc(short(c.repo))}</b></span>
+        <span class="a1-nums">${gb(c.done_bytes)} of ${gb(c.total_bytes)}${c.rate ? ` · ${gb(c.rate)}/s` : ""}${c.eta_s ? ` · about ${dur(c.eta_s)} left` : ""}</span></div>
+        <div class="a1-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Download progress"><i style="width:${animate ? (actPrev.pct ?? 0) : pct}%"></i></div></div>`
+      : st.running ? `<div class="a1-item"><div class="a1-track indet"><i></i></div></div>` : ""}
+    ${!st.running && a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
+    ${upNext.length ? `<div class="a1-next"><span>Up next${st.running ? "" : " (next plug-in)"}:</span> ${upNext.slice(0, 4).map(q => `<span class="a1-chip${(st.running ? q.when === "now" : q.when === "next plug-in") ? "" : " later"}" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}${st.running ? (q.when === "now" ? "" : " · next plug-in") : (q.when === "later" ? " · later" : "")}</small></span>`).join("")}${upNext.length > 4 ? `<span class="a1-more">+${upNext.length - 4} more</span>` : ""}</div>` : ""}`;
+  const bar = el.querySelector(".a1-track:not(.indet) i");
+  if (bar && animate) gsap.to(bar, { width: pct + "%", duration: .8, ease: "power2.out" });
+  if (animate && actPrev.key && actPrev.key !== st.key) gsap.fromTo(el, { backgroundColor: "var(--chip)" }, { backgroundColor: "var(--panel)", duration: .8, clearProps: "backgroundColor" });
+  actPrev = { pct, key: st.key };
 }
 
 /* ---------------- scout ---------------- */
