@@ -234,20 +234,19 @@
       ${n ? `<p class="meta">You tried it${n.answers?.overall ? `, rated ${n.answers.overall}/5` : ""}.</p>` : tried.has(i.path) ? `<p class="meta">You tried it.</p>` : ""}
       <div class="m-facts"><button class="btn go" data-full>Full details</button><button class="btn" data-fclose>Close</button></div>`;
   }
-  function flipOpen(path, cell) {
-    const i = items().find(x => x.path === path); if (!i) return;
-    if (flipTl) return flipClose(() => flipOpen(path, cell));
-    const r = cell.getBoundingClientRect(), role = roleOf(i.kind);
+  // Generic: grow a card out of `from`, flip it to `back`, and call wire(card) to hook up its buttons.
+  function flipCard(from, { label, front, back, color, wire }) {
+    if (flipTl) return flipClose(() => flipCard(from, { label, front, back, color, wire }));
+    const r = from.getBoundingClientRect();
     const W = Math.min(420, innerWidth - 32);
     // Size the card to its content: measure an invisible copy of the back face at the final width.
     const probe = document.createElement("div"); probe.className = "m-fface m-fback"; probe.style.cssText = `position:fixed;visibility:hidden;transform:none;width:${W}px;height:auto;inset:auto;left:-9999px;top:0`;
-    probe.innerHTML = flipBack(i); document.body.append(probe);
+    probe.innerHTML = back; document.body.append(probe);
     const H = Math.min(Math.max(probe.scrollHeight + 4, 260), innerHeight - 64); probe.remove();
     const scrim = document.createElement("div"); scrim.className = "m-fscrim";
-    const card = document.createElement("div"); card.className = "m-flip"; card.setAttribute("role", "dialog"); card.setAttribute("aria-label", i.name);
-    card.style.setProperty("--role", ROLE_COLOR[role.id]);
-    card.innerHTML = `<div class="m-finner"><div class="m-fface m-ffront"><span>${esc(i.name)}</span><small>${gb(i.bytes)}</small></div>
-      <div class="m-fface m-fback">${flipBack(i)}</div></div>`;
+    const card = document.createElement("div"); card.className = "m-flip"; card.setAttribute("role", "dialog"); card.setAttribute("aria-label", label);
+    card.style.setProperty("--role", color);
+    card.innerHTML = `<div class="m-finner"><div class="m-fface m-ffront">${front}</div><div class="m-fface m-fback">${back}</div></div>`;
     document.body.append(scrim, card);
     const inner = card.querySelector(".m-finner");
     gsap.set(card, { left: r.left, top: r.top, width: r.width, height: r.height });
@@ -257,20 +256,90 @@
       gsap.set(inner, { rotationY: 180 });
       flipTl.fromTo(card, { opacity: 0 }, { opacity: 1, duration: .15 }).fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: .15 }, 0);
     } else {
-      flipTl.to(cell, { scale: .92, duration: .09, ease: "power2.in" })
-        .to(cell, { scale: 1, duration: .14, ease: "back.out(3)" })
+      flipTl.to(from, { scale: .97, duration: .09, ease: "power2.in" })
+        .to(from, { scale: 1, duration: .14, ease: "back.out(3)", clearProps: "transform" })
         .fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: .35 }, .1)
         .to(card, { left: (innerWidth - W) / 2, top: (innerHeight - H) / 2, width: W, height: H, duration: .5 }, .12)
         .to(inner, { rotationY: 180, duration: .6, ease: "power2.inOut" }, .42)
         .fromTo(card.querySelectorAll(".m-fback > *"), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .03, ease: "power2.out" }, .8);
     }
-    card._cell = cell; card._scrim = scrim;
-    const close = () => flipClose();
-    scrim.onclick = close;
-    card.querySelector("[data-fclose]").onclick = close;
-    card.querySelector("[data-full]").onclick = () => flipClose(() => openPanel(path), true);
-    setTimeout(() => card.querySelector("[data-fclose]").focus({ preventScroll: true }), reduced() ? 0 : 900);
+    card._cell = from; card._scrim = scrim;
+    scrim.onclick = () => flipClose();
+    card.querySelectorAll("[data-fclose]").forEach(b => b.onclick = () => flipClose());
+    wire && wire(card);
+    setTimeout(() => card.querySelector("[data-fclose]")?.focus({ preventScroll: true }), reduced() ? 0 : 900);
+    if (!flipKeys) { flipKeys = true; document.addEventListener("keydown", e => { if (e.key === "Escape" && $(".m-flip")) flipClose(); }); }
+    return card;
   }
+  let flipKeys = false;
+  function flipOpen(path, cell) {
+    const i = items().find(x => x.path === path); if (!i) return;
+    flipCard(cell, {
+      label: i.name, color: ROLE_COLOR[roleOf(i.kind).id], back: flipBack(i),
+      front: `<span>${esc(i.name)}</span><small>${gb(i.bytes)}</small>`,
+      wire: card => card.querySelector("[data-full]").onclick = () => flipClose(() => openPanel(path), true),
+    });
+  }
+
+  /* ---------- Scout picks: the same card, explaining a Hub candidate ---------- */
+  const FLAG_INFO = {
+    "large": "Big download. It counts toward the per-plug-in download limit and may wait for a later plug-in.",
+    "gated": "Gated on Hugging Face: accept its terms on the Hub while signed in as your account before it can download.",
+    "no-license": "No license listed. Treat it as personal learning only until you know the terms.",
+    "license-check": "Unusual or restrictive license. Read it before using this in client work.",
+    "size-unknown": "The Hub didn't report a size; the agent checks the real size before downloading.",
+  };
+  const KIND_INFO = {
+    model: null,
+    dataset: { label: "Dataset", what: "Data on the Hub: examples for testing, fine-tuning, evals or SQL practice." },
+    space: { label: "Space (app)", what: "A small app on Hugging Face that wires a model into a UI. Stashing it saves the source so you can study or rebuild it." },
+    paper: { label: "Paper", what: "A research paper from Hugging Face's daily papers. Stashing it saves the PDF." },
+    collection: { label: "Collection", what: "A curated list of models, datasets and papers on the Hub. Approving it adds each item to your picks for review." },
+  };
+  function pickKind(p) {
+    if (p.kind !== "model") return { ...KIND_INFO[p.kind], role: p.kind === "dataset" ? "data" : p.kind === "space" ? "apps" : "research" };
+    const name = p.repo.split("/").pop();
+    const k = classify({ name, path: "models/" + name, type: /gguf/i.test(name) ? "gguf" : "llm" });
+    const t = TYPES[k] || TYPES.llm;
+    return { label: t.label, what: t.what, why: t.why, role: roleOf(k).id };
+  }
+  function pickBack(p) {
+    const k = pickKind(p), lic = license({ meta: { license: p.license } });
+    const fits = p.kind === "model" && p.size_bytes ? fitsOn(p.size_bytes, p.repo) : [];
+    const summary = (p.summary || "").replace(/\*\*|__|`|#+\s/g, "").trim();
+    const status = { new: "Waiting for your review", approved: "Approved: downloads to the A1 the next time it's plugged in", stashed: `On the A1${p.stash_path ? " at " + p.stash_path : ""}`, skipped: "Skipped" }[p.status] || p.status;
+    const acts = p.status === "stashed" ? "" : p.status === "approved"
+      ? `<button class="btn" data-pact="new">Unapprove</button>`
+      : `<button class="btn go" data-pact="approved">${p.kind === "collection" ? "Queue items" : "Approve"}</button>${p.status !== "skipped" ? `<button class="btn" data-pact="skipped">Skip</button>` : ""}`;
+    const kl = KIND_LABEL(p), sub = k.label && !k.label.toLowerCase().startsWith(kl.toLowerCase()) ? ` · ${k.label}` : "";
+    return `<div class="m-fkind">${esc(kl + sub)}</div>
+      <h2>${esc(p.title || p.repo.split("/").pop())}</h2>
+      <p class="meta">${esc(p.repo)}</p>
+      <div class="m-fsize"><b>${Math.round(p.score)}</b><span>match score · ${esc(status)}</span></div>
+      <div class="m-fbar"><i style="width:${Math.min(100, Math.max(2, p.score))}%"></i></div>
+      ${k.what ? `<p>${esc(k.what)}</p>` : ""}
+      ${summary ? `<p class="meta">${esc(summary.slice(0, 320))}${summary.length > 320 ? "…" : ""}</p>` : ""}
+      <h3 class="m-fh">Why it was picked</h3>
+      <div class="m-ffits">${(p.reasons || []).map(r => `<span>${esc(r)}</span>`).join("")}</div>
+      ${p.matched_repos?.length ? `<p class="meta">Matches your repos: ${p.matched_repos.map(esc).join(", ")}</p>` : ""}
+      ${p.kind !== "paper" && p.kind !== "collection" ? `<p class="meta">Download size: ${p.size_bytes ? gb(p.size_bytes) : "unknown until checked"}</p>` : ""}
+      ${fits.length ? `<div class="m-ffits">${fits.map(f => `<span class="${f.fits ? "b-ok" : "b-bad"}">${esc(f.label)} ${f.fits ? "fits" : "too big"}</span>`).join("")}</div>` : ""}
+      ${lic ? `<p class="meta"><span class="b-${lic.cls}">${esc(lic.text)}</span> · ${esc(lic.detail)}</p>` : ""}
+      ${(p.flags || []).map(f => `<p class="meta"><span class="b-warn">${esc(f)}</span> · ${esc(FLAG_INFO[f] || "")}</p>`).join("")}
+      ${p.kind === "collection" && p.extra?.items?.length ? `<p class="meta">Contains: ${p.extra.items.slice(0, 8).map(i => esc(i.id)).join(", ")}${p.extra.items.length > 8 ? "…" : ""}</p>` : ""}
+      <div class="m-facts">${acts}<a class="btn" href="${esc(p.hub)}" target="_blank" rel="noopener">Hugging Face</a><button class="btn" data-fclose>Close</button></div>`;
+  }
+  const KIND_LABEL = p => ({ model: "Model", dataset: "Dataset", space: "Space", paper: "Paper", collection: "Collection" }[p.kind] || p.kind);
+  // Called by the Scout page. onAct(status) runs after the card closes.
+  function pickCard(p, from, onAct) {
+    const k = pickKind(p);
+    flipCard(from, {
+      label: p.title || p.repo, color: ROLE_COLOR[k.role] || "var(--accent)", back: pickBack(p),
+      front: `<span>${esc(p.title || p.repo.split("/").pop())}</span><small>score ${Math.round(p.score)}</small>`,
+      wire: card => card.querySelectorAll("[data-pact]").forEach(b => b.onclick = () => flipClose(() => onAct(b.dataset.pact), true)),
+    });
+  }
+
   function flipClose(after, fast) {
     const card = $(".m-flip"); if (!card) { flipTl = null; after && after(); return; }
     const done = () => { card._scrim.remove(); card.remove(); flipTl = null; after && after(); };
@@ -525,7 +594,7 @@
     if (q) q.oninput = () => { query = q.value; $("#m-body").innerHTML = mode === "path" ? pathView(items()) : mode === "space" ? spaceView() : jobsView(items()); wireBody(); };
     wireBody(first);
     $("#m-scrim").onclick = closePanel;
-    document.onkeydown = e => { if (e.key === "Escape") { if ($(".m-flip")) flipClose(); else closePanel(); } };
+    document.onkeydown = e => { if (e.key === "Escape" && !$(".m-flip")) closePanel(); };
     $$(".m-glossary [data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     if (openPath) openPanel(openPath);
   }
@@ -619,10 +688,12 @@
   .m-fsize{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap} .m-fsize b{font:600 26px "IBM Plex Mono",monospace} .m-fsize span{color:var(--mute);font-size:13px}
   .m-fbar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden} .m-fbar i{display:block;height:100%;background:var(--role)}
   .m-ffits{display:flex;flex-wrap:wrap;gap:6px} .m-ffits span{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line)}
-  .m-facts{display:flex;gap:8px;margin-top:auto;padding-top:6px}
+  .m-facts{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+  .m-facts a.btn{text-decoration:none;color:var(--ink)}
+  .m-fh{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:4px 0 -4px}
   @media (prefers-reduced-motion: reduce){.m-card{transition:none}}
   `;
   document.head.appendChild(css);
 
-  window.MapView = { html, wire };
+  window.MapView = { html, wire, pickCard };
 })();

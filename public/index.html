@@ -85,6 +85,9 @@ button.chip:hover{border-color:var(--accent)}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 .run{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px}
 @media (max-width:620px){.pick{grid-template-columns:48px 1fr}.acts{grid-column:1/-1;flex-direction:row}.tm{aspect-ratio:3/4}}
+  .pick[data-pick] { cursor: pointer; transition: border-color .15s; }
+  .pick[data-pick]:hover { border-color: var(--accent); }
+  .pick[data-pick]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   ul.upd { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
   ul.upd b { font-weight: 600; }
 </style>
@@ -175,7 +178,7 @@ function row(p) {
     ? `<button class="btn" data-act="new" data-id="${esc(p.id)}">Unapprove</button>`
     : `<button class="btn go" data-act="approved" data-id="${esc(p.id)}">${approveLabel}</button>${p.status!=="skipped"?`<button class="btn" data-act="skipped" data-id="${esc(p.id)}">Skip</button>`:""}`;
   const items = p.kind === "collection" && p.extra?.items ? `<div class="meta" style="margin-top:6px">${p.extra.items.slice(0,6).map(i=>`${esc(i.type)}: ${esc(i.id)}`).join(" · ")}${p.extra.items.length>6?" …":""}</div>` : "";
-  return `<div class="pick"><div class="score">${Math.round(p.score)}</div>
+  return `<div class="pick" tabindex="0" role="button" aria-label="Learn about ${esc(p.title || p.repo)}" data-pick="${esc(p.id)}"><div class="score">${Math.round(p.score)}</div>
    <div><div class="repo"><a href="${hubUrl(p)}" target="_blank" rel="noopener">${esc(p.title || p.repo)}</a></div>
    <div class="meta">${KIND_LABEL[p.kind]||p.kind}${p.title?` · ${esc(p.repo)}`:""}${p.kind!=="paper"&&p.kind!=="collection"?` · ${gb(p.size_bytes)}`:""}${p.license?` · ${esc(p.license)}`:""}${p.extra?.sdk?` · ${esc(p.extra.sdk)}`:""}${p.auto?" · auto-approved":""}${p.stash_path?" · "+esc(p.stash_path):""}</div>
    ${p.summary && p.kind!=="model"?`<div class="summ">${esc(p.summary.slice(0,260))}${p.summary.length>260?"…":""}</div>`:""}
@@ -185,7 +188,13 @@ function row(p) {
 }
 function wireScout(first) {
   $$(".tabs .tab").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
-  $$("[data-act]").forEach(b => b.onclick = () => act(b.dataset.id, b.dataset.act, b.closest(".pick")));
+  $$("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); act(b.dataset.id, b.dataset.act, b.closest(".pick")); });
+  // Clicking a pick (anywhere but its buttons and links) opens an info card that flips over.
+  const openPick = el => { const p = picks.find(x => x.id === el.dataset.pick); if (p) MapView.pickCard({ ...p, hub: hubUrl(p) }, el, status => act(p.id, status, el)); };
+  $$("[data-pick]").forEach(el => {
+    el.onclick = e => { if (!e.target.closest("button, a")) openPick(el); };
+    el.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); openPick(el); } };
+  });
   $("#scan").onclick = async e => { e.target.textContent = "Scanning…"; await call("/api/scan?trigger=page", { method: "POST" }); await load(); view = "scout"; render(); };
   $$(".bar i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : .3, ease: "power3.out" }));
   $$("[data-n]").forEach(el => { const o = { v: first ? 0 : +el.dataset.n }; gsap.to(o, { v: +el.dataset.n, duration: first ? .9 : 0, onUpdate: () => el.textContent = Math.round(o.v) }); });
