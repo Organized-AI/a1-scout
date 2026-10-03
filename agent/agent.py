@@ -462,7 +462,8 @@ def fetch_approved(spent=0):
         if "gated" in p.get("flags", []) and not hf_logged_in:
             waiting.append((p["repo"], "gated: run `hf auth login` once, then it downloads next mount")); continue
         size = p.get("size_bytes") or hub_size(p) or 0
-        if spent + size > cap:
+        # A single item bigger than the cap still downloads when it is the first download of a plug-in.
+        if spent + size > cap and not (spent == 0 and size > cap):
             waiting.append((p["repo"], f"over this run's {ENV['RUN_CAP_GB']} GB cap")); continue
         if free_bytes() - size < floor:
             waiting.append((p["repo"], f"would leave under {ENV['FREE_FLOOR_GB']} GB free")); continue
