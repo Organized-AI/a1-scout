@@ -212,6 +212,74 @@
       return `<div class="m-tgroup" style="left:${o.x}px;top:${o.y}px;width:${o.w}px;height:${o.h}px;--role:${ROLE_COLOR[o.g.r.id]}"><span class="m-tlabel">${esc(o.g.r.label)}</span>
         ${inner.map(c => `<button class="m-tcell" data-open="${esc(c.i.path)}" title="${esc(c.i.name)} · ${gb(c.i.bytes)}" style="left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px">${c.w > 70 && c.h > 30 ? `<span>${esc(c.i.name)}</span><small>${gb(c.i.bytes)}</small>` : ""}</button>`).join("")}</div>`;
     }).join("");
+    tm.querySelectorAll(".m-tcell").forEach(c => c.onclick = () => flipOpen(c.dataset.open, c));
+  }
+
+  /* ---------- disk space: a block grows into a card and flips over ---------- */
+  let flipTl = null;
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function flipBack(i) {
+    const t = TYPES[i.kind] || TYPES.folder, role = roleOf(i.kind), lic = license(i), n = notes[i.path];
+    const share = catalog.drive?.stash ? (i.bytes / catalog.drive.stash * 100) : null;
+    const fits = i.path.startsWith("models") && i.bytes ? fitsOn(i.bytes, i.name) : [];
+    return `<div class="m-fkind">${esc(role.label)} · ${esc(t.label)}</div>
+      <h2>${esc(i.name)}</h2>
+      <div class="m-fsize"><b>${gb(i.bytes)}</b><span>${share != null ? `${share < 0.1 ? "<0.1" : share.toFixed(1)}% of the stash` : ""}${i.files ? ` · ${Number(i.files).toLocaleString()} files` : ""}</span></div>
+      ${share != null ? `<div class="m-fbar"><i style="width:${Math.min(100, Math.max(share, 0.5))}%"></i></div>` : ""}
+      <p>${esc(t.what)}</p>
+      ${t.why ? `<p class="meta">${esc(t.why)}</p>` : ""}
+      ${fits.length ? `<div class="m-ffits">${fits.map(f => `<span class="${f.fits ? "b-ok" : "b-bad"}">${esc(f.label)} ${f.fits ? "fits" : "too big"}</span>`).join("")}</div>` : ""}
+      ${lic ? `<p class="meta"><span class="b-${lic.cls}">${esc(lic.text)}</span> · ${esc(lic.detail)}</p>` : ""}
+      ${i.source?.repo ? `<p class="meta">From ${esc(i.source.repo)}</p>` : ""}
+      ${n ? `<p class="meta">You tried it${n.answers?.overall ? `, rated ${n.answers.overall}/5` : ""}.</p>` : tried.has(i.path) ? `<p class="meta">You tried it.</p>` : ""}
+      <div class="m-facts"><button class="btn go" data-full>Full details</button><button class="btn" data-fclose>Close</button></div>`;
+  }
+  function flipOpen(path, cell) {
+    const i = items().find(x => x.path === path); if (!i) return;
+    if (flipTl) return flipClose(() => flipOpen(path, cell));
+    const r = cell.getBoundingClientRect(), role = roleOf(i.kind);
+    const W = Math.min(420, innerWidth - 32);
+    // Size the card to its content: measure an invisible copy of the back face at the final width.
+    const probe = document.createElement("div"); probe.className = "m-fface m-fback"; probe.style.cssText = `position:fixed;visibility:hidden;transform:none;width:${W}px;height:auto;inset:auto;left:-9999px;top:0`;
+    probe.innerHTML = flipBack(i); document.body.append(probe);
+    const H = Math.min(Math.max(probe.scrollHeight + 4, 260), innerHeight - 64); probe.remove();
+    const scrim = document.createElement("div"); scrim.className = "m-fscrim";
+    const card = document.createElement("div"); card.className = "m-flip"; card.setAttribute("role", "dialog"); card.setAttribute("aria-label", i.name);
+    card.style.setProperty("--role", ROLE_COLOR[role.id]);
+    card.innerHTML = `<div class="m-finner"><div class="m-fface m-ffront"><span>${esc(i.name)}</span><small>${gb(i.bytes)}</small></div>
+      <div class="m-fface m-fback">${flipBack(i)}</div></div>`;
+    document.body.append(scrim, card);
+    const inner = card.querySelector(".m-finner");
+    gsap.set(card, { left: r.left, top: r.top, width: r.width, height: r.height });
+    flipTl = gsap.timeline({ defaults: { ease: "power3.inOut" } });
+    if (reduced()) {
+      gsap.set(card, { left: (innerWidth - W) / 2, top: (innerHeight - H) / 2, width: W, height: H });
+      gsap.set(inner, { rotationY: 180 });
+      flipTl.fromTo(card, { opacity: 0 }, { opacity: 1, duration: .15 }).fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: .15 }, 0);
+    } else {
+      flipTl.to(cell, { scale: .92, duration: .09, ease: "power2.in" })
+        .to(cell, { scale: 1, duration: .14, ease: "back.out(3)" })
+        .fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: .35 }, .1)
+        .to(card, { left: (innerWidth - W) / 2, top: (innerHeight - H) / 2, width: W, height: H, duration: .5 }, .12)
+        .to(inner, { rotationY: 180, duration: .6, ease: "power2.inOut" }, .42)
+        .fromTo(card.querySelectorAll(".m-fback > *"), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .03, ease: "power2.out" }, .8);
+    }
+    card._cell = cell; card._scrim = scrim;
+    const close = () => flipClose();
+    scrim.onclick = close;
+    card.querySelector("[data-fclose]").onclick = close;
+    card.querySelector("[data-full]").onclick = () => flipClose(() => openPanel(path), true);
+    setTimeout(() => card.querySelector("[data-fclose]").focus({ preventScroll: true }), reduced() ? 0 : 900);
+  }
+  function flipClose(after, fast) {
+    const card = $(".m-flip"); if (!card) { flipTl = null; after && after(); return; }
+    const done = () => { card._scrim.remove(); card.remove(); flipTl = null; after && after(); };
+    if (reduced() || fast) { gsap.to([card, card._scrim], { opacity: 0, duration: .15, onComplete: done }); return; }
+    const r = card._cell.isConnected ? card._cell.getBoundingClientRect() : null;
+    const tl = gsap.timeline({ defaults: { ease: "power3.inOut" }, onComplete: done });
+    tl.to(card.querySelector(".m-finner"), { rotationY: 0, duration: .45, ease: "power2.inOut" })
+      .to(card, r ? { left: r.left, top: r.top, width: r.width, height: r.height, duration: .4 } : { opacity: 0, duration: .25 }, .25)
+      .to(card._scrim, { opacity: 0, duration: .3 }, .3);
   }
 
   /* ---------- "I tried this" surveys ---------- */
@@ -457,7 +525,7 @@
     if (q) q.oninput = () => { query = q.value; $("#m-body").innerHTML = mode === "path" ? pathView(items()) : mode === "space" ? spaceView() : jobsView(items()); wireBody(); };
     wireBody(first);
     $("#m-scrim").onclick = closePanel;
-    document.onkeydown = e => { if (e.key === "Escape") closePanel(); };
+    document.onkeydown = e => { if (e.key === "Escape") { if ($(".m-flip")) flipClose(); else closePanel(); } };
     $$(".m-glossary [data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     if (openPath) openPanel(openPath);
   }
@@ -469,7 +537,7 @@
     // Animate only what is near the top; everything else is visible at rest.
     if (first) gsap.fromTo($$("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup").slice(0, 24), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .015, ease: "power2.out", clearProps: "all" });
   }
-  window.addEventListener("resize", () => { if (mode === "space") drawTreemap(); });
+  window.addEventListener("resize", () => { if (mode === "space") { flipClose(); drawTreemap(); } });
 
   // Styles for the map live here so the page shell stays small.
   const css = document.createElement("style");
@@ -538,6 +606,20 @@
   .sv textarea,.sv input[type=text]{width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:14px "IBM Plex Sans",sans-serif;resize:vertical}
   .sv-acts{display:flex;gap:8px;flex-wrap:wrap}
   .sv-saved dt{white-space:normal}
+  .m-fscrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30}
+  .m-flip{position:fixed;z-index:31;perspective:1400px}
+  .m-finner{position:relative;width:100%;height:100%;transform-style:preserve-3d}
+  .m-fface{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:12px;box-sizing:border-box;overflow:hidden}
+  .m-ffront{background:color-mix(in srgb,var(--role) 55%,var(--panel));color:#0b0d0c;padding:8px;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}
+  .m-ffront span{font:600 14px "IBM Plex Mono",monospace;overflow-wrap:anywhere} .m-ffront small{font-size:11px;opacity:.75}
+  .m-fback{transform:rotateY(180deg);background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--role);padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+  .m-fback h2{font:600 18px "IBM Plex Mono",monospace;margin:0;overflow-wrap:anywhere}
+  .m-fback p{margin:0;font-size:14px}
+  .m-fkind{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+  .m-fsize{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap} .m-fsize b{font:600 26px "IBM Plex Mono",monospace} .m-fsize span{color:var(--mute);font-size:13px}
+  .m-fbar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden} .m-fbar i{display:block;height:100%;background:var(--role)}
+  .m-ffits{display:flex;flex-wrap:wrap;gap:6px} .m-ffits span{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line)}
+  .m-facts{display:flex;gap:8px;margin-top:auto;padding-top:6px}
   @media (prefers-reduced-motion: reduce){.m-card{transition:none}}
   `;
   document.head.appendChild(css);
