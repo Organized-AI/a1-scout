@@ -223,6 +223,8 @@ function paintBar(animate) {
   const run = st.running ? runModel() : null;
   const freeNote = pres.free_bytes != null && st.plugged ? `${gb(pres.free_bytes)} free on the A1` : "";
   let body = "";
+  if (run && !run.queue.length && !run.current && !run.done.length && (a1act.next || []).length)
+    run.queue = a1act.next.map(q => ({ ...q, when: q.when === "later" ? "next plug-in" : "now" }));
   if (run) {
     const now = run.queue.filter(q => q.when === "now"), later = run.queue.filter(q => q.when !== "now");
     const doneBytes = run.done.reduce((t, d) => t + (d.bytes || 0), 0);
@@ -240,10 +242,10 @@ function paintBar(animate) {
     const fresh = (Date.now() - Date.parse(run.asOf)) / 1000;
     body = `
       <div class="a1-run">
-        <div class="a1-big"><b data-pct="${pct.toFixed(1)}">${animate ? (actPrev.pct ?? 0).toFixed(0) : pct.toFixed(0)}%</b><span>of this run</span></div>
+        <div class="a1-big"><b data-pct="${pct.toFixed(1)}">${animate ? (actPrev.pct ?? 0).toFixed(0) : pct.toFixed(0)}%</b><span>${got ? "of this run" : "preparing · downloads start after the update check"}</span></div>
         <dl class="a1-stats">
-          <div><dt>Downloaded</dt><dd>${gb(got)} of ${gb(total)}</dd></div>
-          <div><dt>Items</dt><dd>${run.done.length} of ${items} done</dd></div>
+          <div><dt>Downloaded</dt><dd>${total ? `${gb(got)} of ${gb(total)}` : "—"}</dd></div>
+          <div><dt>Items</dt><dd>${items ? `${run.done.length} of ${items} done` : "—"}</dd></div>
           <div><dt>Avg speed</dt><dd>${rate(avg)}</dd></div>
           <div><dt>Time left</dt><dd>${left != null ? "about " + dur(left) : "estimating…"}</dd></div>
           <div><dt>Started</dt><dd>${run.startedAt ? clock(run.startedAt) : "—"}${secs > 0 ? ` · ${dur(secs)} downloading` : ""}</dd></div>
