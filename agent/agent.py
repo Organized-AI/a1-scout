@@ -4,15 +4,18 @@
 Fires when any volume mounts (launchd StartOnMount) and once a week on a timer.
 When the A1 drive (matched by volume UUID, not just name) is present it:
   1. sends the Organized-AI repo list and the stash inventory to the scout Worker,
-  2. asks for a fresh Hub scan if the last one is older than 6 days,
-  3. downloads approved picks into /Volumes/A1/stash (never deletes, never writes outside it),
-  4. rebuilds the drive catalog behind the map view, and
-  5. shows a macOS notification with what changed.
+  2. checks every stashed Hub item for a newer revision and downloads real updates beside the old copy
+     (the old copy moves to stash/versions/<path>@<old sha>; nothing is overwritten or deleted),
+  3. looks for newer releases in the same model families (Qwen3.8 -> Qwen3.9, same size and quant),
+  4. runs a Hub scan for new complementary picks (on every mount; at most once an hour),
+  5. downloads approved picks into /Volumes/A1/stash (never deletes, never writes outside it),
+  6. rebuilds the drive catalog behind the map view, and
+  7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
 
-Usage: agent.py [mount|weekly|now|catalog|status]
+Usage: agent.py [mount|weekly|now|catalog|status|updates [--dry-run]]
 """
-import fcntl, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request
+import fcntl, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +39,9 @@ def load_env():
     env.setdefault("RUN_CAP_GB", "60")
     env.setdefault("FREE_FLOOR_GB", "150")
     env.setdefault("ORG", "Organized-AI")
+    env.setdefault("AUTO_UPDATES", "on")        # download newer revisions of stashed items
+    env.setdefault("AUTO_SUCCESSORS", "on")     # auto-approve like-for-like newer releases (same family, size, quant)
+    env.setdefault("SCAN_MIN_HOURS", "1")       # scan on every mount, but not twice within this many hours
     return env
 
 
@@ -69,10 +75,41 @@ def api(path, method="GET", body=None, raw=False):
         return json.loads(r.read() or b"{}")
 
 
-def hub(path):
-    req = urllib.request.Request("https://huggingface.co/api" + path, headers={"user-agent": "a1-scout-agent"})
+def hf_headers():
+    h = {"user-agent": "a1-scout-agent"}
+    tok = os.environ.get("HF_TOKEN")
+    if not tok:
+        try:
+            tok = (HOME / ".cache/huggingface/token").read_text().strip()
+        except OSError:
+            tok = None
+    if tok:
+        h["authorization"] = f"Bearer {tok}"  # lets gated repos you've accepted show their files
+    return h
+
+
+def hub_raw(url):
+    req = urllib.request.Request(url, headers=hf_headers())
     with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read())
+        return json.loads(r.read()), r.headers.get("Link")
+
+
+def hub(path):
+    return hub_raw("https://huggingface.co/api" + path)[0]
+
+
+def hub_tree(kind, repo, rev):
+    """{path: (content id, size)} for every file at a revision. LFS files use their sha256, so unchanged weights compare equal."""
+    url = f"https://huggingface.co/api/{kind}s/{repo}/tree/{rev}?recursive=true"
+    files = {}
+    while url:
+        data, link = hub_raw(url)
+        for e in data:
+            if e.get("type") == "file":
+                files[e["path"]] = ((e.get("lfs") or {}).get("oid") or e.get("oid"), e.get("size") or 0)
+        m = re.search(r'<([^>]+)>;\s*rel="next"', link or "")
+        url = m.group(1) if m else None
+    return files
 
 
 def load_state():
@@ -166,8 +203,12 @@ def provenance():
         try:
             for p in json.loads(f.read_text()):
                 tgt = p.get("path")
-                key = tgt or ("models/mlx/" if p.get("type") == "model" else "datasets/raw/") + p["repo"].split("/")[-1]
-                prov.setdefault(key.strip("/"), {"repo": p["repo"], "revision": p.get("revision"), "title": p.get("title")})
+                key = (tgt or ("models/mlx/" if p.get("type") == "model" else "datasets/raw/") + p["repo"].split("/")[-1]).strip("/")
+                rec = {"repo": p["repo"], "revision": p.get("revision"), "title": p.get("title")}
+                if f.name == "scout-pins.json":
+                    prov[key] = {**prov.get(key, {}), **{k: v for k, v in rec.items() if v}}  # newest entry wins
+                else:
+                    prov.setdefault(key, rec)
         except Exception:
             pass
     return prov
@@ -320,6 +361,17 @@ def build_catalog():
         corp.append(item(d.name, f"corpora/{d.parent.name}/{d.name}", "private-corpus", d, {}, ""))  # names and sizes only
     cat("corpora", "Your own corpora (private)", corp)
 
+    vers = []
+    vroot = STASH / "versions"
+    for root, dirs, _ in os.walk(vroot) if vroot.is_dir() else []:
+        for d in [x for x in dirs if "@" in x and not x.startswith(".")]:
+            full = Path(root) / d
+            rel = str(full.relative_to(STASH))
+            vers.append(item(d, rel, "folder", full, {"replaced_by": str(full.relative_to(vroot)).rsplit("@", 1)[0]},
+                             "Previous version, kept when a newer revision was downloaded.", full.relative_to(vroot).parts[0]))
+        dirs[:] = [x for x in dirs if "@" not in x]
+    cat("versions", "Previous versions", vers)
+
     misc = []
     if (STASH / "manifests").is_dir():
         misc.append(item("manifests", "manifests", "manifests", STASH / "manifests", {}, ""))
@@ -328,7 +380,7 @@ def build_catalog():
         misc.append(item(f.name, str(f.relative_to(STASH)), "script", f, {}, ""))
     cat("tooling", "Manifests & scripts", misc)
 
-    known = {"models", "datasets", "spaces", "code", "papers", "runs", "wheels", "corpora", "manifests", "scripts"}
+    known = {"models", "datasets", "spaces", "code", "papers", "runs", "wheels", "corpora", "manifests", "scripts", "versions"}
     other = [p for p in STASH.iterdir() if p.is_dir() and p.name not in known and not p.name.startswith(".")]
     if other:
         cat("other", "Other", [item(p.name, p.name, "folder", p, {}, "") for p in other])
@@ -394,13 +446,13 @@ def sha256_lines(root: Path, rel_root: Path):
     return lines
 
 
-def fetch_approved():
+def fetch_approved(spent=0):
     picks = api("/api/picks?status=approved")
     who = sh(["hf", "auth", "whoami"])
     hf_logged_in = who.returncode == 0 and "Not logged in" not in (who.stdout + who.stderr)
     cap = float(ENV["RUN_CAP_GB"]) * 1e9
     floor = float(ENV["FREE_FLOOR_GB"]) * 1e9
-    spent, done, waiting = 0, [], []
+    done, waiting = [], []
     today = datetime.now().strftime("%Y-%m-%d")
     pins_file = STASH / "manifests/scout-pins.json"
     for p in picks:
@@ -459,6 +511,219 @@ def fetch_approved():
     return done, waiting
 
 
+def add_pin(entry):
+    pins_file = STASH / "manifests/scout-pins.json"
+    try:
+        pins = json.loads(pins_file.read_text()) if pins_file.exists() else []
+    except Exception:
+        pins = []
+    pins.append(entry)
+    pins_file.write_text(json.dumps(pins, indent=2))
+
+
+# ---------------------------------------------------------------- updates of what's already stashed
+
+DOCS_ONLY = re.compile(r"(\.(md|txt|png|jpe?g|gif|svg|webp)$|^\.gitattributes$|(^|/)LICEN[CS]E)", re.I)
+KIND_OF = {"models": "model", "datasets": "dataset", "spaces": "space"}
+
+
+def cached_commit(d: Path):
+    """The commit `hf download --local-dir` recorded for this folder (first line of each .metadata file)."""
+    seen = {}
+    for m in (d / ".cache/huggingface/download").rglob("*.metadata") if (d / ".cache/huggingface/download").is_dir() else []:
+        try:
+            c = m.read_text().splitlines()[0].strip()
+            if re.fullmatch(r"[0-9a-f]{40}", c):
+                seen[c] = seen.get(c, 0) + 1
+        except Exception:
+            pass
+    return max(seen, key=seen.get) if seen else None
+
+
+def guess_repo(d: Path, kind, sha):
+    """For folders stashed by hand: find the Hub repo whose history contains the cached commit."""
+    cands = []
+    try:
+        txt = (d / "README.md").read_text(errors="ignore")
+        cands += re.findall(r"\b((?:mlx-community|lmstudio-community|unsloth|bartowski)/[\w.\-]+)", txt)
+    except OSError:
+        pass
+    cands += [f"mlx-community/{d.name}"]
+    for c in dict.fromkeys(cands):
+        if c.split("/")[-1].lower() != d.name.lower():
+            continue
+        try:
+            hub(f"/{kind}s/{c}/revision/{sha}")
+            return c
+        except Exception:
+            continue
+    return None
+
+
+def tracked_items(catalog):
+    prov = provenance()
+    items, untracked, adopted = [], [], []
+    for c in catalog["categories"]:
+        for i in c["items"]:
+            kind = KIND_OF.get(i["path"].split("/")[0])
+            if not kind:
+                continue
+            d = STASH / i["path"]
+            if not d.is_dir():
+                continue
+            p = prov.get(i["path"].strip("/")) or {}
+            repo, rev = p.get("repo"), p.get("revision")
+            if repo and "/" in repo and not rev:
+                rev = cached_commit(d)
+            if not repo:
+                sha = cached_commit(d)
+                repo = guess_repo(d, kind, sha) if sha else None
+                if repo:
+                    rev = sha
+                    adopted.append({"repo": repo, "type": kind, "revision": sha, "path": i["path"], "added": datetime.now().strftime("%Y-%m-%d"), "adopted": True})
+            if repo and rev:
+                items.append({"repo": repo, "kind": kind, "revision": rev, "path": i["path"].strip("/"), "bytes": i["bytes"]})
+            else:
+                untracked.append(i["path"])
+    return items, untracked, adopted
+
+
+def check_updates(catalog):
+    """Compare each stashed Hub item with the Hub's current revision. Returns (report, plans to download)."""
+    items, untracked, adopted = tracked_items(catalog)
+    for a in adopted:
+        add_pin(a)  # remember hand-stashed folders we traced to a Hub repo, so they're tracked from now on
+        log(f"update check: traced {a['path']} to {a['repo']} @ {a['revision'][:7]}")
+    st = load_state()
+    docs_seen = st.get("docs_only_seen", {})
+    report = {"checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tracked": len(items), "current": 0,
+              "untracked": len(untracked), "updated": [], "waiting": [], "docs_only": [], "successors": [], "errors": []}
+    plans = []
+    for it in items:
+        try:
+            new = hub(f"/{it['kind']}s/{it['repo']}").get("sha")
+        except Exception as e:
+            report["errors"].append({"repo": it["repo"], "error": str(e)[:120]}); continue
+        if not new or new == it["revision"] or docs_seen.get(it["path"]) == new:
+            report["current"] += 1; continue
+        try:
+            new_t = hub_tree(it["kind"], it["repo"], new)
+        except Exception as e:
+            report["errors"].append({"repo": it["repo"], "error": f"tree: {str(e)[:100]}"}); continue
+        try:
+            old_t = hub_tree(it["kind"], it["repo"], it["revision"])
+        except Exception:
+            old_t = {}  # old revision gone from history: treat every file as changed
+        changed = [f for f, v in new_t.items() if old_t.get(f, (None,))[0] != v[0]]
+        removed = [f for f in old_t if f not in new_t]
+        if not changed and not removed:
+            report["current"] += 1; docs_seen[it["path"]] = new; continue
+        if all(DOCS_ONLY.search(f) for f in changed + removed):
+            report["docs_only"].append({"repo": it["repo"], "from": it["revision"], "to": new, "files": (changed + removed)[:5]})
+            docs_seen[it["path"]] = new; continue
+        plans.append({**it, "new": new, "new_tree": new_t, "changed": changed,
+                      "download_bytes": sum(new_t[f][1] for f in changed), "total_bytes": sum(v[1] for v in new_t.values())})
+    st["docs_only_seen"] = docs_seen
+    save_state(st)
+    return report, plans
+
+
+def apply_update(pl, report, spent, cap, floor):
+    """Download the new revision beside the old one, then move the old one to stash/versions/ and the new one into place."""
+    src = STASH / pl["path"]
+    new7, old7 = pl["new"][:7], pl["revision"][:7]
+    wait = lambda why: report["waiting"].append({"repo": pl["repo"], "from": pl["revision"], "to": pl["new"], "why": why})
+    if spent + pl["download_bytes"] > cap:
+        wait(f"{pl['download_bytes']/1e9:.1f} GB to download; over this run's {ENV['RUN_CAP_GB']} GB cap"); return 0
+    if free_bytes() - pl["total_bytes"] < floor:
+        wait(f"would leave under {ENV['FREE_FLOOR_GB']} GB free"); return 0
+    tmp = src.parent / f".{src.name}.updating-{new7}"
+    prev = STASH / "versions" / src.parent.relative_to(STASH) / f"{src.name}@{old7}"
+    if not (inside_stash(tmp) and inside_stash(prev)) or prev.exists():
+        wait("no safe place for the old copy"); return 0
+    log(f"updating {pl['kind']} {pl['repo']} {old7} -> {new7}: {len(pl['changed'])} changed files, ~{pl['download_bytes']/1e9:.2f} GB to download")
+    tmp.mkdir(parents=True, exist_ok=True)
+    # Seed unchanged files (and hf's download metadata) from the old copy so only changed files come over the network.
+    for f, (oid, size) in pl["new_tree"].items():
+        if f in pl["changed"]:
+            continue
+        a, b = src / f, tmp / f
+        if a.is_file() and not b.exists() and a.stat().st_size == size:
+            b.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(a, b)
+            ma = src / ".cache/huggingface/download" / f"{f}.metadata"
+            if ma.is_file():
+                mb = tmp / ".cache/huggingface/download" / f"{f}.metadata"
+                mb.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ma, mb)
+    r = sh(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)])
+    if r.returncode != 0:
+        log(f"  hf download failed: {(r.stderr or r.stdout)[-300:]}")
+        wait("download failed; resumes next mount"); return 0
+    missing = [f for f, (_, size) in pl["new_tree"].items() if not (tmp / f).is_file() or (tmp / f).stat().st_size != size]
+    if missing:
+        wait(f"{len(missing)} files incomplete; resumes next mount"); return 0
+    prev.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(src, prev)     # keep the old version
+    os.rename(tmp, src)      # new version takes the usual path, so scripts and the map keep working
+    got, _ = walk_size(src)
+    (src / ".verified").write_text(json.dumps({"repo": pl["repo"], "kind": pl["kind"], "revision": pl["new"], "bytes": got,
+                                               "updated_from": pl["revision"], "at": datetime.now().isoformat(timespec="seconds"), "by": "a1-scout"}))
+    today = datetime.now().strftime("%Y-%m-%d")
+    with (STASH / f"manifests/scout-{today}.sha256").open("a") as fh:
+        fh.write("\n".join(sha256_lines(src, STASH)) + "\n")
+    add_pin({"repo": pl["repo"], "type": pl["kind"], "revision": pl["new"], "path": pl["path"], "bytes": got, "added": today,
+             "updated_from": pl["revision"], "previous_path": str(prev.relative_to(STASH))})
+    report["updated"].append({"repo": pl["repo"], "from": pl["revision"], "to": pl["new"], "bytes": got, "previous_path": str(prev.relative_to(STASH))})
+    log(f"  updated; previous version kept at {prev.relative_to(STASH)}")
+    return pl["download_bytes"]
+
+
+VER = re.compile(r"^([A-Za-z][A-Za-z_]*-?)(\d+(?:\.\d+)*)(-.+)$")
+
+
+def vt(v):
+    return tuple(int(x) for x in v.split("."))
+
+
+def find_successors(items, report):
+    """Newer releases of stashed model families: same author, family, size and quant, higher version number."""
+    have = {}
+    for it in items:
+        if it["kind"] != "model":
+            continue
+        author, name = it["repo"].split("/", 1)
+        m = VER.match(name)
+        if m:
+            key = (author, m.group(1).lower(), m.group(3).lower())
+            have[key] = max(have.get(key, (0,)), vt(m.group(2)))
+    for (author, fam, rest), best in have.items():
+        try:
+            q = urllib.parse.urlencode({"author": author, "search": rest.lstrip("-"), "sort": "createdAt", "direction": -1, "limit": 100})
+            res = hub(f"/models?{q}")
+        except Exception:
+            continue
+        top = None
+        for r in res:
+            m = VER.match(r["id"].split("/", 1)[1])
+            if m and m.group(1).lower() == fam and m.group(3).lower() == rest and vt(m.group(2)) > best and (not top or vt(m.group(2)) > top[0]):
+                top = (vt(m.group(2)), r["id"])
+        if not top:
+            continue
+        of = next(it["repo"] for it in items if it["kind"] == "model" and it["repo"].lower().startswith(author.lower() + "/" + fam)
+                  and it["repo"].lower().endswith(rest))
+        approve = ENV["AUTO_SUCCESSORS"] == "on"
+        try:
+            res = api("/api/picks/add", "POST", {"repo": top[1], "kind": "model", "theme": "code" if "coder" in rest else "agents",
+                                                  "source": "newer release", "note": f"successor of {of.split('/')[-1]}",
+                                                  "status": "approved" if approve else "new"})
+            if res.get("already") != "stashed":
+                report["successors"].append({"repo": top[1], "of": of, "approved": approve})
+                log(f"newer release: {top[1]} (successor of {of}){' - auto-approved' if approve else ''}")
+        except Exception as e:
+            report["errors"].append({"repo": top[1], "error": str(e)[:120]})
+
+
 # ---------------------------------------------------------------- runs
 
 def push_profile(catalog):
@@ -475,23 +740,50 @@ def push_catalog(catalog):
     log(f"catalog pushed: {sum(len(c['items']) for c in catalog['categories'])} items, {res.get('bytes')} bytes")
 
 
+def run_updates(catalog, dry=False):
+    report, plans = check_updates(catalog)
+    log(f"update check: {report['tracked']} tracked, {report['current']} current, {len(plans)} with new files, "
+        f"{len(report['docs_only'])} docs-only, {report['untracked']} untraceable")
+    spent = 0
+    cap, floor = float(ENV["RUN_CAP_GB"]) * 1e9, float(ENV["FREE_FLOOR_GB"]) * 1e9
+    for pl in sorted(plans, key=lambda x: x["download_bytes"]):
+        if dry or ENV["AUTO_UPDATES"] != "on":
+            report["waiting"].append({"repo": pl["repo"], "from": pl["revision"], "to": pl["new"],
+                                      "why": f"dry run: {len(pl['changed'])} files, {pl['download_bytes']/1e9:.2f} GB" if dry else "auto-updates off"})
+            continue
+        spent += apply_update(pl, report, spent, cap, floor)
+    items, _, _ = tracked_items(catalog)
+    if not dry:
+        find_successors(items, report)
+    return report, spent
+
+
 def run_mounted(trigger):
     log(f"A1 present ({trigger}); stash at {STASH}")
     catalog = build_catalog()
     push_catalog(catalog)
     push_profile(catalog)
-    scan = api("/api/scan?if_stale=1&trigger=mount", "POST")
+    report, spent = run_updates(catalog)
+    scan = api(f"/api/scan?if_stale=1&min_hours={ENV['SCAN_MIN_HOURS']}&trigger={trigger}", "POST")
     if "skipped" in scan:
         log(f"scan skipped: {scan['skipped']}")
     else:
         log(f"scan: {scan.get('candidates')} candidates, {scan.get('new_picks')} new, {scan.get('auto_approved')} auto-approved, errors={len(scan.get('errors', []))}")
-    done, waiting = fetch_approved()
-    if done:
+    done, waiting = fetch_approved(spent)
+    if done or report["updated"]:
         catalog = build_catalog()
         push_catalog(catalog)
+    try:
+        api("/api/updates", "POST", report)
+    except Exception as e:
+        log(f"updates report not sent: {e}")
     st = api("/api/state")
     new = (st.get("counts") or {}).get("new", 0)
     parts = []
+    if report["updated"]:
+        parts.append(f"Updated {len(report['updated'])}: " + ", ".join(u["repo"].split("/")[-1] for u in report["updated"][:3]))
+    if report["successors"]:
+        parts.append(f"{len(report['successors'])} newer release(s) found")
     if done:
         parts.append(f"Added {len(done)} ({sum(b for _, b in done)/1e9:.1f} GB): " + ", ".join(r.split('/')[-1] for r, _ in done[:3]))
     if waiting:
@@ -514,6 +806,11 @@ def main():
     present = a1_present()
     if mode == "status":
         print(json.dumps({"a1_present": present, "state": load_state(), "server": api("/api/state")}, indent=2)); return
+    if mode == "updates":
+        if not present:
+            print("A1 not present"); return
+        report, _ = run_updates(build_catalog(), dry="--dry-run" in sys.argv)
+        print(json.dumps(report, indent=2)); return
     if mode == "catalog":
         if not present:
             print("A1 not present"); return

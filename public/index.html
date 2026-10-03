@@ -85,6 +85,8 @@ button.chip:hover{border-color:var(--accent)}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
 .run{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px}
 @media (max-width:620px){.pick{grid-template-columns:48px 1fr}.acts{grid-column:1/-1;flex-direction:row}.tm{aspect-ratio:3/4}}
+  ul.upd { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+  ul.upd b { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -142,12 +144,26 @@ function scoutView() {
   </div>
   <div class="run">${lr ? `Last scan ${new Date(lr.started).toLocaleString()} (${esc(lr.trigger)}): ${lr.candidates} candidates, ${lr.new_picks} new, ${lr.auto_approved} auto-approved${lr.note? " · "+esc(lr.note):""}` : "No scan yet."}
    · <button class="btn" id="scan" style="padding:2px 8px">Scan now</button></div>
+  ${updatesBlock(state.updates)}
   <div class="section">What the repos are building</div>
   <div class="themes">${state.themes.slice().sort((a,b)=>b.weight-a.weight).map(t=>`<div class="theme"><div>${esc(t.label)}</div>
     <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
   <div class="section">Picks</div>
   <div class="tabs">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(c[f]||0):""}</button>`).join("")}</div>
   <div id="list">${shown.length? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>`;
+}
+// The agent's last check of stashed items against the Hub (runs on every A1 mount).
+function updatesBlock(u) {
+  if (!u || !u.checked_at) return "";
+  const li = (arr, f) => arr && arr.length ? `<ul class="upd">${arr.slice(0, 12).map(f).join("")}</ul>` : "";
+  const short = s => esc(String(s || "").slice(0, 7));
+  return `<div class="section">Updates to what's on the A1</div>
+  <div class="run">Checked ${new Date(u.checked_at).toLocaleString()}: ${u.tracked} tracked items, ${u.current} up to date${u.untracked ? `, ${u.untracked} not traceable to a Hub revision` : ""}.
+    Older versions are kept in <code>stash/versions/</code>, never overwritten.</div>
+  ${li(u.updated, x => `<li><b>Updated</b> ${esc(x.repo)} ${short(x.from)} → ${short(x.to)} · ${gb(x.bytes)} · old copy at ${esc(x.previous_path)}</li>`)}
+  ${li(u.waiting, x => `<li><b>Update waiting</b> ${esc(x.repo)} ${short(x.from)} → ${short(x.to)} · ${esc(x.why)}</li>`)}
+  ${li(u.successors, x => `<li><b>Newer release</b> ${esc(x.repo)} (successor of ${esc(x.of)})${x.approved ? " · auto-approved" : " · in picks to review"}</li>`)}
+  ${li(u.docs_only, x => `<li>Docs-only change: ${esc(x.repo)} ${short(x.from)} → ${short(x.to)} (nothing to download)</li>`)}`;
 }
 function hubUrl(p) {
   return p.kind === "dataset" ? `https://huggingface.co/datasets/${p.repo}` : p.kind === "space" ? `https://huggingface.co/spaces/${p.repo}`

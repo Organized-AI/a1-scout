@@ -396,6 +396,7 @@ async function api(req, env, url) {
       inventory: profile?.inventory?.length || 0,
       themes: THEMES.map(t => ({ id: t.id, label: t.label, weight: Math.round((w[t.id] || 0) * 100) / 100, repos: (hits[t.id] || []).slice(0, 8), keywords: t.repoKw })),
       counts: Object.fromEntries(counts.map(c => [c.status, c.n])), last_run: lastRun,
+      updates: await kvGet(env, "updates"),
     });
   }
   if (p === "/api/picks" && req.method === "GET") {
@@ -416,7 +417,7 @@ async function api(req, env, url) {
   }
   // Add a specific Hub repo as a pick (from chat or the page). It lands as "new" for review.
   if (p === "/api/picks/add" && req.method === "POST") {
-    const { repo, kind, theme, note } = await req.json();
+    const { repo, kind, theme, note, source, status } = await req.json();
     if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space) required" }, 400);
     const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(`${kind}:${repo}`).first();
     if (existing?.status === "stashed") return json({ ok: true, id: `${kind}:${repo}`, already: "stashed" });
@@ -433,9 +434,12 @@ async function api(req, env, url) {
       theme: THEMES.some(t => t.id === theme) ? theme : "agents",
     };
     const { score, reasons, flags } = scoreCandidate(c, 1);
-    reasons.unshift("added from chat");
+    reasons.unshift(source || "added from chat");
     if (note) reasons.push(note);
     await upsertPick(env, c, score, reasons, [], flags, now()).run();
+    // The agent can approve a like-for-like newer release of something already on the A1.
+    if (status === "approved" && existing?.status !== "skipped")
+      await env.DB.prepare("UPDATE picks SET status='approved', auto=1 WHERE id=? AND status IN ('new','approved')").bind(c.id).run();
     return json({ ok: true, id: c.id, score, flags, size_bytes: c.size_bytes, license: c.license });
   }
   if (p === "/api/stashed" && req.method === "POST") {
@@ -461,10 +465,22 @@ async function api(req, env, url) {
     }
     return json((await kvGet(env, "catalog")) || { categories: [] });
   }
+  // What the agent found when it checked the A1 for newer revisions of stashed items.
+  if (p === "/api/updates") {
+    if (req.method === "POST") {
+      const body = await req.text();
+      if (body.length > 400_000) return json({ error: "too large" }, 413);
+      await kvSet(env, "updates", JSON.parse(body));
+      return json({ ok: true });
+    }
+    return json((await kvGet(env, "updates")) || {});
+  }
   if (p === "/api/scan" && req.method === "POST") {
+    // if_stale=1 skips when a scan ran recently: within min_hours (the mount agent passes 1), else 6 days.
     if (url.searchParams.get("if_stale") === "1") {
+      const hours = Number(url.searchParams.get("min_hours") || 144);
       const last = await env.DB.prepare("SELECT started FROM runs ORDER BY id DESC LIMIT 1").first();
-      if (last && Date.now() - Date.parse(last.started) < 6 * DAY) return json({ skipped: "scanned within 6 days", last: last.started });
+      if (last && Date.now() - Date.parse(last.started) < hours * 3600e3) return json({ skipped: `scanned within ${hours} h`, last: last.started });
     }
     return json(await scan(env, url.searchParams.get("trigger") || "manual"));
   }
