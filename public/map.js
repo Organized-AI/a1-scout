@@ -9,6 +9,7 @@
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
+  window.__a1store = store;
 
   // Jobs, in the order a newcomer meets them.
   const ROLES = [
@@ -182,7 +183,9 @@
     }).join("");
   }
 
+  const lessonCtx = () => ({ STEPS, stepsDone, saveSteps: () => store.set("a1-steps", [...stepsDone]), cardHtml });
   function pathView(all) {
+    if (window.Lessons) return window.Lessons.html(all, lessonCtx());
     return `<ol class="m-steps">${STEPS.map((s, n) => {
       const its = s.find(all), done = stepsDone.has(s.id);
       return `<li class="m-step${done ? " done" : ""}"><div class="m-snum">${n + 1}</div><div class="m-sbody">
@@ -617,8 +620,9 @@
     $$("#m-body [data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     $$("#m-body [data-step]").forEach(b => b.onclick = () => { const s = b.dataset.step; stepsDone.has(s) ? stepsDone.delete(s) : stepsDone.add(s); store.set("a1-steps", [...stepsDone]); rerender(); });
     if (mode === "space") drawTreemap();
+    if (mode === "path" && window.Lessons) window.Lessons.wire(lessonCtx()); else window.Lessons?.kill();
     // Animate only what is near the top; everything else is visible at rest.
-    if (first) gsap.fromTo($$("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup").slice(0, 24), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .015, ease: "power2.out", clearProps: "all" });
+    if (first && mode !== "path") gsap.fromTo($$("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup").slice(0, 24), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .015, ease: "power2.out", clearProps: "all" });
   }
   window.addEventListener("resize", () => { if (mode === "space") { flipClose(); drawTreemap(); } });
 
