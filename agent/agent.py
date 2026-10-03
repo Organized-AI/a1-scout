@@ -453,6 +453,11 @@ def fetch_approved(spent=0):
     cap = float(ENV["RUN_CAP_GB"]) * 1e9
     floor = float(ENV["FREE_FLOOR_GB"]) * 1e9
     done, waiting = [], []
+    # If nothing has downloaded yet this plug-in, let one over-cap item go first so it isn't starved forever.
+    if spent == 0:
+        big = [p for p in picks if (p.get("size_bytes") or 0) > cap]
+        if big:
+            picks = [big[0]] + [p for p in picks if p is not big[0]]
     today = datetime.now().strftime("%Y-%m-%d")
     pins_file = STASH / "manifests/scout-pins.json"
     for p in picks:
