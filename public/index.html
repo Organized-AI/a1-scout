@@ -182,7 +182,7 @@ function barState() {
   const running = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 15 * 60e3;
   if (running && plugged) return { key: "busy", plugged, running, label: "Plugged in", sub: a.phase || "Working" };
   if (running && !plugged) return { key: "warn", plugged, running, label: fresh ? "Unplugged mid-run" : "Working, no heartbeat yet", sub: fresh ? "Anything unfinished resumes on the next plug-in" : (a.phase || "") };
-  if (plugged) return { key: "ok", plugged, running, label: "Plugged in", sub: p.busy ? "Starting up" : "Idle · safe to eject" };
+  if (plugged) return { key: "ok", plugged, running, label: "Plugged in", sub: p.busy ? "A run is in progress · keep it plugged in" : "Idle · safe to eject" };
   return { key: "off", plugged, running, label: "Unplugged", sub: p.at ? `Last seen ${ago(p.at)}` : "Waiting for the first heartbeat from the Mac" };
 }
 function paintBar(animate) {
