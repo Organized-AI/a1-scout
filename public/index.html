@@ -3,24 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>A1 Scout</title>
+<title>A1 Scout · Organized AI</title>
+<link rel="icon" type="image/png" href="brand/favicon.png">
+<meta name="theme-color" content="#0b0b0a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d0f0e;--panel:#151816;--line:#262b28;--ink:#e7ebe8;--mute:#8a938d;--accent:#7cf2a0;--warn:#f2c46c;--bad:#f27c7c;--chip:#1d221f;
- --c-models:#7cf2a0;--c-datasets:#6cc4f2;--c-spaces:#f29c6c;--c-code:#b99cf2;--c-papers:#f2e36c;--c-runs:#f27cc8;--c-wheels:#8fa39a;--c-corpora:#5f6b65;--c-tooling:#4a544f;--c-other:#3e4642}
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f4f5f2;--panel:#fff;--line:#dde1dc;--ink:#151816;--mute:#5f6862;--accent:#0f8a43;--warn:#a56a00;--bad:#b42323;--chip:#eef1ec;
- --c-models:#2fae63;--c-datasets:#2b8fc4;--c-spaces:#d0702f;--c-code:#7d5bd0;--c-papers:#bba21a;--c-runs:#c2408f;--c-wheels:#7b8c84;--c-corpora:#a3aea8;--c-tooling:#bcc4bf;--c-other:#ccd2ce}}
+:root{--bg:#0b0b0a;--panel:#141412;--line:#2a2822;--ink:#f4f2ea;--mute:#9b978a;--accent:#fbe04d;--brand:#fbe04d;--on-brand:#0b0b0a;--warn:#ff9f5a;--bad:#f27c7c;--chip:#1c1b17;
+ --c-models:#fbe04d;--c-datasets:#6cc4f2;--c-spaces:#f29c6c;--c-code:#b99cf2;--c-papers:#7cf2a0;--c-runs:#f27cc8;--c-wheels:#9a978c;--c-corpora:#6b685e;--c-tooling:#55524a;--c-other:#45433d}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#faf9f4;--panel:#fff;--line:#e4e1d6;--ink:#111110;--mute:#5f5b50;--accent:#8a6c00;--brand:#f5d528;--on-brand:#0b0b0a;--warn:#b25a00;--bad:#b42323;--chip:#f1efe6;
+ --c-models:#e8c414;--c-datasets:#2b8fc4;--c-spaces:#d0702f;--c-code:#7d5bd0;--c-papers:#2fae63;--c-runs:#c2408f;--c-wheels:#8c887c;--c-corpora:#b3afa2;--c-tooling:#c7c3b6;--c-other:#d6d3c8}}
+img.brand-wm-dark{display:none}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) img.brand-wm-light{display:none}:root:not([data-theme="dark"]) img.brand-wm-dark{display:inline}:root:not([data-theme="dark"]) .a1-track{box-shadow:inset 0 0 0 1px var(--line)}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif}
 code,pre,.mono{font-family:"IBM Plex Mono",monospace}
 .wrap{max-width:1180px;margin:0 auto;padding:24px 16px 80px}
 .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.brand-icon{width:34px;height:34px;border-radius:9px;display:block;box-shadow:0 0 0 1px var(--line)}
+.brand-wm{height:18px;width:auto;display:inline}
+.brand-sep{width:1px;height:22px;background:var(--line)}
+.a1bar{border-top:2px solid var(--brand) !important}
+.foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--mute);font:12px "IBM Plex Mono",monospace}
+.foot img{height:12px;width:auto}
+.foot a{color:var(--mute)}
 .mark{font:600 13px "IBM Plex Mono",monospace;letter-spacing:.06em;border:1px solid var(--line);padding:2px 8px;border-radius:4px}
 h1{font:600 24px/1.2 "IBM Plex Mono",monospace;margin:0}
 .nav{margin-left:auto;display:flex;gap:6px}
 .tab{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:6px 12px;border-radius:999px;cursor:pointer;font:500 13px "IBM Plex Mono",monospace}
-.tab[aria-pressed=true]{background:var(--accent);color:#06210f;border-color:var(--accent)}
+.tab[aria-pressed=true]{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}
 .sub{color:var(--mute);margin:8px 0 20px;max-width:760px}
 .section{font:500 12px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.12em;margin:24px 0 10px;text-transform:uppercase}
 .drive{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
@@ -92,7 +104,7 @@ button.chip:hover{border-color:var(--accent)}
   .a1-sub { color: var(--mute); }
   .a1-count { margin-left: auto; color: var(--mute); font: 12px "IBM Plex Mono", monospace; }
   .a1-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); flex: none; }
-  .a1bar[data-state="ok"] .a1-dot { background: var(--accent); }
+  .a1bar[data-state="ok"] .a1-dot, .a1bar[data-state="busy"] .a1-dot { background: var(--brand); }
   .a1bar[data-state="busy"] .a1-dot { background: var(--accent); animation: a1pulse 1.4s ease-in-out infinite; }
   .a1bar[data-state="warn"] .a1-dot { background: var(--warn); }
   @keyframes a1pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
@@ -100,7 +112,7 @@ button.chip:hover{border-color:var(--accent)}
   .a1-line b { font-family: "IBM Plex Mono", monospace; overflow-wrap: anywhere; }
   .a1-nums { color: var(--mute); font: 12px "IBM Plex Mono", monospace; }
   .a1-track { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; position: relative; }
-  .a1-track i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .a1-track i { display: block; height: 100%; background: var(--brand); border-radius: 4px; }
   .a1-track.indet i { width: 30%; position: absolute; animation: a1slide 1.6s ease-in-out infinite; }
   @keyframes a1slide { 0% { left: -30%; } 100% { left: 100%; } }
   .a1-last { color: var(--mute); }
@@ -116,11 +128,41 @@ button.chip:hover{border-color:var(--accent)}
   .a1-lbl { color: var(--mute); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; min-width: 92px; }
   .a1-chip.ok { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
   .a1-foot { color: var(--mute); font-size: 11px; }
-  @media (max-width: 620px) { .a1-run { grid-template-columns: 1fr; gap: 10px; } .a1-lbl { min-width: 0; width: 100%; } }
+  @media (max-width: 620px) { .a1-run { grid-template-columns: 1fr; gap: 10px; justify-items: start; } .a1-lbl { min-width: 0; width: 100%; } }
   .a1-next { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--mute); }
   .a1-chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; color: var(--ink); font-size: 12px; }
   .a1-chip small { color: var(--mute); }
   .a1-chip.later { opacity: .6; }
+  .a1-chip { display: inline-flex; gap: 4px; align-items: baseline; transition: transform .15s; }
+  .a1-chip:hover { transform: translateY(-1px); }
+  .a1-chip em { font-style: normal; color: var(--accent); display: inline-block; }
+  .a1-dot { position: relative; }
+  .a1-ripple { position: absolute; inset: 0; border-radius: 50%; background: var(--brand); opacity: 0; }
+  .a1bar[data-state="busy"] .a1-dot { animation: none; }
+  .a1-label { display: inline-block; }
+  .a1-track i { position: relative; overflow: hidden; }
+  .a1-track i::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 10px; background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 45%, var(--accent))); border-radius: 0 4px 4px 0; opacity: .7; }
+  .a1-sheen { position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); pointer-events: none; }
+  .a1-ringwrap { position: relative; width: 88px; height: 88px; }
+  .a1-ringwrap svg { transform: rotate(-90deg); }
+  .a1-ringwrap circle { fill: none; stroke-width: 7; }
+  .a1-ringwrap .bg { stroke: var(--chip); }
+  .a1-ringwrap .fg { stroke: var(--brand); stroke-linecap: round; filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 45%, transparent)); }
+  .a1-ringtxt { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .a1-ringtxt b { font: 600 20px/1 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .a1-ringtxt span { color: var(--mute); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }
+  .a1-stats dd { font-variant-numeric: tabular-nums; }
+  .a1-nums { font-variant-numeric: tabular-nums; }
+  .a1-flipnum { display: inline-block; }
+  .a1-sparkcell dd { display: flex; align-items: center; gap: 8px; }
+  .a1-sparkcell small { color: var(--mute); font-size: 11px; }
+  .a1-spark-line .stroke { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+  .a1-spark-line .fill { fill: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .a1-spark-line circle { fill: var(--accent); }
+  .a1-live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; }
+  .a1-spark { position: fixed; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--brand); pointer-events: none; z-index: 50; }
+  .a1-spark:nth-child(3n) { background: var(--ink); }
+  .a1-spark:nth-child(3n+1) { width: 4px; height: 4px; border-radius: 1px; }
   .a1-more { font-size: 12px; }
   @media (prefers-reduced-motion: reduce) { .a1bar[data-state="busy"] .a1-dot, .a1-track.indet i { animation: none; } }
   .pick[data-pick] { cursor: pointer; transition: border-color .15s; }
@@ -149,7 +191,7 @@ async function call(p, opts = {}) {
   return r.json();
 }
 function gate(msg = "") {
-  $("#app").innerHTML = `<div class="gate"><span class="mark">A1</span><h1 style="margin:12px 0 4px">A1 Scout</h1>
+  $("#app").innerHTML = `<div class="gate"><span class="brand"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></span><h1 style="margin:14px 0 4px">A1 Scout</h1>
   <div class="sub">Paste the scout token from <code>~/.nvme-stash/scout.env</code>.</div>
   <input id="tok" type="password" placeholder="SCOUT_TOKEN" autocomplete="off"><button class="btn go" id="save">Open</button>
   <div class="meta" style="color:var(--bad)">${esc(msg)}</div></div>`;
@@ -163,14 +205,24 @@ async function load() {
   pollActivity();
 }
 function shell(inner) {
-  return `<div class="top"><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : "Scout"}</h1>
+  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : "Scout"}</h1>
    <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
-   <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}`;
+   <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}
+   <footer class="foot"><img class="brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="47" height="12"><img class="brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="47" height="12"><span>· A1 Scout · an Organized AI asset · Austin, TX</span><a href="https://github.com/organized-ai/a1-scout">source</a></footer>`;
 }
 function render(first) {
   $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
   view === "map" ? MapView.wire(first, () => render()) : wireScout(first);
+  if (!render.introDone && !RM()) {
+    render.introDone = true;
+    gsap.timeline()
+      .from(".top .brand-icon", { rotation: -120, scale: 0, duration: .7, ease: "back.out(2)" })
+      .from(".top .brand-wm", { clipPath: "inset(0 100% 0 0)", duration: .6, ease: "power3.out" }, "-=.35")
+      .from(".top .brand-sep, .top .mark, .top h1, .top .tab", { y: 8, opacity: 0, duration: .35, stagger: .05, ease: "power2.out", clearProps: "transform,opacity" }, "-=.3");
+    const ic = $(".top .brand-icon");
+    if (ic) ic.addEventListener("mouseenter", () => gsap.fromTo(ic, { rotation: 0 }, { keyframes: [{ rotation: -8 }, { rotation: 6 }, { rotation: -3 }, { rotation: 0 }], duration: .6, ease: "power1.inOut" }));
+  }
   paintBar(false);
 }
 
@@ -217,52 +269,107 @@ function runModel() {
     queue: r.queue || [] };
 }
 const rate = r => r == null ? "—" : r >= 1e9 ? `${(r / 1e9).toFixed(2)} GB/s` : `${(r / 1e9).toFixed(3)} GB/s · ${(r / 1e6).toFixed(0)} MB/s`;
+/* ---- motion helpers for the bar (all GSAP; reduced motion gets the final state, no movement) ---- */
+const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const disp = { got: 0, cur: 0 };            // what's on screen; GSAP tweens these toward the real numbers
+let barTl = null, barLoops = [], rateHist = [];
+const RING_C = 2 * Math.PI * 38;
+function burst(x, y, n = 14, spread = 60) {
+  if (RM()) return;
+  for (let k = 0; k < n; k++) {
+    const d = document.createElement("i"); d.className = "a1-spark";
+    d.style.left = x + "px"; d.style.top = y + "px"; document.body.appendChild(d);
+    const ang = Math.random() * Math.PI * 2, r = spread * (.4 + Math.random() * .8);
+    gsap.fromTo(d, { x: 0, y: 0, scale: 1, opacity: 1 }, { x: Math.cos(ang) * r, y: Math.sin(ang) * r - 10, scale: 0, opacity: 0,
+      duration: .7 + Math.random() * .5, ease: "power3.out", onComplete: () => d.remove() });
+  }
+}
+function centerOf(node) { const r = node.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
+// Speed history: seeded from finished items' timestamps, then one sample per fresh report.
+function rateSeries(run, got) {
+  const pts = [];
+  if (run.dlStartedAt) pts.push([Date.parse(run.dlStartedAt), 0]);
+  let cum = 0;
+  for (const d of run.done) { cum += d.bytes || 0; if (d.finished_at) pts.push([Date.parse(d.finished_at), cum]); }
+  for (const h of rateHist) pts.push(h);
+  pts.push([Date.parse(run.asOf), got]);
+  pts.sort((p, q) => p[0] - q[0]);
+  const out = [];
+  for (let k = 1; k < pts.length; k++) {
+    const dt = (pts[k][0] - pts[k - 1][0]) / 1000, db = pts[k][1] - pts[k - 1][1];
+    if (dt >= 15 && db >= 0) out.push(db / dt);
+  }
+  return out.slice(-24);
+}
+function sparkSvg(rates) {
+  if (rates.length < 2) return "";
+  const w = 120, h = 26, max = Math.max(...rates) || 1;
+  const xy = rates.map((r, k) => [(k / (rates.length - 1)) * w, h - 2 - (r / max) * (h - 4)]);
+  const d = xy.map((p, k) => (k ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const last = xy[xy.length - 1];
+  return `<svg class="a1-spark-line" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <path d="${d} L${w} ${h} L0 ${h} Z" class="fill"/><path d="${d}" class="stroke"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5"/></svg>`;
+}
 function paintBar(animate) {
   const el = $("#a1bar"); if (!el || !a1act) return;
   const st = barState(), a = a1act.activity || {}, pres = a1act.presence || {};
   const run = st.running ? runModel() : null;
   const freeNote = pres.free_bytes != null && st.plugged ? `${gb(pres.free_bytes)} free on the A1` : "";
-  let body = "";
+  const first = !actPrev.painted;
+  barTl?.kill(); barLoops.forEach(t => t.kill()); barLoops = [];
+  let body = "", live = null;
   if (run && !run.queue.length && !run.current && !run.done.length && (a1act.next || []).length)
     run.queue = a1act.next.map(q => ({ ...q, when: q.when === "later" ? "next plug-in" : "now" }));
   if (run) {
+    const runKey = run.startedAt || "run";
+    if (actPrev.runKey !== runKey) { disp.got = 0; disp.cur = 0; rateHist = []; actPrev.doneSet = null; }
     const now = run.queue.filter(q => q.when === "now"), later = run.queue.filter(q => q.when !== "now");
     const doneBytes = run.done.reduce((t, d) => t + (d.bytes || 0), 0);
     const curDone = run.current ? Math.min(run.current.done, run.current.total) : 0;
     const total = doneBytes + (run.current?.total || 0) + now.reduce((t, q) => t + (q.bytes || 0), 0);
     const got = doneBytes + curDone;
-    const pct = total ? Math.min(100, got / total * 100) : 0;
     const items = run.done.length + (run.current ? 1 : 0) + now.length;
     const secs = run.dlStartedAt ? (Date.parse(run.asOf) - Date.parse(run.dlStartedAt)) / 1000 : 0;
     const avg = secs > 20 && got > 0 ? got / secs : null;
     const left = avg ? (total - got) / avg : null;
-    const cPct = run.current && run.current.total ? Math.min(100, curDone / run.current.total * 100) : 0;
     const cSecs = run.current?.startedAt ? (Date.parse(run.asOf) - Date.parse(run.current.startedAt)) / 1000 : 0;
     const cRate = run.current?.rate || (cSecs > 20 && curDone ? curDone / cSecs : null);
     const fresh = (Date.now() - Date.parse(run.asOf)) / 1000;
+    if (!rateHist.length || rateHist[rateHist.length - 1][0] !== Date.parse(run.asOf)) rateHist.push([Date.parse(run.asOf), got]);
+    rateHist = rateHist.slice(-40);
+    const rates = rateSeries(run, got);
+    if (actPrev.curRepo !== run.current?.repo) disp.cur = 0;
+    if (disp.got > got + (run.current?.total || 0)) disp.got = got;   // never show more than could be true
+    live = { run, got, total, curDone, curTotal: run.current?.total || 0, speed: cRate || avg, asOf: Date.parse(run.asOf) };
+    const doneSet = new Set(run.done.map(d => d.repo));
+    const fresh_ = actPrev.doneSet ? run.done.filter(d => !actPrev.doneSet.has(d.repo)).map(d => d.repo) : [];
     body = `
       <div class="a1-run">
-        <div class="a1-big"><b data-pct="${pct.toFixed(1)}">${animate ? (actPrev.pct ?? 0).toFixed(0) : pct.toFixed(0)}%</b><span>${got ? "of this run" : "preparing · downloads start after the update check"}</span></div>
+        <div class="a1-ringwrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(total ? got / total * 100 : 0)}" aria-label="Run progress">
+          <svg viewBox="0 0 88 88" width="88" height="88" aria-hidden="true"><circle cx="44" cy="44" r="38" class="bg"/><circle cx="44" cy="44" r="38" class="fg" data-k="ring" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
+          <div class="a1-ringtxt"><b data-k="pct">0%</b><span>${got ? "of run" : "preparing"}</span></div>
+        </div>
         <dl class="a1-stats">
-          <div><dt>Downloaded</dt><dd>${total ? `${gb(got)} of ${gb(total)}` : "—"}</dd></div>
-          <div><dt>Items</dt><dd>${items ? `${run.done.length} of ${items} done` : "—"}</dd></div>
+          <div><dt>Downloaded</dt><dd data-k="got">—</dd></div>
+          <div><dt>Items</dt><dd>${items ? `<span class="a1-flipnum" data-k="items">${run.done.length}</span> of ${items} done` : "—"}</dd></div>
           <div><dt>Avg speed</dt><dd>${rate(avg)}</dd></div>
-          <div><dt>Time left</dt><dd>${left != null ? "about " + dur(left) : "estimating…"}</dd></div>
+          <div><dt>Time left</dt><dd>${left != null ? "about " + dur(left) : got ? "estimating…" : "after the update check"}</dd></div>
           <div><dt>Started</dt><dd>${run.startedAt ? clock(run.startedAt) : "—"}${secs > 0 ? ` · ${dur(secs)} downloading` : ""}</dd></div>
+          ${rates.length >= 2 ? `<div class="a1-sparkcell"><dt>Speed over the run</dt><dd>${sparkSvg(rates)}<small>peak ${rate(Math.max(...rates)).split(" · ")[0]}</small></dd></div>` : ""}
         </dl>
       </div>
-      <div class="a1-track big" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Run progress"><i data-w="${pct}" style="width:${animate ? (actPrev.pct ?? 0) : pct}%"></i></div>
-      ${run.current ? `<div class="a1-item"><div class="a1-line"><span>${esc(run.current.action || "Downloading")} <b>${esc(short(run.current.repo))}</b></span>
-          <span class="a1-nums">${cPct.toFixed(0)}% · ${gb(curDone)} of ${gb(run.current.total)}${cRate ? ` · ${rate(cRate)}` : ""}</span></div>
-          <div class="a1-track"><i data-w="${cPct}" style="width:${animate ? (actPrev.cPct ?? 0) : cPct}%"></i></div></div>`
+      <div class="a1-track big"><i data-k="bar" style="width:${(total ? disp.got / total * 100 : 0)}%"><b class="a1-sheen"></b></i></div>
+      ${run.current ? `<div class="a1-item" data-repo="${esc(run.current.repo)}"><div class="a1-line"><span>${esc(run.current.action || "Downloading")} <b>${esc(short(run.current.repo))}</b></span>
+          <span class="a1-nums" data-k="cnum"></span></div>
+          <div class="a1-track"><i data-k="cbar" style="width:0%"><b class="a1-sheen"></b></i></div></div>`
         : `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span></div><div class="a1-track indet"><i></i></div></div>`}
       <div class="a1-lists">
-        ${run.done.length ? `<div><span class="a1-lbl">Done</span>${run.done.slice(-6).map(d => `<span class="a1-chip ok" title="${esc(d.repo)}">✓ ${esc(short(d.repo))} <small>${d.bytes ? gb(d.bytes) : ""}</small></span>`).join("")}${run.done.length > 6 ? `<span class="a1-more">+${run.done.length - 6}</span>` : ""}</div>` : ""}
-        ${now.length ? `<div><span class="a1-lbl">Up next</span>${now.slice(0, 5).map(q => `<span class="a1-chip" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}${now.length > 5 ? `<span class="a1-more">+${now.length - 5}</span>` : ""}</div>` : ""}
+        ${run.done.length ? `<div><span class="a1-lbl">Done</span>${run.done.slice(-6).map(d => `<span class="a1-chip ok${fresh_.includes(d.repo) ? " new" : ""}" title="${esc(d.repo)}"><em>✓</em> ${esc(short(d.repo))} <small>${d.bytes ? gb(d.bytes) : ""}</small></span>`).join("")}${run.done.length > 6 ? `<span class="a1-more">+${run.done.length - 6}</span>` : ""}</div>` : ""}
+        ${now.length ? `<div><span class="a1-lbl">Up next</span>${now.slice(0, 5).map((q, k) => `<span class="a1-chip${k ? "" : " next"}" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}${now.length > 5 ? `<span class="a1-more">+${now.length - 5}</span>` : ""}</div>` : ""}
         ${later.length ? `<div><span class="a1-lbl">Next plug-in</span>${later.slice(0, 4).map(q => `<span class="a1-chip later" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}${later.length > 4 ? `<span class="a1-more">+${later.length - 4}</span>` : ""}</div>` : ""}
       </div>
-      <div class="a1-foot">${run.src === "live" ? "Live from the Mac" : "From the Mac's run log, checked every minute"} · as of ${esc(clock(run.asOf))}${fresh > 150 ? ` (${ago(run.asOf)})` : ""}${freeNote ? ` · ${esc(freeNote)}` : ""}</div>`;
-    actPrev = { ...actPrev, pct, cPct };
+      <div class="a1-foot"><span class="a1-live"></span>${run.src === "live" ? "Live from the Mac" : "From the Mac's run log, checked every minute"} · as of ${esc(clock(run.asOf))}${fresh > 150 ? ` (${ago(run.asOf)})` : ""}${freeNote ? ` · ${esc(freeNote)}` : ""}</div>`;
+    actPrev = { ...actPrev, runKey, doneSet, curRepo: run.current?.repo, fresh: fresh_, prevDone: actPrev.prevDone };
   } else {
     const upNext = a1act.next || [];
     body = `${a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
@@ -272,14 +379,84 @@ function paintBar(animate) {
       ${freeNote ? `<div class="a1-foot">${esc(freeNote)}</div>` : ""}`;
   }
   el.dataset.state = st.key;
-  el.innerHTML = `<div class="a1-head"><span class="a1-dot"></span><b>A1 ${esc(st.label)}</b>${st.sub ? `<span class="a1-sub">${esc(st.sub)}</span>` : ""}${run?.phase ? `<span class="a1-sub">· ${esc(run.phase)}</span>` : ""}</div>${body}`;
-  if (animate) {
-    el.querySelectorAll(".a1-track:not(.indet) i").forEach(i => gsap.to(i, { width: i.dataset.w + "%", duration: .8, ease: "power2.out" }));
-    const big = el.querySelector(".a1-big b");
-    if (big) { const o = { v: parseFloat(big.textContent) || 0 }; gsap.to(o, { v: +big.dataset.pct, duration: .8, ease: "power2.out", onUpdate: () => big.textContent = Math.round(o.v) + "%" }); }
-    if (actPrev.key && actPrev.key !== st.key) gsap.fromTo(el, { backgroundColor: "var(--chip)" }, { backgroundColor: "var(--panel)", duration: .8, clearProps: "backgroundColor" });
+  el.innerHTML = `<div class="a1-head"><span class="a1-dot"><i class="a1-ripple"></i></span><b class="a1-label">A1 ${esc(st.label)}</b>${st.sub ? `<span class="a1-sub">${esc(st.sub)}</span>` : ""}${run?.phase ? `<span class="a1-sub a1-phase">· ${esc(run.phase)}</span>` : ""}</div>${body}`;
+  animateBar(el, st, live, { first, animate, prevKey: actPrev.key, prevPhase: actPrev.phase, phase: run?.phase });
+  actPrev.key = st.key; actPrev.phase = run?.phase; actPrev.painted = true;
+}
+function animateBar(el, st, live, o) {
+  const rm = RM(), q = s => el.querySelector(`[data-k="${s}"]`);
+  // 1. the numbers: tween what's on screen to the reported bytes, then keep creeping at the current speed until the next report
+  if (live) {
+    const { got, total, curTotal, speed, asOf } = live;
+    const draw = () => {
+      const pct = total ? Math.min(100, disp.got / total * 100) : 0;
+      const pctTxt = pct >= 99.95 ? "100" : pct < 10 ? pct.toFixed(1) : pct.toFixed(0);
+      const n = q("pct"); if (n) n.textContent = pctTxt + "%";
+      const ring = q("ring"); if (ring) ring.setAttribute("stroke-dashoffset", RING_C * (1 - pct / 100));
+      const bar = q("bar"); if (bar) bar.style.width = pct + "%";
+      const g = q("got"); if (g) g.textContent = total ? `${gb(disp.got)} of ${gb(total)}` : "—";
+      const cp = curTotal ? Math.min(100, disp.cur / curTotal * 100) : 0;
+      const cb = q("cbar"); if (cb) cb.style.width = cp + "%";
+      const cn = q("cnum"); if (cn) cn.textContent = `${cp.toFixed(cp < 10 ? 1 : 0)}% · ${gb(disp.cur)} of ${gb(curTotal)}${speed ? ` · ${rate(speed)}` : ""}`;
+    };
+    // where the bytes should be right now, and in one poll interval, if the speed holds (90% to stay conservative)
+    const at = t => { const extra = speed && curTotal ? Math.min(curTotal - live.curDone, speed * .9 * Math.min(150, Math.max(0, (t - asOf) / 1000))) : 0; return [got + extra, live.curDone + extra]; };
+    const [g0, c0] = at(Date.now()), poll = 10;
+    if (rm) { disp.got = g0; disp.cur = c0; draw(); }
+    else {
+      barTl = gsap.timeline();
+      barTl.to(disp, { got: g0, cur: c0, duration: o.first ? 1.4 : .8, ease: o.first ? "expo.out" : "power2.out", onUpdate: draw });
+      const [g1, c1] = at(Date.now() + poll * 1000);
+      if (g1 > g0) barTl.to(disp, { got: g1, cur: c1, duration: poll - .8, ease: "none", onUpdate: draw });
+      // sheen sweeping across the filled bars while bytes are moving
+      el.querySelectorAll(".a1-sheen").forEach((s, k) => barLoops.push(gsap.fromTo(s, { xPercent: -120 }, { xPercent: 420, duration: 1.8, delay: k * .4, ease: "power1.inOut", repeat: -1, repeatDelay: .6 })));
+      // the "live" beacon in the footer
+      const lv = el.querySelector(".a1-live"); if (lv) barLoops.push(gsap.to(lv, { opacity: .25, duration: .9, repeat: -1, yoyo: true, ease: "sine.inOut" }));
+      // first up-next chip breathes: it's what starts next
+      const nx = el.querySelector(".a1-chip.next"); if (nx) barLoops.push(gsap.to(nx, { borderColor: "var(--accent)", duration: 1.1, repeat: -1, yoyo: true, ease: "sine.inOut" }));
+    }
+    draw();
+    // sparkline draws itself in on first paint, the newest point pings on updates
+    const sp = el.querySelector(".a1-spark-line .stroke");
+    if (sp && !rm) {
+      const len = sp.getTotalLength();
+      if (o.first) { gsap.fromTo(sp, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: 1.4, ease: "power2.out", delay: .3 }); gsap.from(el.querySelector(".a1-spark-line .fill"), { opacity: 0, duration: 1, delay: .9 }); }
+      const dot = el.querySelector(".a1-spark-line circle"); if (dot) barLoops.push(gsap.fromTo(dot, { attr: { r: 2.5 } }, { attr: { r: 4.5 }, duration: .8, repeat: -1, yoyo: true, ease: "sine.inOut" }));
+    }
   }
-  actPrev.key = st.key;
+  if (rm) return;
+  // 2. entrance on first paint
+  if (o.first) {
+    gsap.from(el, { y: -10, opacity: 0, duration: .5, ease: "power2.out", clearProps: "transform,opacity" });
+    gsap.from(el.querySelectorAll(".a1-stats > div, .a1-ringwrap"), { y: 10, opacity: 0, duration: .45, stagger: .06, delay: .15, ease: "power2.out", clearProps: "transform,opacity" });
+    gsap.from(el.querySelectorAll(".a1-chip, .a1-more"), { scale: .7, opacity: 0, duration: .35, stagger: .035, delay: .4, ease: "back.out(2)", clearProps: "transform,opacity" });
+  }
+  // 3. state or phase changed: flip the label in, wash the panel
+  if (o.prevKey && o.prevKey !== st.key) {
+    gsap.from(el.querySelector(".a1-label"), { rotationX: -90, opacity: 0, transformOrigin: "50% 50% -8px", duration: .6, ease: "back.out(1.6)", clearProps: "transform,opacity" });
+    gsap.fromTo(el, { backgroundColor: "var(--chip)" }, { backgroundColor: "var(--panel)", duration: 1, clearProps: "backgroundColor" });
+  } else if (o.prevPhase && o.phase && o.prevPhase !== o.phase) {
+    gsap.from(el.querySelector(".a1-phase"), { y: 8, opacity: 0, duration: .4, ease: "power2.out", clearProps: "transform,opacity" });
+  }
+  // 4. an item just finished: pop its chip, spark, bump the counter
+  el.querySelectorAll(".a1-chip.new").forEach((c, k) => {
+    gsap.fromTo(c, { scale: .4, opacity: 0 }, { scale: 1, opacity: 1, duration: .55, delay: .15 + k * .1, ease: "back.out(3)", clearProps: "transform,opacity",
+      onStart: () => { const [x, y] = centerOf(c); burst(x, y, 12, 45); } });
+    gsap.fromTo(c.querySelector("em"), { rotation: -180, scale: 0 }, { rotation: 0, scale: 1, duration: .6, delay: .3 + k * .1, ease: "back.out(2.5)" });
+  });
+  if (el.querySelector(".a1-chip.new")) {
+    const n = el.querySelector('[data-k="items"]'); if (n) gsap.fromTo(n, { yPercent: -80, opacity: 0 }, { yPercent: 0, opacity: 1, duration: .45, ease: "back.out(2)" });
+    const it = el.querySelector(".a1-item"); if (it) gsap.from(it, { x: 24, opacity: 0, duration: .5, ease: "power3.out", clearProps: "transform,opacity" });
+  }
+  // 5. ripple off the status dot while a run is going
+  const rp = el.querySelector(".a1-ripple");
+  if (rp && st.key === "busy") barLoops.push(gsap.fromTo(rp, { scale: 1, opacity: .6 }, { scale: 3.2, opacity: 0, duration: 1.6, repeat: -1, ease: "power2.out" }));
+  // 6. run just finished: fill the ring, confetti off the bar
+  if (o.prevKey === "busy" && !st.running) {
+    const [x, y] = centerOf(el);
+    burst(x, y, 36, 160);
+    gsap.fromTo(el, { boxShadow: "0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent)" }, { boxShadow: "0 0 0 14px transparent", duration: 1.2, ease: "power2.out", clearProps: "boxShadow" });
+  }
 }
 /* ---------------- scout ---------------- */
 const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection" };

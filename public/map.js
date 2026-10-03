@@ -27,7 +27,7 @@
     { id: "build", label: "Build it offline", blurb: "Source code, offline Python packages and the drive's bookkeeping.", types: ["code-repo", "doc", "wheels", "gguf", "manifests", "script", "folder"] },
   ];
   const roleOf = t => ROLES.find(r => r.types.includes(t)) || ROLES[ROLES.length - 1];
-  const ROLE_COLOR = { talk: "#7cf2a0", decide: "#f2c46c", predict: "#e0a46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#e6e36c", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
+  const ROLE_COLOR = { talk: "#fbe04d", decide: "#f2c46c", predict: "#e0a46c", find: "#6cc4f2", see: "#b99cf2", pages: "#f29c6c", hear: "#f27cc8", create: "#7cf2a0", data: "#5fd3c4", apps: "#9fb7f2", research: "#c9b48a", yours: "#a3aea8", build: "#76847d" };
 
   // The agent tags models from their config; names tell us more about the job.
   function classify(i) {
