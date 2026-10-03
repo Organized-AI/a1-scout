@@ -5,6 +5,18 @@
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const gb = b => b == null ? "?" : b >= 1e12 ? (b / 1e12).toFixed(2) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(0) + " MB" : (b / 1e3).toFixed(0) + " KB";
+  // Turn URLs, bare domains (arxiv.org/abs/…, swe-chat.com) and [text](url) in card text into live links. Escapes first.
+  const TLD = "com|org|net|io|ai|dev|co|edu|gov|app|me|so|xyz|info|tech|cc|us|uk|de";
+  const linkA = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+  function linkify(raw) {
+    let s = esc(raw);
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => linkA(u, t));
+    s = s.replace(new RegExp(`(^|[\\s(])((?:https?:\\/\\/)?(?:[a-z0-9-]+\\.)+(?:${TLD})(?:\\/[^\\s<)]*)?)`, "gi"), (m, pre, url) => {
+      const clean = url.replace(/[.,;:!?]+$/, ""), tail = url.slice(clean.length);
+      return pre + linkA(/^https?:/i.test(clean) ? clean : "https://" + clean, clean) + tail;
+    });
+    return s;
+  }
   const store = {
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -329,7 +341,7 @@
       <div class="m-fsize"><b>${Math.round(p.score)}</b><span>match score · ${esc(status)}</span></div>
       <div class="m-fbar"><i style="width:${Math.min(100, Math.max(2, p.score))}%"></i></div>
       ${k.what ? `<p>${esc(k.what)}</p>` : ""}
-      ${summary ? `<p class="meta">${esc(summary.slice(0, 320))}${summary.length > 320 ? "…" : ""}</p>` : ""}
+      ${summary ? `<p class="meta">${linkify(summary.slice(0, 320))}${summary.length > 320 ? "…" : ""}</p>` : ""}
       <h3 class="m-fh">Why it was picked</h3>
       <div class="m-ffits">${(p.reasons || []).map(r => `<span>${esc(r)}</span>`).join("")}</div>
       ${p.matched_repos?.length ? `<p class="meta">Matches your repos: ${p.matched_repos.map(esc).join(", ")}</p>` : ""}
@@ -542,8 +554,8 @@
   function panelHtml(i) {
     const t = TYPES[i.kind] || TYPES.folder, m = i.meta || {}, f = fit(i), lic = license(i), role = roleOf(i.kind), hub = hubUrl(i);
     const facts = [["Size on disk", gb(i.bytes)], ["Files", i.files]];
-    if (i.source?.repo) facts.push(["From", i.source.repo]);
-    if (i.source?.revision) facts.push(["Pinned revision", String(i.source.revision).slice(0, 12)]);
+    if (i.source?.repo) facts.push(["From", i.source.repo, hub]);
+    if (i.source?.revision) facts.push(["Pinned revision", String(i.source.revision).slice(0, 12), hub && /^[0-9a-f]{7,40}$/i.test(i.source.revision) ? `${hub}/tree/${i.source.revision}` : null]);
     if (m.architecture) facts.push(["Architecture", m.architecture]);
     if (m.bits) facts.push(["Quantization", `${m.bits}-bit, group ${m.group_size || "?"}`]);
     if (m.context_tokens) facts.push(["Context", `${Number(m.context_tokens).toLocaleString()} tokens`]);
@@ -563,12 +575,12 @@
         <button class="btn m-close" aria-label="Close">Close</button></div>
       <div class="m-pbadges">${machineTags(i).replace(/<em /g, "<span ").replace(/<\/em>/g, "</span>")}${lic ? `<span class="b-${lic.cls}">${esc(lic.text)}</span>` : ""}</div>
       <h3>What it is</h3><p>${esc(t.what)}</p>
-      ${i.summary ? `<p class="meta" style="margin-top:6px">${esc(i.summary.replace(/\*\*|__|`/g, ""))}</p>` : ""}
+      ${i.summary ? `<p class="meta" style="margin-top:6px">${linkify(i.summary.replace(/\*\*|__|`/g, ""))}</p>` : ""}
       ${t.why ? `<h3>Why it's on your drive</h3><p>${esc(t.why)}</p>` : ""}
       ${f || lic ? `<h3>Which Macs can run it?</h3>${machineTable(i)}${lic ? `<h3>Can I use it for clients?</h3><p>${esc(lic.detail)}</p>` : ""}` : ""}
       ${cmd ? `<h3>Try it <button class="btn copy" data-copy>Copy</button></h3><pre id="m-cmd">${esc(cmd)}</pre>` : ""}
       ${t.learn?.length ? `<h3>Concepts behind it</h3><div class="learn">${t.learn.map(k => `<button class="chip" data-concept="${k}">${esc(CONCEPTS[k]?.title || k)}</button>`).join("")}</div>` : ""}
-      <h3>Facts</h3><dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      <h3>Facts</h3><dl class="facts">${facts.map(([k, v, href]) => `<dt>${esc(k)}</dt><dd>${href ? linkA(href, esc(v)) : esc(v)}</dd>`).join("")}</dl>
       <h3>Where it lives</h3><pre>${esc(abs(i))}</pre>
       ${hub ? `<p style="margin-top:8px"><a href="${hub}" target="_blank" rel="noopener">Open on Hugging Face</a></p>` : ""}
       ${related.length ? `<h3>Also in ${esc(role.label)}</h3><div class="learn">${related.map(x => `<button class="chip" data-open="${esc(x.path)}">${esc(x.name)}</button>`).join("")}</div>` : ""}
@@ -675,6 +687,7 @@
   .m-phead h2{font:600 17px "IBM Plex Mono",monospace;margin:0;overflow-wrap:anywhere}
   .m-panel h3{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.12em;text-transform:uppercase;margin:18px 0 6px;display:flex;justify-content:space-between;align-items:center}
   .m-panel p{margin:0} .m-panel a{color:var(--accent)}
+  .m-panel .meta a,.m-flip .meta a,.facts a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
   .m-pbadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
   .m-pfoot{margin-top:22px}
   .m-panel .copy{padding:2px 10px;font-size:12px}
