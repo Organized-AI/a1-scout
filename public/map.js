@@ -223,7 +223,20 @@
     }
     return out;
   }
-  function spaceView() { return `<p class="meta" style="margin:0 0 8px">Blocks are grouped by job and sized by disk space (square-root scaled so small items stay clickable).</p><div class="tm" id="m-tm"></div>`; }
+  // Previous versions the updater kept. The agent never deletes on the A1, so this is where you decide.
+  function oldVersions() { return (catalog.categories.find(c => c.id === "versions")?.items || []).slice().sort((a, b) => (b.bytes || 0) - (a.bytes || 0)); }
+  const rmCmd = list => list.map(v => `rm -rf ${JSON.stringify(abs(v))}`).join("\n");
+  function versionsHtml() {
+    const vs = oldVersions(); if (!vs.length) return "";
+    const total = vs.reduce((t, v) => t + (v.bytes || 0), 0);
+    return `<section class="m-old" aria-label="Old versions">
+      <div class="m-old-head"><div><b>Old versions you can delete · ${gb(total)}</b>
+        <p class="meta">Kept when a newer revision was downloaded. The current copy of each is already on the drive, so these are only needed if you want to go back. The agent never deletes on the A1; run the command yourself with the A1 plugged in.</p></div>
+        <button class="btn" data-rmall>Copy delete command for all</button></div>
+      <ul>${vs.map(v => `<li><code>${esc(v.path)}</code><span>${gb(v.bytes)}</span><small>current: ${esc(v.meta?.replaced_by || "?")}</small><button class="btn" data-rm="${esc(v.path)}">Copy command</button></li>`).join("")}</ul>
+    </section>`;
+  }
+  function spaceView() { return `${versionsHtml()}<p class="meta" style="margin:0 0 8px">Blocks are grouped by job and sized by disk space (square-root scaled so small items stay clickable).</p><div class="tm" id="m-tm"></div>`; }
   function drawTreemap() {
     const tm = $("#m-tm"); if (!tm) return;
     const W = tm.clientWidth, H = tm.clientHeight;
@@ -631,7 +644,12 @@
     $$("#m-body [data-open]").forEach(b => b.onclick = () => openPanel(b.dataset.open));
     $$("#m-body [data-concept]").forEach(b => b.onclick = () => showConcept(b.dataset.concept));
     $$("#m-body [data-step]").forEach(b => b.onclick = () => { const s = b.dataset.step; stepsDone.has(s) ? stepsDone.delete(s) : stepsDone.add(s); store.set("a1-steps", [...stepsDone]); rerender(); });
-    if (mode === "space") drawTreemap();
+    if (mode === "space") {
+      drawTreemap();
+      const copy = async (b, text) => { try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Copy failed"; } setTimeout(() => b.textContent = b.dataset.rmall != null ? "Copy delete command for all" : "Copy command", 2000); };
+      $$("[data-rm]").forEach(b => b.onclick = () => copy(b, rmCmd(oldVersions().filter(v => v.path === b.dataset.rm))));
+      const all = $("[data-rmall]"); if (all) all.onclick = () => copy(all, rmCmd(oldVersions()));
+    }
     if (mode === "path" && window.Lessons) window.Lessons.wire(lessonCtx()); else window.Lessons?.kill();
     // Animate only what is near the top; everything else is visible at rest.
     if (first && mode !== "path") gsap.fromTo($$("#m-body .m-card, #m-body .m-step, #m-body .m-tgroup").slice(0, 24), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .25, stagger: .015, ease: "power2.out", clearProps: "all" });
@@ -687,6 +705,13 @@
   .m-phead h2{font:600 17px "IBM Plex Mono",monospace;margin:0;overflow-wrap:anywhere}
   .m-panel h3{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.12em;text-transform:uppercase;margin:18px 0 6px;display:flex;justify-content:space-between;align-items:center}
   .m-panel p{margin:0} .m-panel a{color:var(--accent)}
+  .m-old{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:10px;background:var(--panel);padding:14px 16px;margin:0 0 16px}
+  .m-old-head{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+  .m-old-head b{font:600 14px "IBM Plex Mono",monospace}.m-old-head p{margin:4px 0 0;max-width:70ch}
+  .m-old ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
+  .m-old li{display:grid;grid-template-columns:minmax(0,1fr) 70px minmax(0,160px) auto;gap:10px;align-items:center;font-size:13px}
+  .m-old li code{overflow-wrap:anywhere}.m-old li span{font:600 12.5px "IBM Plex Mono",monospace;text-align:right}.m-old li small{color:var(--mute);overflow-wrap:anywhere}
+  @media(max-width:620px){.m-old li{grid-template-columns:1fr auto}.m-old li small{grid-column:1/-1}}
   .m-panel .meta a,.m-flip .meta a,.facts a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
   .m-pbadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
   .m-pfoot{margin-top:22px}

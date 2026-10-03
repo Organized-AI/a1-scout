@@ -42,6 +42,7 @@ def load_env():
     env.setdefault("AUTO_UPDATES", "on")        # download newer revisions of stashed items
     env.setdefault("AUTO_SUCCESSORS", "on")     # auto-approve like-for-like newer releases (same family, size, quant)
     env.setdefault("SCAN_MIN_HOURS", "1")       # scan on every mount, but not twice within this many hours
+    env.setdefault("SETTLE_HOURS", "24")        # don't start an update until the repo has been quiet this long (mid-upload repos churn)
     return env
 
 
@@ -737,13 +738,25 @@ def check_updates(catalog):
     report = {"checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tracked": len(items), "current": 0,
               "untracked": len(untracked), "updated": [], "waiting": [], "docs_only": [], "successors": [], "errors": []}
     plans = []
+    report["settling"] = []
+    settle = float(ENV["SETTLE_HOURS"]) * 3600
     for it in items:
         try:
-            new = hub(f"/{it['kind']}s/{it['repo']}").get("sha")
+            info = hub(f"/{it['kind']}s/{it['repo']}")
+            new = info.get("sha")
         except Exception as e:
             report["errors"].append({"repo": it["repo"], "error": str(e)[:120]}); continue
         if not new or new == it["revision"] or docs_seen.get(it["path"]) == new:
             report["current"] += 1; continue
+        # A repo that changed recently may be mid-release (dozens of upload commits in an hour). Wait for it to go quiet,
+        # unless an update for this item is already staged, in which case finish it.
+        try:
+            age = time.time() - datetime.fromisoformat(str(info.get("lastModified")).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            age = settle
+        if age < settle and not staged_update(STASH / it["path"]):
+            report["settling"].append({"repo": it["repo"], "to": new, "quiet_hours": round(age / 3600, 1), "needs_hours": float(ENV["SETTLE_HOURS"])})
+            continue
         try:
             new_t = hub_tree(it["kind"], it["repo"], new)
         except Exception as e:
@@ -769,6 +782,12 @@ def check_updates(catalog):
     return report, plans
 
 
+def staged_update(src):
+    """An earlier, unfinished update download for this item (.<name>.updating-<sha7> beside it), if any."""
+    found = sorted(src.parent.glob(f".{src.name}.updating-*"), key=lambda d: d.stat().st_mtime)
+    return found[-1] if found and found[-1].is_dir() else None
+
+
 def apply_update(pl, report, spent, cap, floor):
     """Download the new revision beside the old one, then move the old one to stash/versions/ and the new one into place."""
     src = STASH / pl["path"]
@@ -783,6 +802,11 @@ def apply_update(pl, report, spent, cap, floor):
     if not (inside_stash(tmp) and inside_stash(prev)) or prev.exists():
         wait("no safe place for the old copy"); return 0
     log(f"updating {pl['kind']} {pl['repo']} {old7} -> {new7}: {len(pl['changed'])} changed files, ~{pl['download_bytes']/1e9:.2f} GB to download")
+    staged = staged_update(src)
+    if staged and staged != tmp and not tmp.exists() and inside_stash(staged):
+        # Resume an interrupted download aimed at an older revision: hf keeps every file whose etag still matches.
+        log(f"  resuming staged download {staged.name} ({walk_size(staged)[0]/1e9:.1f} GB already here)")
+        os.rename(staged, tmp)
     tmp.mkdir(parents=True, exist_ok=True)
     # Seed unchanged files (and hf's download metadata) from the old copy so only changed files come over the network.
     for f, (oid, size) in pl["new_tree"].items():
@@ -894,7 +918,9 @@ def push_catalog(catalog):
 def run_updates(catalog, dry=False):
     report, plans = check_updates(catalog)
     log(f"update check: {report['tracked']} tracked, {report['current']} current, {len(plans)} with new files, "
-        f"{len(report['docs_only'])} docs-only, {report['untracked']} untraceable")
+        f"{len(report['docs_only'])} docs-only, {len(report.get('settling', []))} settling, {report['untracked']} untraceable")
+    for st_ in report.get("settling", []):
+        log(f"  settling: {st_['repo']} changed {st_['quiet_hours']} h ago; updates after {st_['needs_hours']:.0f} quiet hours")
     spent = 0
     cap, floor = float(ENV["RUN_CAP_GB"]) * 1e9, float(ENV["FREE_FLOOR_GB"]) * 1e9
     for pl in sorted(plans, key=lambda x: x["download_bytes"]):
