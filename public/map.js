@@ -33,7 +33,7 @@
   function classify(i) {
     const n = i.name.toLowerCase();
     if (!i.path.startsWith("models")) return i.type;
-    if (/laya|jev|decision/.test(n)) return "decision";
+    if (/laya|jev|decision|clef/.test(n)) return "decision";
     if (/mitra|tabpfn/.test(n)) return "tabular";
     if (/chronos|timesfm|moirai|time-?series/.test(n)) return "forecaster";
     if (/router/.test(n)) return "router";

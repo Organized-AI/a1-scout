@@ -133,7 +133,7 @@ Object.assign(window.CONCEPTS, {
   "calibration": { title: "Calibration",
     body: "A calibrated model's confidence means something: when it says 80%, it is right about 80% of the time. That lets you set rules on the number, like auto-approve above 0.9 and ask a person below 0.6, instead of trusting free text." },
   "decision-models": { title: "Decision models",
-    body: "Small models trained to answer typed questions (yes/no, pick one of these options, score 1 to 5) instead of writing prose. They are fast, cheap and predictable, which makes them good for routing, guardrails and checks. Jev is the hosted one you use through jev-gateway; Laya and the Jev-Style models are open ones you can run here." },
+    body: "Small models trained to answer typed questions (yes/no, pick one of these options, score 1 to 5) instead of writing prose. They are fast, cheap and predictable, which makes them good for routing, guardrails and checks. Jev is the hosted one you use through jev-gateway; Clef (Cloudflare's open release, same API as Jev), Laya and the Jev-Style models are ones you can run here." },
 });
 
 const PY = "~/.nvme-stash/venvs";
@@ -143,6 +143,8 @@ Object.assign(window.TYPES, {
     why: "The offline counterpart to jev-gateway: classify a ticket, check a rubric, or verify a claim without a network call.",
     try: (i, c) => /laya/i.test(i.name)
       ? `# one-time, in a fresh venv: pip install laya-mlx (save the wheel to the drive for offline use)\npython - <<'PY'\nimport laya_mlx as laya\nagent = laya.load(${JSON.stringify(c.abs(i))})\nprint(agent.predict("The purchase event fired twice on the thank-you page.", {\n  "is_bug": {"type": "noul", "instructions": "Is this a tracking bug?"},\n  "area": {"type": "choice", "instructions": "Which area?", "criteria": ["tagging", "consent", "reporting"]},\n})["answers"])\nPY\n# limit: 512 tokens for text plus questions`
+      : /clef/i.test(i.name)
+      ? `# Clef (Cloudflare): typed questions in, a probability for every option out. Not a chat model.\n${PY}/clef/bin/python - <<'PY'\nimport sys; sys.path.insert(0, ${JSON.stringify(c.abs(i))})\nimport clef_mlx\nmodel = clef_mlx.load(${JSON.stringify(c.abs(i))})\nr = model.systemone({\n  "model": "${/flash/i.test(i.name) ? "clef-flash" : "clef"}",\n  "state": "The purchase event fired twice on the thank-you page after the consent banner update.",\n  "questions": {\n    "is_bug": {"type": "noul", "instructions": "Is this a tracking bug?"},\n    "area": {"type": "choice", "instructions": "Which area?", "criteria": {"tagging": "Tags and triggers", "consent": "Consent mode / CMP", "reporting": "Reports and dashboards"}},\n    "urgency": {"type": "score", "criteria": ["Can wait", "This week", "Today"]},\n  },\n})\nprint(r["answers"])\nPY\n# Same request body as Jev / SystemOne. Offline install: see ${c.abs({ path: "wheels/clef" })}/README.md`
       : /jev-style/i.test(i.name)
       ? `# The repo ships its own runtime. Start with its help:\ncd ${c.abs(i)}\ncat requirements.txt   # needs mlx-lm 0.31.3, so give it its own venv\npython jev_style_decision_mlx.py --help\n# pick the 8-bit build with --model-dir 8bit (2.0 GB in memory)`
       : `open ${c.abs(i)}/README.md` },
