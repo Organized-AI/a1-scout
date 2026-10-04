@@ -49,7 +49,7 @@
     if (!i.path.startsWith("models")) return i.type;
     if (/sae|gemma-scope/.test(n)) return "sae";
     if (i.path.startsWith("models/hf") && /^(gpt2|pythia-|gemma-2-2b$|qwen3-0\.6b$)/.test(n)) return "interp-model";
-    if (/laya|jev|decision|clef/.test(n)) return "decision";
+    if (/laya|jev|decision|clef|(^|[-_])kev([-_.]|$)/.test(n)) return "decision";
     if (/mitra|tabpfn/.test(n)) return "tabular";
     if (/chronos|timesfm|moirai|time-?series/.test(n)) return "forecaster";
     if (/router/.test(n)) return "router";
