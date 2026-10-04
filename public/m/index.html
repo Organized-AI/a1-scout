@@ -113,7 +113,7 @@ let A = null, state = null, bench = null, timer = null, prev = {}, ringTween = n
 
 async function call(p, opts = {}) {
   const r = await fetch(p, { ...opts, credentials: "same-origin", headers: { ...(token ? { authorization: "Bearer " + token } : {}), "content-type": "application/json" } });
-  if (r.status === 401) throw Object.assign(new Error("Sign in on the full dashboard first, then come back."), { auth: true });
+  if (r.status === 401) throw Object.assign(new Error("Not signed in."), { auth: true });
   return r.json();
 }
 
@@ -256,7 +256,13 @@ async function refresh(first) {
     $("#updated").classList.remove("stale");
   } catch (e) {
     $("#updated").textContent = e.auth ? "not signed in" : "offline · retrying"; $("#updated").classList.add("stale");
-    if (e.auth && !A) $("#app").innerHTML = `<section class="card"><h2>Sign in</h2><p class="empty">${esc(e.message)}</p><div class="actions"><a class="btn primary" href="/">Open the dashboard</a></div></section>`;
+    if (e.auth && !A) {
+      // A home-screen app keeps its own storage on iPhone, so it asks for the token once, here.
+      $("#app").innerHTML = `<section class="card"><h2>Sign in</h2><p class="empty">Paste the scout token from <code>~/.nvme-stash/scout.env</code>. It stays on this phone.</p>
+        <input id="tok" type="password" autocomplete="off" placeholder="SCOUT_TOKEN" style="width:100%;margin:12px 0;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:15px 'IBM Plex Mono',monospace">
+        <div class="actions"><button class="btn primary" id="savetok">Open</button></div></section>`;
+      $("#savetok").onclick = () => { token = $("#tok").value.trim(); try { localStorage.setItem("a1-scout-token", token); } catch {} refresh(true); };
+    }
   }
   const busy = A?.presence?.busy || A?.activity?.state === "running" || A?.run_request?.state === "pending" || A?.drive_request?.state === "pending";
   schedule(busy ? 8000 : 30000);
