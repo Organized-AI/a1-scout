@@ -128,6 +128,37 @@ def save_state(s):
     STATE.write_text(json.dumps(s, indent=2))
 
 
+def a1_attached():
+    """Connected but not mounted (ejected from the dashboard): diskutil still finds the volume by its UUID."""
+    out = sh(["diskutil", "info", ENV["A1_UUID"]]).stdout
+    return bool(re.search(r"Mounted:\s+No\b", out))
+
+
+def drive_request(dr, present, busy):
+    """Eject or mount the A1 for the dashboard. Eject is an unmount: the drive stays connected so it can be mounted again."""
+    action = dr.get("action")
+    ack = lambda state, note=None: api("/api/drive-request/ack", "POST", {"state": state, "note": note})
+    if action == "eject":
+        if not present:
+            return ack("absent", "A1 wasn't mounted")
+        if busy:
+            return ack("busy", "a run is going")
+        r = sh(["diskutil", "unmount", str(MOUNT)], timeout=60)
+        ok = r.returncode == 0 and not a1_present()
+        log(f"eject requested from the dashboard: {'unmounted' if ok else 'failed ' + (r.stderr or r.stdout or '')[-200:]}")
+        return ack("done" if ok else "failed", None if ok else (r.stderr or r.stdout or "")[-200:].strip())
+    if action == "mount":
+        if present:
+            return ack("done", "already mounted")
+        if not a1_attached():
+            return ack("absent", "A1 not connected")
+        r = sh(["diskutil", "mount", ENV["A1_UUID"]], timeout=60)
+        ok = r.returncode == 0 and a1_present()
+        log(f"mount requested from the dashboard: {'mounted' if ok else 'failed ' + (r.stderr or r.stdout or '')[-200:]}")
+        return ack("done" if ok else "failed", None if ok else (r.stderr or r.stdout or "")[-200:].strip())
+    return ack("failed", f"unknown action {action!r}")
+
+
 def a1_present():
     """True only for the real A1: mounted at the expected path with the expected volume UUID."""
     if not MOUNT.is_dir():
@@ -1438,10 +1469,15 @@ def main():
                     st["bar_check_failed"] = bar_check["failed"]; save_state(st)
             except Exception as e:
                 bar_check = {"ok": None, "failed": [], "error": f"{type(e).__name__}: {e}"[:200]}
-        resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
+        attached = present or a1_attached()
+        resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "attached": attached, "busy": busy, "logrun": logrun,
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
                                              "needs_license": sorted(needs_license()), "bar_check": bar_check,
                                              "licenses": licenses(), "hf_user": hf_user()})
+        dr = (resp or {}).get("drive_request")
+        if dr and dr.get("state") == "pending":
+            drive_request(dr, present, busy)
+            present = a1_present()
         rr = (resp or {}).get("run_request")
         if rr and rr.get("state") == "pending":
             # "Run now" from the dashboard: same run a plug-in starts, via the mount LaunchAgent, minus the 10-minute debounce.

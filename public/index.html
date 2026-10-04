@@ -129,6 +129,14 @@ button.chip:hover{border-color:var(--accent)}
   .a1-run-btn[disabled] .a1-run-ic { background: transparent; border: 2px solid rgba(0,0,0,.25); }
   .a1-run-btn[disabled] .a1-run-ic i { width: 14px; height: 14px; border: 2px solid transparent; border-top-color: var(--on-brand); border-radius: 50%; margin: 0; }
   .a1-cta-note { color: var(--mute); font-size: 12.5px; max-width: 52ch; }
+  .a1-drive-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; cursor: pointer;
+    background: var(--chip); color: var(--ink); font: 600 13px "IBM Plex Mono", monospace; transition: border-color .15s, background .15s; }
+  .a1-drive-btn:hover:not([disabled]) { border-color: var(--brand); }
+  .a1-drive-btn.primary { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+  .a1-drive-btn[disabled] { opacity: .65; cursor: default; }
+  .a1-drive-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .a1-drive-ic { font-size: 14px; line-height: 1; }
+  .a1bar[data-state="ejected"] .a1-dot { background: var(--warn); }
   .a1-cta-note.err { color: var(--bad); }
   .a1-run { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
   .a1-big b { display: block; font: 600 34px/1 "IBM Plex Mono", monospace; }
@@ -274,7 +282,7 @@ const dur = s => s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${
 async function pollActivity() {
   try { a1act = await call("/api/activity"); paintBar(true); } catch {}
   clearTimeout(actTimer);
-  const busy = a1act?.activity?.state === "running" || a1act?.presence?.busy || ["pending", "started"].includes(a1act?.run_request?.state);
+  const busy = a1act?.activity?.state === "running" || a1act?.presence?.busy || ["pending", "started"].includes(a1act?.run_request?.state) || a1act?.drive_request?.state === "pending";
   if (!document.hidden) actTimer = setTimeout(pollActivity, busy ? 10000 : 45000);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && token) pollActivity(); });
@@ -287,6 +295,7 @@ function barState() {
   if (running && plugged) return { key: "busy", plugged, running, label: "Plugged in · run in progress" };
   if (running) return { key: "warn", plugged, running, label: "Unplugged mid-run", sub: "Anything unfinished resumes on the next plug-in" };
   if (plugged) return { key: "ok", plugged, running, label: "Plugged in", sub: "Idle · safe to eject" };
+  if (fresh && p.attached) return { key: "ejected", plugged, running, label: "Ejected", sub: "Still connected to the Mac · safe to unplug, or mount it again" };
   return { key: "off", plugged, running, label: "Unplugged", sub: p.at ? `Last seen ${ago(p.at)}` : "Waiting for the first heartbeat from the Mac" };
 }
 // One shape for the run, whether it comes from the agent's live posts or the heartbeat's reading of the log.
@@ -431,7 +440,25 @@ function paintBar(animate) {
           : bounced ? esc(rr.state === "busy" ? "A run was already going on the Mac." : rr.state === "absent" ? "The Mac couldn't see the A1. Check it's plugged in." : `The Mac couldn't start it${rr.note ? `: ${rr.note}` : "."}`)
           : "Downloads the approved picks now, the same run a re-plug starts. No unplugging needed."}</span>
       </div>` : "";
-    body = `${cta}${a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
+    // Eject / Mount: same round trip as Run now (the Mac's heartbeat carries it out within a minute)
+    const dr = a1act.drive_request, drT = dr ? Date.parse(dr.acked_at || dr.at) : 0;
+    const drPending = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
+    const drBounced = dr && ["busy", "absent", "failed"].includes(dr.state) && Date.now() - drT < 10 * 60e3;
+    const drDone = dr?.state === "done" && Date.now() - drT < 3 * 60e3;
+    const driveAct = st.key === "ok" ? "eject" : st.key === "ejected" ? "mount" : null;
+    const drive = driveAct || drPending ? `
+      <div class="a1-cta a1-drive">
+        <button type="button" class="a1-drive-btn ${driveAct === "mount" ? "primary" : ""}" data-drive="${drPending ? dr.action : driveAct}"${drPending ? " disabled" : ""}>
+          <span class="a1-drive-ic" aria-hidden="true">${(drPending ? dr.action : driveAct) === "eject" ? "⏏" : "⤒"}</span>
+          ${drPending ? (dr.action === "eject" ? "Ejecting…" : "Mounting…") : driveAct === "eject" ? "Eject A1" : "Mount A1"}
+        </button>
+        <span class="a1-cta-note" data-drivenote>${drPending ? `Sent ${esc(ago(dr.at))}. The Mac checks in every minute.`
+          : drBounced ? esc(dr.state === "busy" ? "A run is going; eject when it's idle." : dr.state === "absent" ? (dr.action === "mount" ? "The A1 isn't connected to the Mac." : "The A1 wasn't mounted.") : `The Mac couldn't ${dr.action} it${dr.note ? `: ${dr.note}` : "."}`)
+          : drDone && dr.action === "mount" ? "Mounted. A run starts on its own, as if you'd plugged it in (unless one finished in the last 10 minutes)."
+          : driveAct === "eject" ? "Unmounts the A1 so it's safe to unplug. It stays connected, so you can mount it again from here."
+          : driveAct === "mount" ? "Mounts the A1 again without touching the cable. Counts as a plug-in, so a run starts." : ""}</span>
+      </div>` : "";
+    body = `${cta}${drive}${a.finished_at ? `<div class="a1-last">Last run finished ${esc(clock(a.finished_at))}${a.summary ? ` · ${esc(a.summary)}` : ""}</div>` : ""}
       ${upNext.filter(q => q.when !== "needs license").length ? `<div class="a1-lists"><div><span class="a1-lbl">${st.key === "ok" ? "Next run" : "Next plug-in"}</span>${upNext.filter(q => q.when === "next plug-in").slice(0, 5).map(q => `<span class="a1-chip" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}
         ${upNext.some(q => q.when === "later") ? `<span class="a1-more">+${upNext.filter(q => q.when === "later").length} later</span>` : ""}
         <span class="a1-more">${gb(upNext.filter(q => q.when === "next plug-in").reduce((t, q) => t + (q.bytes || 0), 0))} total</span></div></div>` : ""}
@@ -453,6 +480,20 @@ function paintBar(animate) {
     } catch (e) {
       rb.disabled = false;
       const n = el.querySelector("[data-runnote]"); if (n) { n.textContent = e.message; n.classList.add("err"); if (!RM()) gsap.fromTo(n, { x: -6 }, { x: 0, duration: .4, ease: "elastic.out(1, .4)" }); }
+    }
+  };
+  const db = el.querySelector("[data-drive]");
+  if (db && !db.disabled) db.onclick = async () => {
+    db.disabled = true;
+    if (!RM()) gsap.to(db, { scale: .96, duration: .1, yoyo: true, repeat: 1 });
+    try {
+      const r = await call("/api/drive-request", { method: "POST", body: JSON.stringify({ action: db.dataset.drive }) });
+      if (!r.ok) throw new Error(r.error || "Couldn't send the request.");
+      a1act.drive_request = r.drive_request; paintBar(false);
+      clearTimeout(actTimer); actTimer = setTimeout(pollActivity, 10000);
+    } catch (e) {
+      db.disabled = false;
+      const n = el.querySelector("[data-drivenote]"); if (n) { n.textContent = e.message; n.classList.add("err"); if (!RM()) gsap.fromTo(n, { x: -6 }, { x: 0, duration: .4, ease: "elastic.out(1, .4)" }); }
     }
   };
   wireLicensePanel(el);

@@ -739,6 +739,29 @@ async function api(req, env, url) {
     await kvSet(env, "license_check", { ...(lc || {}), state: "done", results: results || {}, started: !!started, acked_at: now() });
     return json({ ok: true });
   }
+  // Eject / mount from the dashboard. Eject unmounts the volume but leaves the drive connected, so "Mount" can bring it
+  // back without touching the cable. Like Run now, the Mac's heartbeat picks the request up within a minute.
+  if (p === "/api/drive-request" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const action = ["eject", "mount"].includes(body.action) ? body.action : null;
+    if (!action) return json({ ok: false, error: "action must be eject or mount" }, 400);
+    const presence = await kvGet(env, "presence");
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    if (!fresh) return json({ ok: false, error: "The Mac hasn't checked in for a few minutes. Is it awake?" }, 409);
+    if (action === "eject" && !presence.present) return json({ ok: false, error: "The A1 isn't mounted." }, 409);
+    if (action === "eject" && presence.busy) return json({ ok: false, error: "A run is going. Eject when it's idle." }, 409);
+    if (action === "mount" && presence.present) return json({ ok: false, error: "The A1 is already mounted." }, 409);
+    if (action === "mount" && !presence.attached) return json({ ok: false, error: "The A1 isn't connected to the Mac. Plug it in." }, 409);
+    const dr = { action, state: "pending", at: now() };
+    await kvSet(env, "drive_request", dr);
+    return json({ ok: true, drive_request: dr });
+  }
+  if (p === "/api/drive-request/ack" && req.method === "POST") {
+    const { state, note } = await req.json();
+    const dr = await kvGet(env, "drive_request");
+    if (dr) await kvSet(env, "drive_request", { ...dr, state: ["done", "busy", "absent", "failed"].includes(state) ? state : "failed", note: note || null, acked_at: now() });
+    return json({ ok: true });
+  }
   if (p === "/api/run-request/ack" && req.method === "POST") {
     const { state, note } = await req.json();
     const rr = await kvGet(env, "run_request");
@@ -757,7 +780,9 @@ async function api(req, env, url) {
         const lcLive = lc?.state === "pending" && Date.now() - Date.parse(lc.at) < 15 * 60e3;
         const ld = (await kvGet(env, "license_decisions")) || {};
         const pendingLd = Object.fromEntries(Object.entries(ld).filter(([, d]) => d.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3));
-        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd });
+        const dr = await kvGet(env, "drive_request");
+        const drLive = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
@@ -779,7 +804,8 @@ async function api(req, env, url) {
       if (fits) spent += size;
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
     });
-    return json({ activity, presence, next, run_request, license_check, license_decisions: license_decisions || {}, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
+    const drive_request = await kvGet(env, "drive_request");
+    return json({ activity, presence, next, run_request, drive_request, license_check, license_decisions: license_decisions || {}, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
   }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {
