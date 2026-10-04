@@ -86,6 +86,22 @@
         { id: "bad", name: "Prompt-injection attempt", input: "Request hiding \"ignore your instructions\"", prompt: 300, gen: 0, questions: 1, budget: 3,
           expect: "Guard flags it before routing.", risk: "With no guard in the stack this passes straight through." }],
       words: /rout|guard|safety|select|decision/i },
+    loop: { title: "GTM autoresearch loop", tag: "Autoresearch", icon: "↻✓",
+      blurb: "The gtm-autoresearch loop with local parts: a model proposes container edits, a decision model gates each one before it is kept, a privacy filter checks payloads, and a forecaster watches for drift. Claude can stay the proposer; every check here runs on the Mac.",
+      slots: [{ id: "gate", label: "Change gate", kinds: ["decision"] }, { id: "mut", label: "Local proposer", kinds: ["llm-code", "llm"], optional: true },
+              { id: "pii", label: "Privacy filter", kinds: ["pii"], optional: true }, { id: "drift", label: "Drift check", kinds: ["forecaster"], optional: true }],
+      scenarios: [
+        { id: "gate", name: "Gate one proposed change", input: "A container diff plus 4 typed questions (fires? loses or double counts? risk? area?)", questions: 4, budget: 3,
+          expect: "Keep or revert with a probability; anything over 0.3 on \"breaks a conversion\" is reverted even if the score went up.", risk: "Thresholds come from your ledger: replay kept vs reverted rounds before trusting a cut-off." },
+        { id: "round", name: "One round: 3 candidates, gated", input: "Prompt of 6k tokens, 3 candidate edits of ~1.2k tokens each, 4 questions per candidate", prompt: 6000, gen: 3600, questions: 12, budget: 240,
+          expect: "Three candidates proposed locally, the bad ones dropped before scoring and Playwright.", risk: "Small local proposers write invalid container JSON more often; keep the JSON check and its retry budget." },
+        { id: "night", name: "Overnight, zero egress", input: "30 rounds × 3 candidates on the laptop, no cloud calls", prompt: 180000, gen: 108000, questions: 360, piiKB: 60, budget: 6 * 3600,
+          expect: "A winning workspace and a full ledger by morning for a client whose data can't leave the machine.", risk: "Overnight on a 16 GB Mac means one model loaded at a time; the gate and proposer swap in and out." },
+        { id: "pii", name: "Is there personal data in this push?", input: "A 2 KB dataLayer push and its URL parameters", piiKB: 2, questions: 1, budget: 1,
+          expect: "Email, phone and name spans flagged before the event leaves the page or the server container.", risk: "Hashed values look random to the filter; check hashing separately." },
+        { id: "drift", name: "Did purchases drop after the change?", input: "180 days of daily purchases, forecast the last 14", series: 180, horizon: 14, questions: 1, budget: 10,
+          expect: "Days that fall under the forecast's low band are flagged for a tag check.", risk: "Sales and holidays look like drops; give it a full year when you have it." }],
+      words: /autoresearch|evolution|optimi|privacy|pii|forecast|decision|calibrat/i },
     inside: { title: "Look inside a model", tag: "Interpretability", icon: "◉→",
       blurb: "Run a full-precision model with its activations cached, then read them with the logit lens or a sparse autoencoder.",
       slots: [{ id: "mdl", label: "Model to inspect", kinds: ["interp-model"] }, { id: "sae", label: "Sparse autoencoder", kinds: ["sae"], optional: true }],
@@ -115,9 +131,9 @@
   const tps = (i, mid) => Math.min(150, 0.6 * BW[mid].gbs * 1e9 / Math.max(i.bytes, 1e8));
   // Measured beats estimated: A1 Bench numbers for this model (speed and load on this Mac, memory from any Mac).
   const measured = (i, mid) => (window.BenchView && i?.path ? window.BenchView.measured(i.path, mid) : null);
-  const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4" };
+  const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4", loop: "gtm-gate" };
   // the part whose quality the suite measures; checked first, then any other part with a run
-  const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm" };
+  const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm", loop: "gate" };
   // The model the bench picked for this job on this Mac (it searched every model that fits), for that template's main slot.
   const benchPick = (tplId, slotId, mid) => (SUITE_SLOT[tplId] === slotId && window.BenchView?.best?.(SUITE_FOR[tplId], mid)?.model_path) || null;
 
@@ -128,7 +144,14 @@
       case "reranker": return { s: (sc.cands || 20) * 0.035 * scale, what: `rerank ${sc.cands || 20} candidates` };
       case "asr": return sc.audioIn ? { s: sc.audioIn * (0.04 + 0.025 * i.bytes / 1e9), what: `transcribe ${secs(sc.audioIn)} of audio` } : { s: 0, what: "skipped (no audio in)" };
       case "tts": return sc.audioOut ? { s: sc.audioOut * (0.25 + 0.1 * i.bytes / 1e9), what: `speak ${secs(sc.audioOut)}` } : { s: 0, what: "skipped (no audio out)" };
-      case "decision": case "guard": return { s: (sc.questions || 1) * 0.18 * Math.max(1, i.bytes / 1e9), what: `${sc.questions || 1} typed question(s)` };
+      case "decision": case "guard": {
+        // a gtm-gate bench run measures one change with 4 questions; scale its median to this scenario
+        const lat = i.kind === "decision" ? measured(i, mid)?.ttft_ms : null;
+        return lat ? { s: (sc.questions || 1) / 4 * lat / 1000, what: `${sc.questions || 1} typed question(s), measured`, measured: true }
+                   : { s: (sc.questions || 1) * 0.18 * Math.max(1, i.bytes / 1e9), what: `${sc.questions || 1} typed question(s)` };
+      }
+      case "pii": return sc.piiKB ? { s: sc.piiKB * 0.02 * Math.max(1, i.bytes / 1e9), what: `scan ${sc.piiKB} KB for personal data` } : { s: 0, what: "skipped (nothing to scan)" };
+      case "forecaster": return sc.series ? { s: 0.4 + i.bytes / 1e9, what: `forecast ${sc.horizon} days from ${sc.series}` } : { s: 0, what: "skipped (no series)" };
       case "dataset-analytics": return { s: 0.25, what: "DuckDB over Parquet" };
       case "sae": return { s: (sc.passes || 1) * 0.3, what: "encode activations" };
       case "interp-model": return { s: (sc.passes || 1) * (0.4 + i.bytes / 1e9), what: `${sc.passes || 1} forward pass(es) with cache, CPU` };
@@ -159,7 +182,7 @@
     const total = stages.reduce((t, s) => t + s.s, 0), firstLoad = stages.reduce((t, s) => t + s.load, 0);
     const wheels = all.filter(i => i.cat === "wheels").map(i => i.name);
     const code = all.filter(i => i.cat === "code").map(i => i.name.toLowerCase());
-    const offline = { MLX: wheels.includes("macos-arm64"), PyTorch: wheels.includes("interp"), "llama.cpp": code.some(n => n.includes("llama.cpp")), DuckDB: true };
+    const offline = { MLX: wheels.includes("macos-arm64"), PyTorch: wheels.includes("interp") || wheels.includes("kev"), "llama.cpp": code.some(n => n.includes("llama.cpp")), DuckDB: true };
     const lic = filled.map(c => ({ name: c.item.name, lic: c.item.meta?.license || null, ok: PERMISSIVE.test(c.item.meta?.license || "") }));
     const missing = comps.filter(c => !c.item && !c.slot.optional);
     const suite = SUITE_FOR[st.tpl];
@@ -225,7 +248,7 @@
     { id: "tight", icon: "▦", name: "Tight fit", how: "Use over half of a Mac's usable memory and still fit.", xp: 50, test: e => e.peak > e.budget * .5 && e.peak <= e.budget },
     { id: "shop", icon: "⌘", name: "Hardware shopper", how: "Run the same stack on three different Macs.", xp: 40, test: (e, g, s) => (g.macs[stackKey(s)] || []).length >= 3 },
     { id: "trio", icon: "★", name: "Hat trick", how: "All green on three different stacks.", xp: 100, test: (e, g) => g.green.length >= 3 },
-    { id: "all7", icon: "◎", name: "Collector", how: "Run all seven stacks.", xp: 80, test: (e, g) => g.tried.length >= Object.keys(T).length },
+    { id: "all7", icon: "◎", name: "Collector", how: `Run all ${Object.keys(T).length} stacks.`, xp: 80, test: (e, g) => g.tried.length >= Object.keys(T).length },
     { id: "sgrade", icon: "S", name: "S rank", how: "Score 90 or more on any stack.", xp: 120, test: e => grade(e).pts >= 90 },
   ];
   function award(e) {

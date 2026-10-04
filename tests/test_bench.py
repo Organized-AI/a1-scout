@@ -26,7 +26,23 @@ def ideal(t):
     if t["type"] == "click_in_box":
         x0, y0, x1, y1 = t["box"]
         return f"click({(x0 + x1) // 2}, {(y0 + y1) // 2})"
+    if t["type"] == "decision":
+        return json.dumps(perfect_answers(t))
     return None
+
+
+def perfect_answers(t, p=1.0):
+    """/v1/systemone answers putting probability p on every gold answer (the rest spread over the other options)."""
+    out = {}
+    for qid, q in t["questions"].items():
+        g = t["gold"][qid]
+        if q["type"] == "noul":
+            out[qid] = {"type": "noul", "noul": p if g else 1 - p}
+        else:
+            opts = [str(i) for i in range(len(q["criteria"]))] if q["type"] == "score" else list(q["criteria"])
+            rest = (1 - p) / max(1, len(opts) - 1)
+            out[qid] = {"type": q["type"], "probabilities": {o: (p if o == str(g) else rest) for o in opts}}
+    return out
 
 
 class Banks(unittest.TestCase):
@@ -461,3 +477,67 @@ class Agent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DecisionBench(unittest.TestCase):
+    """gtm-gate: typed questions to decision models, scored on the probability put on the gold answers."""
+
+    def test_bank_shape(self):
+        for t in B.load_bank("gtm-gate"):
+            self.assertEqual(t["type"], "decision")
+            self.assertEqual(set(t["questions"]), set(t["gold"]), t["id"])
+            for qid, q in t["questions"].items():
+                g = t["gold"][qid]
+                if q["type"] == "noul":
+                    self.assertIsInstance(g, bool)
+                elif q["type"] == "score":
+                    self.assertIn(g, range(len(q["criteria"])))
+                else:
+                    self.assertIn(g, q["criteria"])
+        golds = [t["gold"]["weakens"] for t in B.load_bank("gtm-gate")]
+        self.assertTrue(4 <= sum(golds) <= len(golds) - 4, "the bank needs both safe and breaking changes")
+
+    def test_score_rewards_confident_right_answers(self):
+        t = B.load_bank("gtm-gate")[0]
+        sure, unsure = B.score(t, json.dumps(perfect_answers(t, 0.95))), B.score(t, json.dumps(perfect_answers(t, 0.6)))
+        self.assertTrue(sure[0] and unsure[0])
+        self.assertGreater(sure[1], unsure[1])
+        wrong = B.score(t, json.dumps(perfect_answers(t, 0.1)))
+        self.assertFalse(wrong[0])
+        self.assertIn("wrong:", wrong[2])
+        self.assertLess(wrong[1], 0.2)
+
+    def test_score_accepts_list_probabilities_and_rejects_junk(self):
+        t = B.load_bank("gtm-gate")[0]
+        a = perfect_answers(t, 0.9)
+        a["risk"]["probabilities"] = [a["risk"]["probabilities"][str(i)] for i in range(3)]
+        self.assertTrue(B.score(t, json.dumps(a))[0])
+        self.assertEqual(B.score(t, "not json")[:2], (False, 0.0))
+        self.assertFalse(B.score(t, json.dumps({"fires": "yes"}))[0])
+
+    def test_runner_tasks_carry_state_and_questions(self):
+        t = B.load_bank("gtm-gate")[0]
+        rt = B.runner_tasks([t], Path(tempfile.mkdtemp()))[0]
+        self.assertEqual(rt["state"], t["state"])
+        self.assertEqual(rt["questions"], t["questions"])
+
+    def test_families_and_discovery(self):
+        tmp = Path(tempfile.mkdtemp()); stash = tmp / "A1/stash"
+        def mk(rel, files):
+            d = stash / rel; d.mkdir(parents=True)
+            for f, body in files.items():
+                (d / f).write_bytes(body if isinstance(body, bytes) else body.encode())
+            return d
+        clef = mk("models/mlx/clef-flash-4bit", {"clef_mlx.py": "", "joint_head.safetensors": b"\0" * 100, "config.json": "{}"})
+        kev = mk("models/hf/kev-0.8b", {"head.pt": b"\0" * 10, "adapter_config.json": json.dumps({"base_model_name_or_path": "Qwen/Qwen3.5-0.8B-Base"})})
+        orphan = mk("models/hf/kev-9b", {"head.pt": b"\0" * 10, "adapter_config.json": json.dumps({"base_model_name_or_path": "Qwen/Qwen3.5-9B-Base"})})
+        merged = mk("models/mlx/kev-4b-mlx-8bit", {"head.pt": b"\0" * 10, "config.json": "{}", "model.safetensors": b"\0" * 50})
+        mk("models/hf/Qwen3.5-0.8B-Base", {"config.json": "{}", "model.safetensors": b"\0" * 20})
+        mk("models/mlx/Qwen3-0.6B-4bit", {"config.json": "{}", "model.safetensors": b"\0" * 20})
+        self.assertEqual([B.decision_family(d) for d in (clef, kev, merged)], ["clef", "kev", "kev-mlx"])
+        self.assertIsNone(B.decision_family(stash / "models/mlx/Qwen3-0.6B-4bit"))
+        with mock.patch.object(A, "STASH", stash):
+            found = [p.name for p in B.discover_models(A, "gtm-gate", 64 * 2 ** 30)]
+        self.assertEqual(set(found), {"clef-flash-4bit", "kev-0.8b", "kev-4b-mlx-8bit"})   # kev-9b has no base on the drive
+        self.assertNotIn(orphan.name, found)
+        self.assertEqual(B.model_kind(kev, "gtm-gate"), "kev")

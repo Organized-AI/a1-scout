@@ -26,7 +26,7 @@
   // Jobs, in the order a newcomer meets them.
   const ROLES = [
     { id: "talk", label: "Talk and write", blurb: "Language models. Chat, draft, summarize, write code, call tools.", types: ["llm", "llm-code", "tool-llm"] },
-    { id: "decide", label: "Decide and guard", blurb: "Small models that answer typed questions with calibrated confidence, pick a route, or flag risk. Your Jev primitives, offline.", types: ["decision", "router", "guard"] },
+    { id: "decide", label: "Decide and guard", blurb: "Small models that answer typed questions with calibrated confidence, pick a route, or flag risk. Your Jev primitives, offline.", types: ["decision", "router", "guard", "pii"] },
     { id: "predict", label: "Predict numbers", blurb: "Forecast a time series (prices, load, traffic) or predict a column in a table.", types: ["forecaster", "tabular"] },
     { id: "inside", label: "Look inside models", blurb: "Full-precision models and sparse autoencoders for interpretability: read activations, patch them, explain what drove an output.", types: ["interp-model", "sae"] },
     { id: "find", label: "Find and match", blurb: "Embeddings and rerankers: search by meaning, pick the right skill or document.", types: ["embedding", "reranker"] },
@@ -49,6 +49,7 @@
     if (!i.path.startsWith("models")) return i.type;
     if (/sae|gemma-scope/.test(n)) return "sae";
     if (i.path.startsWith("models/hf") && /^(gpt2|pythia-|gemma-2-2b$|qwen3-0\.6b$)/.test(n)) return "interp-model";
+    if (/privacy-filter|gliner-pii|(^|[-_])pii([-_.]|$)/.test(n)) return "pii";
     if (/laya|jev|decision|clef|(^|[-_])kev([-_.]|$)/.test(n)) return "decision";
     if (/mitra|tabpfn/.test(n)) return "tabular";
     if (/chronos|timesfm|moirai|time-?series/.test(n)) return "forecaster";

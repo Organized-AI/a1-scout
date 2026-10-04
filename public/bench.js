@@ -16,7 +16,10 @@
     "rag-notes": { label: "Notes Q&A", blurb: "Answer from a handful of tracking notes, including when the notes don't say." },
     "asr": { label: "Speech to text", blurb: "Synthetic speech from macOS say. Passes under 15% word error rate." },
     "screen": { label: "Screen clicks", blurb: "Where to click on a described page. Passes when the click lands in the box." },
+    "gtm-gate": { label: "GTM change gate", speed: "q/s", first: "Per change",
+      blurb: "Decision models review proposed GTM changes: does the tag still fire, is a conversion lost or double counted, how risky is it. Passes when every answer is right; the score is the probability put on the right answers, so calibration counts." },
   };
+  const unit = s => SUITES[s]?.speed || "tok/s", firstLabel = s => SUITES[s]?.first || "First token";
   // Lab machine ids; anything else shows as reported.
   const MACH = { m1: "M1 Pro 16GB", m4: "M4 16GB", m6: "M6 32GB", m5p: "M5 Pro 64GB" };
   const machLabel = id => MACH[id] || id;
@@ -63,7 +66,7 @@
       <span class="bn-crown" aria-hidden="true">★</span>
       <div><span class="bn-kick">Best for you · ${esc(machLabel(m))}</span>
         <h3>${esc(b.model)}</h3>
-        <p>${b.score != null ? `Score ${Math.round(b.score * 100)}` : ""}${b.tok_s != null ? ` · ${Math.round(b.tok_s)} tok/s` : ""}${b.total ? ` · ${b.passed}/${b.total} tasks` : ""}. Picked for the ${esc(b.why || "best score")}.</p>
+        <p>${b.score != null ? `Score ${Math.round(b.score * 100)}` : ""}${b.tok_s != null ? ` · ${Math.round(b.tok_s)} ${unit(suite)}` : ""}${b.total ? ` · ${b.passed}/${b.total} tasks` : ""}. Picked for the ${esc(b.why || "best score")}.</p>
         <small>Searched ${b.considered ?? "?"} model${b.considered === 1 ? "" : "s"} that fit this Mac: ${b.ran ?? 0} run in full, ${b.reused ?? 0} reused from earlier runs${b.screened_out?.length ? `, ${b.screened_out.length} screened out early (${b.screened_out.map(x => esc(x.model)).join(", ")})` : ""}. ${new Date(b.at).toLocaleDateString()}</small></div>
     </article>`).join("")}</div>`;
   }
@@ -79,18 +82,18 @@
       Plug in the A1, then on the Mac: <code>python3 agent/agent.py bench ${esc(suite)}</code>. It tries every model on the A1 that fits that Mac and picks the best one for you (<code>bench all</code> does every suite).</div>`;
     return `${bestHtml()}<div class="bn-table" role="table" aria-label="${esc(SUITES[suite].label)} leaderboard">
       <div class="bn-tr bn-th" role="row"><span role="columnheader">#</span><span role="columnheader">Model</span><span role="columnheader">Score</span><span role="columnheader">Speed</span>
-        <span role="columnheader">First token</span><span role="columnheader">Peak memory</span><span role="columnheader">Load</span><span role="columnheader">Elo</span></div>
+        <span role="columnheader">${esc(firstLabel(suite))}</span><span role="columnheader">Peak memory</span><span role="columnheader">Load</span><span role="columnheader">Elo</span></div>
       ${rows.map((r, k) => `<div class="bn-tr" role="row" data-run="${r.id}">
         <span class="bn-rank" role="cell">${k + 1}</span>
         <span class="bn-model" role="cell"><b>${esc(r.model)}${best(suite, r.machine)?.model === r.model ? ' <em class="bn-pick">★ best</em>' : ""}</b><small>${esc(machLabel(r.machine))} · ${esc(r.runtime || "?")} · ${new Date(r.created).toLocaleDateString()}${r.error ? ` · <em class="bn-bad" title="${esc(r.error)}">error</em>` : ""}</small></span>
         <span class="bn-cell" role="cell" data-label="Score"><i class="bn-bar sc"><b style="width:${(r.score * 100).toFixed(1)}%"></b></i><em data-num="${(r.score * 100).toFixed(0)}">${(r.score * 100).toFixed(0)}</em><small>${r.passed}/${r.total} pass</small></span>
-        <span class="bn-cell" role="cell" data-label="Speed"><i class="bn-bar tp"><b style="width:${((r.tok_s || 0) / maxTps * 100).toFixed(1)}%"></b></i><em>${r.tok_s != null ? r.tok_s.toFixed(0) : "—"}</em><small>tok/s</small></span>
-        <span class="bn-cell" role="cell" data-label="First token"><em>${ms(r.ttft_ms)}</em></span>
+        <span class="bn-cell" role="cell" data-label="Speed"><i class="bn-bar tp"><b style="width:${((r.tok_s || 0) / maxTps * 100).toFixed(1)}%"></b></i><em>${r.tok_s != null ? r.tok_s.toFixed(r.tok_s < 10 ? 1 : 0) : "—"}</em><small>${unit(suite)}</small></span>
+        <span class="bn-cell" role="cell" data-label="${esc(firstLabel(suite))}"><em>${ms(r.ttft_ms)}</em></span>
         <span class="bn-cell" role="cell" data-label="Peak memory"><em>${gb(r.peak_rss)}</em></span>
         <span class="bn-cell" role="cell" data-label="Load"><em>${r.load_s != null ? r.load_s.toFixed(1) + " s" : "—"}</em></span>
         <span class="bn-cell" role="cell" data-label="Elo"><em>${r.elo ?? "—"}</em><small>${r.battles ? `${r.battles} battle${r.battles > 1 ? "s" : ""}` : "no battles"}</small></span>
       </div>`).join("")}</div>
-      <p class="bn-note">Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark.</p>`;
+      <p class="bn-note">${suite === "gtm-gate" ? "Latest run per model. Score is the mean probability on the right answers; speed is questions per second and the per-change time is the median for one change with all its questions. Peak memory is the runner process's high-water mark." : "Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark."}</p>`;
   }
 
   function battleHtml() {

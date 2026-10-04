@@ -438,7 +438,7 @@ const shapePick = r => ({ ...r, reasons: JSON.parse(r.reasons || "[]"), matched_
 // model; battles show two models' outputs on the same task, blind, and move an Elo per suite kept in Workers KV.
 // Pending battles and the vote log live in D1 so a vote is claimed atomically; KV's elo:<suite> is rebuilt from the
 // vote log on every vote, so a stale KV read can never lose an earlier vote.
-const BENCH_SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen"];
+const BENCH_SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate"];
 const ELO_START = 1000, ELO_K = 32, BATTLE_TTL = 3600;
 const RUN_COLS = "id, suite, machine, model, model_path, runtime, bank, ttft_ms, tok_s, peak_rss, load_s, passed, total, score, error, started, created";
 const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);

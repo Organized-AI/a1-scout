@@ -186,3 +186,12 @@ test("the agent's pick is stored per suite and Mac and comes back with the leade
   await call(env, "/api/bench/best", "POST", { ...pick, model: "Qwen3-1.7B-4bit" });       // a newer search replaces the pick
   assert.equal((await call(env, "/api/bench/leaderboard")).best["rag-notes"].m1.model, "Qwen3-1.7B-4bit");
 });
+
+test("gtm-gate runs are accepted like any other suite", async () => {
+  const env = mkEnv();
+  const ok = await call(env, "/api/bench/runs", "POST", run("clef-flash-4bit", { suite: "gtm-gate", runtime: "clef_mlx", tok_s: 8, ttft_ms: 500 }));
+  assert.equal(ok.ok, true);
+  const lb = await call(env, "/api/bench/leaderboard?suite=gtm-gate");
+  assert.equal(lb.rows[0].model, "clef-flash-4bit");
+  assert.ok(lb.suites.some(s => s.id === "gtm-gate"));
+});

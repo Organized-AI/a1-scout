@@ -22,9 +22,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BANKS = ROOT / "tests" / "bench"
 RUNNER = Path(__file__).resolve().parent / "bench_runner.py"
-SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen"]
-TYPES = {"exact", "sql_result", "json_schema", "click_in_box"}
-MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32}
+DECISION_RUNNER = Path(__file__).resolve().parent / "decision_runner.py"
+SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate"]
+DECISION_SUITES = {"gtm-gate"}           # typed questions to decision models (decision_runner.py), not chat prompts
+TYPES = {"exact", "sql_result", "json_schema", "click_in_box", "decision"}
+MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32, "decision": 0}
 # Chat models only: embedders, rerankers, routers, decision heads, OCR and speech models answer other questions.
 NOT_CHAT = re.compile(r"embed|rerank|router|guard|jev|laya|clef|docling|ocr|tts|kokoro|harness|whisper", re.I)
 
@@ -299,9 +301,53 @@ def score_click(task, output):
     return False, round(max(0.0, 0.5 * (1 - d / 200)), 4), f"{d:.0f}px outside"
 
 
+def _gold_prob(q, ans, gold):
+    """(top answer correct?, probability the model put on the gold answer) for one typed question."""
+    if q["type"] == "noul":
+        try:
+            p = float(ans.get("noul", ans.get("probability", 0.5)))
+        except (TypeError, ValueError):
+            return False, 0.0
+        return (p >= 0.5) == bool(gold), (p if gold else 1 - p)
+    probs = ans.get("probabilities") or {}
+    if isinstance(probs, list):
+        probs = {str(i): v for i, v in enumerate(probs)}
+    try:
+        probs = {str(k): float(v) for k, v in probs.items()}
+    except (TypeError, ValueError, AttributeError):
+        return False, 0.0
+    if not probs:
+        return False, 0.0
+    best = max(probs, key=probs.get)
+    return best == str(gold), probs.get(str(gold), 0.0)
+
+
+def score_decision(task, output):
+    """Every question's top answer must match the gold one to pass. The score is the mean probability put on the gold
+    answers, so a confident right answer beats a hesitant one and a confident wrong answer costs the most."""
+    try:
+        answers = json.loads(output) if isinstance(output, str) else output
+        answers = answers.get("answers", answers)
+    except (ValueError, AttributeError):
+        return False, 0.0, "answers were not JSON"
+    if not isinstance(answers, dict):
+        return False, 0.0, "answers were not an object"
+    wrong, probs = [], []
+    for qid, q in task["questions"].items():
+        a = answers.get(qid)
+        ok, p = _gold_prob(q, a if isinstance(a, dict) else {}, task["gold"][qid])
+        probs.append(p)
+        if not ok:
+            wrong.append(f"{qid} ({p:.2f} on the right answer)")
+    sc = round(sum(probs) / max(1, len(probs)), 4)
+    return not wrong, sc, ("wrong: " + ", ".join(wrong)) if wrong else None
+
+
 def score(task, output, db=None):
     """(pass, score 0..1, why) for one task."""
     t = task["type"]
+    if t == "decision":
+        return score_decision(task, output)
     if t == "exact":
         return score_exact(task, output)
     if t == "sql_result":
@@ -331,7 +377,31 @@ def machine_id(env=None, chip=None, mem=None):
     return re.sub(r"[^a-z0-9]+", "-", f"{name}-{gib}gb".lower()).strip("-")
 
 
+def decision_family(d: Path):
+    """clef / kev / kev-mlx for a decision model folder this bench can run, else None."""
+    d = Path(d)
+    if (d / "clef_mlx.py").exists() and (d / "joint_head.safetensors").exists():
+        return "clef"
+    if (d / "head.pt").exists():
+        if (d / "config.json").exists() and any(d.glob("model*.safetensors")):
+            return "kev-mlx"
+        if (d / "adapter_config.json").exists():
+            return "kev"
+    return None
+
+
+def kev_base(d: Path, stash: Path):
+    """The stash folder holding a Kev adapter's base model, or None (then it can't run offline)."""
+    try:
+        name = json.loads((Path(d) / "adapter_config.json").read_text()).get("base_model_name_or_path", "").split("/")[-1]
+    except Exception:
+        return None
+    return next((stash / r / name for r in ("models/hf", "models/mlx", "models") if name and (stash / r / name).is_dir()), None)
+
+
 def model_kind(d: Path, suite):
+    if suite in DECISION_SUITES:
+        return decision_family(d) or "clef"
     if suite == "asr":
         return "asr"
     try:
@@ -345,6 +415,21 @@ def discover_models(A, suite, ram_bytes, limit=None):
     """Every MLX model on the A1 that suits the suite and fits in 75% of this Mac's memory, smallest first."""
     roots = [A.STASH / "models" / "mlx", A.STASH / "models"]
     found = []
+    if suite in DECISION_SUITES:
+        for root in [A.STASH / "models" / "mlx", A.STASH / "models" / "hf"]:
+            if not root.is_dir():
+                continue
+            for d in sorted(root.iterdir()):
+                if not d.is_dir() or d.name.startswith(".") or not A.inside_stash(d):
+                    continue
+                fam = decision_family(d)
+                base = kev_base(d, A.STASH) if fam == "kev" else None
+                if not fam or (fam == "kev" and not base):
+                    continue
+                size = A.walk_size(d)[0] + (2 * A.walk_size(base)[0] if base else 0)   # an adapter is merged into a copy of its base
+                if size * 1.2 <= ram_bytes * 0.75:
+                    found.append((size, Path(os.path.realpath(d))))
+        return [d for _, d in sorted(found)][:limit]
     for root in roots:
         if not root.is_dir():
             continue
@@ -394,6 +479,8 @@ def runner_tasks(tasks, cache: Path):
         rt = {"id": t["id"], "prompt": t["prompt"], "max_tokens": MAX_TOKENS[t["type"]]}
         if t.get("audio_text"):
             rt["audio"] = str(speak(t["audio_text"], cache / "audio"))
+        if t["type"] == "decision":
+            rt.update(state=t["state"], questions=t["questions"])
         out.append(rt)
     return out
 
@@ -671,7 +758,12 @@ def main(argv, A, runner_cmd=None, ram_bytes=None):
     def asr_cmd(model: Path):
         mlx_whisper_layout = (Path(model) / "weights.safetensors").exists() or (Path(model) / "weights.npz").exists()
         return [asr_py if mlx_whisper_layout else text_py, str(RUNNER)]
-    runners = {"text": runner_cmd or [text_py, str(RUNNER)], "asr": runner_cmd or asr_cmd}
+    venvs = Path.home() / ".nvme-stash" / "venvs"
+    def decision_cmd(model: Path):
+        fam = decision_family(model) or "clef"
+        py = env.get(f"BENCH_PYTHON_{fam.upper().replace('-', '_')}") or str(venvs / ("clef" if fam == "clef" else "kev") / "bin" / "python")
+        return [py, str(DECISION_RUNNER)]
+    runners = {"text": runner_cmd or [text_py, str(RUNNER)], "asr": runner_cmd or asr_cmd, "decision": runner_cmd or decision_cmd}
     if ram_bytes is None:
         ram_bytes = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout.strip() or 16 * 2 ** 30)
     machine = machine_id(env)
@@ -681,7 +773,7 @@ def main(argv, A, runner_cmd=None, ram_bytes=None):
     rows, picks = [], []
     for s in (SUITES if suite == "all" else [suite]):
         tasks = load_bank(s)
-        cmd = runners["asr" if s == "asr" else "text"]
+        cmd = runners["asr" if s == "asr" else "decision" if s in DECISION_SUITES else "text"]
         if model_arg:                # one named model, full bank, no pick
             m = resolve_model(A, model_arg)
             find = lambda: find_best(s, tasks, [m], A, machine, cmd, cache, env, fresh=True, queue=queue, recommend=False)

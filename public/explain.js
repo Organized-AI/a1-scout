@@ -199,7 +199,17 @@ Object.assign(window.TYPES, {
   "forecaster": { label: "Time-series forecaster", glyph: "∿", learn: ["parameters"],
     what: "Predicts the next values of a series (traffic, conversions, prices, grid load) from its history, with uncertainty bands, without training on your data first.",
     why: "Quick forecasts for ERCOT and market work, or for spotting when a tracking metric drops below what history says it should be.",
-    try: (i, c) => `# Chronos runs through its own package (pip install chronos-forecasting) on PyTorch, not MLX.\nopen ${c.abs(i)}/README.md` },
+    try: (i, c) => /timesfm/i.test(i.name)
+      ? `# TimesFM runs through its own package (pip install timesfm) on PyTorch.\npython - <<'PY'\nimport timesfm, numpy as np\nm = timesfm.TimesFM_2p5_200M_torch.from_pretrained(${JSON.stringify(c.abs(i))})\nm.compile(timesfm.ForecastConfig(max_context=512, max_horizon=28))\ndaily = np.random.poisson(120, 180).astype(float)          # swap in 180 days of purchases\npoint, q = m.forecast(horizon=14, inputs=[daily])\nprint(point[0].round())   # a day far under the low band = check the tags\nPY`
+      : `# Chronos runs through its own package (pip install chronos-forecasting) on PyTorch, not MLX.\nopen ${c.abs(i)}/README.md` },
+  "pii": { label: "Privacy filter", glyph: "▒", learn: ["decision-models", "licenses"],
+    what: "Marks personal data in text (names, emails, phone numbers, addresses, IDs, and for the medical variants record numbers) span by span, in one pass, so it can be masked before it leaves the machine.",
+    why: "Check dataLayer pushes, URL parameters and event payloads for personal data before they reach GA4 or Meta CAPI, and keep regulated client data local (autoresearch-shield).",
+    try: (i, c) => /openmed/i.test(i.path)
+      ? `# OpenMed's MLX pipeline (pip install "openmed[mlx]"); the model folder holds weights, labels and tokenizer.\nopen ${c.abs(i)}/README.md`
+      : /mlx/i.test(i.path)
+      ? `# MLX port of OpenAI Privacy Filter. Load it with the runtime its README names (mlx-embeddings or OpenMed's MLX pipeline).\nopen ${c.abs(i)}/README.md`
+      : `# GLiNER-style span finder (pip install gliner)\npython - <<'PY'\nfrom gliner import GLiNER\nm = GLiNER.from_pretrained(${JSON.stringify(c.abs(i))})\nprint(m.predict_entities("dataLayer.push({event:'generate_lead', email:'pat@example.com', phone:'512-555-0100'})", ["email", "phone number", "person"]))\nPY` },
 });
 
 // ---- Interpretability track: full-precision models, SAEs, attribution ----
