@@ -7,6 +7,10 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "a1-scout", "database_id": "b4d37b4f-f34c-46af-b02d-b1633ec8e67b" }
   ],
+  // A1 Bench: pending blind battles (1 h TTL) and Elo per suite (elo:<suite>). Runs and votes live in D1.
+  "kv_namespaces": [
+    { "binding": "BENCH", "id": "de9d7f9c94b842bf90d32a93aaf40db9" }
+  ],
   // Weekly scan: Mondays 13:00 UTC (8am Austin). The Mac agent can also ask for a scan on mount.
   "triggers": { "crons": ["0 13 * * 1"] },
   "vars": {

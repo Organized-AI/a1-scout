@@ -211,6 +211,7 @@ button.chip:hover{border-color:var(--accent)}
 <script src="explain.js"></script>
 <script src="map.js"></script>
 <script src="lab.js"></script>
+<script src="bench.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
@@ -236,18 +237,21 @@ async function load() {
   if (!token) return gate();
   [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
   render(true);
+  // measured bench numbers feed the Lab; repaint it if it's open when they arrive
+  BenchView.load(call).then(() => { if (view === "lab" || view === "bench") render(); });
   pollActivity();
 }
 function shell(inner) {
-  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "lab" ? "Lab" : "Scout"}</h1>
-   <div class="nav">${["map","scout","lab"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="lab"?"Lab":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
+  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "lab" ? "Lab" : view === "bench" ? "Bench" : "Scout"}</h1>
+   <div class="nav">${["map","scout","lab","bench"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="lab"?"Lab":v==="bench"?"Bench":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
    <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}
    <footer class="foot"><img class="brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="47" height="12"><img class="brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="47" height="12"><span>· A1 Scout · an Organized AI asset · Austin, TX</span><a href="https://github.com/organized-ai/a1-scout">source</a></footer>`;
 }
 function render(first) {
-  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "lab" ? LabView.html(catalog, picks) : scoutView());
+  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "lab" ? LabView.html(catalog, picks) : view === "bench" ? BenchView.html() : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
-  view === "map" ? MapView.wire(first, () => render()) : view === "lab" ? LabView.wire(first, () => render()) : wireScout(first);
+  view === "map" ? MapView.wire(first, () => render()) : view === "lab" ? LabView.wire(first, () => render())
+    : view === "bench" ? BenchView.wire(first, () => render(), call) : wireScout(first);
   if (!render.introDone && !RM()) {
     render.introDone = true;
     gsap.timeline()

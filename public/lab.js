@@ -1,6 +1,6 @@
 // A1 Lab: compose stash components into stacks, simulate scenarios on a chosen Mac, and run a simulated test suite.
-// Everything here is an estimate from file sizes and published hardware figures; nothing runs on the Mac yet.
-// Real offline runs of these tests are Phase 5 of the Lab plan (agent.py lab <stack>).
+// Estimates come from file sizes and published hardware figures. When a model has A1 Bench runs (bench.js,
+// agent.py bench), its measured tok/s, peak memory, load time and pass rate replace the estimates.
 (() => {
   const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -108,11 +108,16 @@
     .sort((a, b) => slot.kinds.indexOf(a.kind) - slot.kinds.indexOf(b.kind) || a.bytes - b.bytes);
   const runtime = i => i.cat === "datasets" ? "DuckDB" : /\/gguf\//.test(i.path) ? "llama.cpp" : /\/hf\//.test(i.path) ? "PyTorch" : "MLX";
   const isModel = i => i.cat === "models";
-  const memNeed = i => (isModel(i) ? i.bytes * 1.2 : 0);
+  const memNeed = i => (isModel(i) ? measured(i, null)?.peak_rss || i.bytes * 1.2 : 0);
   const glyph = k => window.TYPES?.[k]?.glyph || "•";
   const label = k => window.TYPES?.[k]?.label || k;
   const machines = () => (window.MachineFit ? window.MachineFit(1, "").map(m => ({ id: m.id, label: m.label, gb: m.gb })) : [{ id: "m1", label: "M1 16GB", gb: 16 }]);
   const tps = (i, mid) => Math.min(150, 0.6 * BW[mid].gbs * 1e9 / Math.max(i.bytes, 1e8));
+  // Measured beats estimated: A1 Bench numbers for this model (speed and load on this Mac, memory from any Mac).
+  const measured = (i, mid) => (window.BenchView && i?.path ? window.BenchView.measured(i.path, mid) : null);
+  const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4" };
+  // the part whose quality the suite measures; checked first, then any other part with a run
+  const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm" };
 
   function stageTime(slotId, i, sc, mid) {
     const scale = Math.max(i.bytes, 1e8) / 0.35e9;
@@ -126,11 +131,12 @@
       case "sae": return { s: (sc.passes || 1) * 0.3, what: "encode activations" };
       case "interp-model": return { s: (sc.passes || 1) * (0.4 + i.bytes / 1e9), what: `${sc.passes || 1} forward pass(es) with cache, CPU` };
       default: {
-        const t = tps(i, mid);
+        const real = measured(i, mid)?.tok_s;
+        const t = real || tps(i, mid);
         const prompt = sc.prompt || (sc.htmlKB ? sc.htmlKB * 250 : 0) + (sc.patches || 0);
-        if (slotId === "rtr") return { s: prompt / (t * 8) + 8 / t, what: "pick a route" };
+        if (slotId === "rtr") return { s: prompt / (t * 8) + 8 / t, what: "pick a route", measured: !!real };
         if (!sc.gen && !prompt) return { s: 0, what: "skipped" };
-        return { s: prompt / (t * 8) + (sc.gen || 0) / t, what: `${prompt} prompt + ${sc.gen || 0} new tokens at ~${t.toFixed(0)} tok/s`, tps: t };
+        return { s: prompt / (t * 8) + (sc.gen || 0) / t, what: `${prompt} prompt + ${sc.gen || 0} new tokens at ${real ? "" : "~"}${t.toFixed(0)} tok/s${real ? " (measured)" : ""}`, tps: t, measured: !!real };
       }
     }
   }
@@ -142,15 +148,23 @@
     const comps = tpl.slots.map(sl => ({ slot: sl, item: all.find(i => i.path === st.pick[sl.id]) || null }));
     const filled = comps.filter(c => c.item);
     const runtimes = [...new Set(filled.map(c => runtime(c.item)))];
-    const peak = filled.reduce((t, c) => t + memNeed(c.item), 0) + runtimes.filter(r => r !== "DuckDB").length * 0.4e9;
+    // ~0.4 GB per runtime, except where measured peak memory already includes it
+    const overhead = runtimes.filter(r => r !== "DuckDB" && filled.some(c => runtime(c.item) === r && !measured(c.item, null)?.peak_rss));
+    const peak = filled.reduce((t, c) => t + memNeed(c.item), 0) + overhead.length * 0.4e9;
     const budget = mach.gb * 2 ** 30 * 0.75;
-    const stages = filled.map(c => ({ ...c, ...stageTime(c.slot.id, c.item, sc, mach.id), load: isModel(c.item) ? c.item.bytes / A1_READ : 0 }));
+    const stages = filled.map(c => { const m = measured(c.item, mach.id);
+      return { ...c, ...stageTime(c.slot.id, c.item, sc, mach.id), load: isModel(c.item) ? m?.load_s ?? c.item.bytes / A1_READ : 0, loadMeasured: m?.load_s != null }; });
     const total = stages.reduce((t, s) => t + s.s, 0), firstLoad = stages.reduce((t, s) => t + s.load, 0);
     const wheels = all.filter(i => i.cat === "wheels").map(i => i.name);
     const code = all.filter(i => i.cat === "code").map(i => i.name.toLowerCase());
     const offline = { MLX: wheels.includes("macos-arm64"), PyTorch: wheels.includes("interp"), "llama.cpp": code.some(n => n.includes("llama.cpp")), DuckDB: true };
     const lic = filled.map(c => ({ name: c.item.name, lic: c.item.meta?.license || null, ok: PERMISSIVE.test(c.item.meta?.license || "") }));
     const missing = comps.filter(c => !c.item && !c.slot.optional);
+    const suite = SUITE_FOR[st.tpl];
+    const ordered = [...filled].sort((a, b) => (b.slot.id === SUITE_SLOT[st.tpl]) - (a.slot.id === SUITE_SLOT[st.tpl]));
+    const q = suite && window.BenchView ? ordered.map(c => window.BenchView.suiteResult(c.item.path, suite)).find(Boolean) : null;
+    const rate = q ? q.passed / Math.max(1, q.total) : null;
+    const nMeasured = stages.filter(s => s.measured || s.loadMeasured).length;
     const tests = [
       { id: "present", name: "Every required part is on the A1", st: missing.length ? "fail" : "pass",
         why: missing.length ? `Missing: ${missing.map(c => c.slot.label).join(", ")}. Approve one in Scout.` : `${filled.length} parts found on the drive.` },
@@ -162,9 +176,12 @@
         why: lic.filter(l => !l.ok).map(l => `${l.name}: ${l.lic || "no license listed"}`).join(" · ") || "All permissive." },
       { id: "budget", name: `Answers within ${secs(sc.budget)} (warm)`, st: !filled.length ? "fail" : total <= sc.budget ? "pass" : "fail",
         why: `Estimated ${secs(total)} per request once loaded; first load adds ${secs(firstLoad)} reading weights off the A1.` },
-      { id: "quality", name: "Output matches the expected answer", st: "pending", why: `${sc.expect} Runs for real on the Mac in Phase 5, scored by a jev-gateway rubric.` },
+      q ? { id: "quality", name: "Output matches the expected answer", st: rate >= 0.75 ? "pass" : rate >= 0.5 ? "warn" : "fail",
+            why: `Measured: ${q.model} passed ${q.passed} of ${q.total} ${window.BenchView.suites?.[suite]?.label || suite} tasks (score ${Math.round(q.score * 100)}) on ${machines().find(m => m.id === q.machine)?.label || window.BenchView.machLabel?.(q.machine) || q.machine}.` }
+        : { id: "quality", name: "Output matches the expected answer", st: "pending",
+            why: `${sc.expect} ${suite ? `Not benchmarked yet: run agent.py bench ${suite} with the A1 plugged in.` : "No bench suite covers this job yet."}` },
     ];
-    return { tpl, sc, mach, comps, stages, total, firstLoad, peak, budget, runtimes, tests };
+    return { tpl, sc, mach, comps, stages, total, firstLoad, peak, budget, runtimes, tests, measured: nMeasured, quality: q };
   }
 
   // ---------- state ----------
@@ -341,9 +358,9 @@
     const P = papersFor(e.tpl);
     const pass = e.tests.filter(t => t.st === "pass").length;
     return `<div class="lab">
-      <header class="lab-hero"><span class="lab-kick">Lab · simulated</span>
+      <header class="lab-hero"><span class="lab-kick">Lab · ${e.measured || e.quality ? "measured where benchmarked" : "simulated"}</span>
         <h2>Build a stack. See how it would run.</h2>
-        <p>Pick a job, choose parts from what's on the A1, and pick a Mac. The Lab estimates memory, speed and load time from file sizes, then runs a simulated test suite. Real offline runs come later; nothing here touches the drive.</p></header>
+        <p>Pick a job, choose parts from what's on the A1, and pick a Mac. The Lab estimates memory, speed and load time from file sizes, then runs a simulated test suite. Parts you've run through the Bench use their measured numbers instead, marked <em class="lab-meas">measured</em>. Nothing here touches the drive.</p></header>
       ${playerBar()}
       <div class="lab-tpls" role="tablist" aria-label="Stack templates">${Object.entries(T).map(([id, t]) => `
         <button type="button" class="lab-tpl" role="tab" aria-selected="${id === st.tpl}" data-tpl="${id}"><span class="lab-ic">${esc(t.icon)}</span><b>${esc(t.title)}</b><small>${esc(t.tag)}</small></button>`).join("")}</div>
@@ -364,10 +381,10 @@
           <div class="lab-h"><span class="lab-kick">Simulation</span><button type="button" class="lab-btn go" data-run>▶ Run simulation</button></div>
           <div class="lab-sysw">${sysSvg(e)}</div>
           <div class="lab-grade">${gaugeSvg(grade(e), false)}<ul class="lab-parts">${grade(e).parts.map(([n, v, m]) => `<li class="lab-part"><span>${esc(n)}</span><b>${Math.round(v)}/${m}</b><em><i style="width:${v / m * 100}%"></i></em></li>`).join("")}</ul></div>
-          <div class="lab-pipe">${e.stages.length ? e.stages.map((s, k) => `${k ? '<i class="lab-wire"><b></b></i>' : ""}<div class="lab-node" data-k="${k}"><span class="lab-g">${esc(glyph(s.item.kind))}</span><b>${esc(s.item.name)}</b><small>${esc(label(s.item.kind))} · ${gb(s.item.bytes)}</small><em data-t="${k}">${secs(s.s)}</em></div>`).join("") : '<p class="lab-mut">Choose parts to see the pipeline.</p>'}</div>
+          <div class="lab-pipe">${e.stages.length ? e.stages.map((s, k) => `${k ? '<i class="lab-wire"><b></b></i>' : ""}<div class="lab-node" data-k="${k}"><span class="lab-g">${esc(glyph(s.item.kind))}</span><b>${esc(s.item.name)}</b><small>${esc(label(s.item.kind))} · ${gb(s.item.bytes)}${s.measured ? ' · <span class="lab-meas">measured</span>' : ""}</small><em data-t="${k}">${secs(s.s)}</em></div>`).join("") : '<p class="lab-mut">Choose parts to see the pipeline.</p>'}</div>
           <div class="lab-stats">
             <div><span>Per request (warm)</span><b data-n="total">${secs(e.total)}</b></div>
-            <div><span>First load off the A1</span><b>${secs(e.firstLoad)}</b></div>
+            <div><span>First load off the A1${e.stages.some(s => s.loadMeasured) ? " · measured" : ""}</span><b>${secs(e.firstLoad)}</b></div>
             <div><span>Peak memory</span><b class="${e.peak > e.budget ? "bad" : ""}">${gb(e.peak)}</b></div>
             <div><span>Runtimes</span><b>${esc(e.runtimes.join(" + ") || "—")}</b></div></div>
           <div class="lab-mem" aria-label="Memory use against the usable budget">
@@ -565,7 +582,8 @@
   .lab-toast b{display:block;font:600 13px "IBM Plex Mono",monospace}.lab-toast span{color:var(--mute);font-size:12.5px}
   .lab-toast.quiet{border-color:var(--line)}.lab-toast.big{border-width:2px}
   .lab-btn:disabled{opacity:.55;cursor:default}
-    .lab-papers{margin:0;padding-left:18px;display:grid;gap:6px}.lab-papers small{display:block;color:var(--mute);font-size:12px}.lab-papers a{color:var(--ink)}
+    .lab-meas{font:600 10.5px "IBM Plex Mono",monospace;font-style:normal;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+  .lab-papers{margin:0;padding-left:18px;display:grid;gap:6px}.lab-papers small{display:block;color:var(--mute);font-size:12px}.lab-papers a{color:var(--ink)}
   `;
   document.head.appendChild(css);
 })();

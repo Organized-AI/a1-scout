@@ -13,7 +13,8 @@ When the A1 drive (matched by volume UUID, not just name) is present it:
   7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
 
-Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]]
+Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]|bench <suite|all> [--model PATH]]
+`bench` runs the A1 Bench task banks (tests/bench) against stash models, one model at a time (see bench.py).
 """
 import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
@@ -1401,6 +1402,13 @@ def main():
     except BlockingIOError:
         print("another a1-scout run is active"); return
     present = a1_present()
+    if mode == "bench":
+        # Same gate as a download run: the real A1 mounted, and this process holds scout.lock for the whole bench.
+        if not present:
+            print("A1 not present"); return
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import bench
+        bench.main(sys.argv[2:], sys.modules[__name__]); return
     if mode == "status":
         print(json.dumps({"a1_present": present, "state": load_state(), "server": api("/api/state")}, indent=2)); return
     if mode == "updates":

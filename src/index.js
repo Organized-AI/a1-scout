@@ -408,10 +408,157 @@ async function expandCollection(env, pick) {
 const shapePick = r => ({ ...r, reasons: JSON.parse(r.reasons || "[]"), matched_repos: JSON.parse(r.matched_repos || "[]"),
   flags: JSON.parse(r.flags || "[]"), extra: JSON.parse(r.extra || "{}") });
 
+// ---------------- A1 Bench ----------------
+// The Mac agent posts one row per model x suite x machine run (agent.py bench). Leaderboards read the latest run per
+// model; battles show two models' outputs on the same task, blind, and move an Elo per suite kept in Workers KV.
+// Pending battles and the vote log live in D1 so a vote is claimed atomically; KV's elo:<suite> is rebuilt from the
+// vote log on every vote, so a stale KV read can never lose an earlier vote.
+const BENCH_SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen"];
+const ELO_START = 1000, ELO_K = 32, BATTLE_TTL = 3600;
+const RUN_COLS = "id, suite, machine, model, model_path, runtime, bank, ttft_ms, tok_s, peak_rss, load_s, passed, total, score, error, started, created";
+const num = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : null);
+const randInt = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+
+let benchReady = null;    // per isolate: create the tables once, not on every request
+async function benchTables(env) {
+  if (benchReady === env.DB) return;
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS bench_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT UNIQUE, suite TEXT NOT NULL, machine TEXT NOT NULL,
+      model TEXT NOT NULL, model_path TEXT, runtime TEXT, bank TEXT, ttft_ms REAL, tok_s REAL, peak_rss INTEGER, load_s REAL,
+      passed INTEGER NOT NULL, total INTEGER NOT NULL, score REAL NOT NULL, error TEXT, results TEXT, started TEXT, created TEXT NOT NULL)`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS bench_runs_key ON bench_runs(suite, machine, model, id)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS bench_votes (id INTEGER PRIMARY KEY AUTOINCREMENT, suite TEXT NOT NULL, task_id TEXT,
+      model_a TEXT NOT NULL, model_b TEXT NOT NULL, vote TEXT NOT NULL, created TEXT NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS bench_battles (id TEXT PRIMARY KEY, suite TEXT NOT NULL, task_id TEXT, a TEXT NOT NULL,
+      b TEXT NOT NULL, expires INTEGER NOT NULL)`),
+  ]);
+  benchReady = env.DB;
+}
+
+// Standard Elo: each side's expected score from the rating gap, then a K-sized step toward what happened.
+function eloUpdate(ra, rb, vote) {
+  const ea = 1 / (1 + 10 ** ((rb - ra) / 400));
+  const sa = vote === "a" ? 1 : vote === "b" ? 0 : 0.5;
+  return [ra + ELO_K * (sa - ea), rb + ELO_K * ((1 - sa) - (1 - ea))];
+}
+
+async function eloTable(env, suite) {
+  return (await env.BENCH.get(`elo:${suite}`, "json")) || {};
+}
+// Replay every vote for a suite in order. Deterministic, so the KV copy always matches the D1 log.
+async function rebuildElo(env, suite) {
+  const votes = (await env.DB.prepare("SELECT model_a, model_b, vote FROM bench_votes WHERE suite=? ORDER BY id").bind(suite).all()).results;
+  const t = {};
+  const get = m => (t[m] ||= { elo: ELO_START, n: 0, w: 0, l: 0, t: 0 });
+  for (const v of votes) {
+    const A = get(v.model_a), B = get(v.model_b);
+    [A.elo, B.elo] = eloUpdate(A.elo, B.elo, v.vote);
+    A.n++; B.n++;
+    if (v.vote === "tie") { A.t++; B.t++; } else { const [w, l] = v.vote === "a" ? [A, B] : [B, A]; w.w++; l.l++; }
+  }
+  await env.BENCH.put(`elo:${suite}`, JSON.stringify(t));
+  return t;
+}
+
+async function benchApi(req, env, url, p) {
+  await benchTables(env);
+  if (p === "/api/bench/runs" && req.method === "POST") {
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).length > 1_000_000) return json({ error: "run too large" }, 413);
+    let b; try { b = JSON.parse(raw); } catch { b = null; }
+    if (!b || typeof b !== "object") return json({ error: "JSON body required" }, 400);
+    if (!BENCH_SUITES.includes(b.suite)) return json({ error: `suite must be one of ${BENCH_SUITES.join(", ")}` }, 400);
+    const model = str(b.model, 200), machine = str(b.machine, 40);
+    if (!model || !/^[\w.\-]+$/.test(model) || !machine || !/^[\w.\-]+$/.test(machine)) return json({ error: "model and machine required" }, 400);
+    const total = Math.max(0, Math.floor(num(b.total) ?? 0)), passed = Math.min(total, Math.max(0, Math.floor(num(b.passed) ?? 0)));
+    const results = (Array.isArray(b.results) ? b.results : []).slice(0, 200).map(r => ({
+      id: str(r?.id, 80), pass: !!r?.pass, score: num(r?.score), why: str(r?.why, 200), ttft_ms: num(r?.ttft_ms), tok_s: num(r?.tok_s),
+      latency_ms: num(r?.latency_ms), output: str(r?.output, 2000) ?? "", prompt: str(r?.prompt, 3000) ?? "" })).filter(r => r.id);
+    const score = Math.min(1, Math.max(0, num(b.score) ?? 0));
+    // uid makes a re-sent run (posted, then the response timed out) a no-op
+    const uid = str(b.uid, 64);
+    if (uid) { const dup = await env.DB.prepare("SELECT id FROM bench_runs WHERE uid=?").bind(uid).first(); if (dup) return json({ ok: true, id: dup.id, duplicate: true }); }
+    const row = await env.DB.prepare(`INSERT INTO bench_runs (uid, suite, machine, model, model_path, runtime, bank, ttft_ms, tok_s, peak_rss, load_s,
+      passed, total, score, error, results, started, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`)
+      .bind(uid, b.suite, machine, model, str(b.model_path, 300), str(b.runtime, 40), str(b.bank, 40), num(b.ttft_ms), num(b.tok_s),
+        num(b.peak_rss), num(b.load_s), passed, total, score, str(b.error, 500), JSON.stringify(results), str(b.started, 40), now()).first();
+    return json({ ok: true, id: row.id });
+  }
+  if (p === "/api/bench/run" && req.method === "GET") {
+    const r = await env.DB.prepare("SELECT * FROM bench_runs WHERE id=?").bind(Number(url.searchParams.get("id"))).first();
+    return r ? json({ ...r, results: JSON.parse(r.results || "[]") }) : json({ error: "not found" }, 404);
+  }
+  if (p === "/api/bench/leaderboard" && req.method === "GET") {
+    const suite = BENCH_SUITES.includes(url.searchParams.get("suite")) ? url.searchParams.get("suite") : null;
+    const machine = url.searchParams.get("machine") || null;
+    const where = [suite && "suite=?", machine && "machine=?"].filter(Boolean);
+    const args = [suite, machine].filter(Boolean);
+    // the latest run per model, suite and machine
+    const rows = (await env.DB.prepare(`SELECT ${RUN_COLS} FROM bench_runs WHERE id IN (SELECT MAX(id) FROM bench_runs
+      ${where.length ? "WHERE " + where.join(" AND ") : ""} GROUP BY suite, machine, model) ORDER BY score DESC, tok_s DESC`).bind(...args).all()).results;
+    const elos = {};
+    for (const s of [...new Set(rows.map(r => r.suite))]) elos[s] = env.BENCH ? await eloTable(env, s) : {};
+    const machines = (await env.DB.prepare("SELECT machine, COUNT(*) n, MAX(created) last FROM bench_runs GROUP BY machine ORDER BY n DESC").all()).results;
+    const suites = (await env.DB.prepare("SELECT suite, COUNT(DISTINCT model) models, MAX(created) last FROM bench_runs GROUP BY suite").all()).results;
+    return json({
+      suite, machine, machines, suites: BENCH_SUITES.map(s => ({ id: s, ...(suites.find(x => x.suite === s) || { models: 0, last: null }) })),
+      rows: rows.map(r => { const e = elos[r.suite]?.[r.model]; return { ...r, elo: e ? Math.round(e.elo) : null, battles: e?.n || 0 }; }),
+    });
+  }
+  if (p === "/api/bench/battle") {
+    if (!env.BENCH) return json({ error: "battles need the BENCH KV namespace" }, 503);
+    if (req.method === "GET") {
+      const suite = url.searchParams.get("suite");
+      if (!BENCH_SUITES.includes(suite)) return json({ error: "suite required" }, 400);
+      // only runs of the current task bank, so both answers are to the same prompt
+      const latest = await env.DB.prepare("SELECT bank FROM bench_runs WHERE suite=? ORDER BY id DESC LIMIT 1").bind(suite).first();
+      const runs = latest ? (await env.DB.prepare(`SELECT model, results FROM bench_runs WHERE id IN
+        (SELECT MAX(id) FROM bench_runs WHERE suite=? AND bank IS ? GROUP BY model)`).bind(suite, latest.bank).all()).results : [];
+      const byTask = {};
+      for (const r of runs) for (const t of JSON.parse(r.results || "[]"))
+        if (t.output?.trim()) (byTask[t.id] ||= []).push({ model: r.model, output: t.output, prompt: t.prompt, pass: t.pass, score: t.score });
+      const open = Object.values(byTask).filter(c => c.length >= 2);
+      if (!open.length) return json({ error: "Battles need two models benchmarked on this suite.", models: runs.length }, 409);
+      // prefer tasks where the two answers differ; identical answers make a coin flip
+      const differ = open.filter(c => new Set(c.map(x => x.output.trim())).size > 1);
+      const pool = differ.length ? differ : open;
+      const cands = pool[randInt(pool.length)];
+      const i = randInt(cands.length);
+      let j = randInt(cands.length - 1); if (j >= i) j++;
+      const a = cands[i], bb = cands[j];
+      const id = crypto.randomUUID();
+      const task = Object.keys(byTask).find(k => byTask[k] === cands);
+      await env.DB.prepare("DELETE FROM bench_battles WHERE expires < ?").bind(Date.now()).run();
+      await env.DB.prepare("INSERT INTO bench_battles (id, suite, task_id, a, b, expires) VALUES (?,?,?,?,?,?)")
+        .bind(id, suite, task, JSON.stringify(a), JSON.stringify(bb), Date.now() + BATTLE_TTL * 1000).run();
+      return json({ id, suite, task: { id: task, prompt: a.prompt }, a: { output: a.output }, b: { output: bb.output } });
+    }
+    if (req.method === "POST") {
+      const { id, vote } = await req.json().catch(() => ({}));
+      if (!["a", "b", "tie"].includes(vote) || typeof id !== "string") return json({ error: "id and vote (a|b|tie) required" }, 400);
+      // claim the battle atomically: of two racing votes, only one gets the row back
+      const row = await env.DB.prepare("DELETE FROM bench_battles WHERE id=? AND expires>=? RETURNING *").bind(id, Date.now()).first();
+      if (!row) return json({ error: "That battle expired or was already voted on." }, 404);
+      const bt = { suite: row.suite, task: row.task_id, a: JSON.parse(row.a), b: JSON.parse(row.b) };
+      const prev = await rebuildElo(env, bt.suite);
+      const before = [prev[bt.a.model]?.elo ?? ELO_START, prev[bt.b.model]?.elo ?? ELO_START];
+      await env.DB.prepare("INSERT INTO bench_votes (suite, task_id, model_a, model_b, vote, created) VALUES (?,?,?,?,?,?)")
+        .bind(bt.suite, bt.task, bt.a.model, bt.b.model, vote, now()).run();
+      const table = await rebuildElo(env, bt.suite);
+      const sideA = table[bt.a.model], sideB = table[bt.b.model];
+      const side = (s, x, b4) => ({ model: s.model, pass: s.pass, score: s.score, elo_before: Math.round(b4), elo_after: Math.round(x.elo), record: { w: x.w, l: x.l, t: x.t } });
+      return json({ ok: true, vote, suite: bt.suite, task: bt.task, a: side(bt.a, sideA, before[0]), b: side(bt.b, sideB, before[1]) });
+    }
+  }
+  return json({ error: "not found" }, 404);
+}
+
 async function api(req, env, url) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
   if (!authed(req, env)) return json({ error: "unauthorized" }, 401);
+  if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
 
   if (p === "/api/state" && req.method === "GET") {
     const profile = await kvGet(env, "profile");
