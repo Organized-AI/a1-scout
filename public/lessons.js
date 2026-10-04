@@ -239,7 +239,7 @@
       <header class="lp-hero">
         <span class="lp-kick">Learning path</span>
         <h2>Learn the stack on your own drive.</h2>
-        <p>${total} short sections, from loading a model to reading its features. Every figure plays as you reach it, every section ends with one question, and everything it uses is already on the A1.</p>
+        <p>${total} short sections, from loading a model to reading its features. Every figure plays as you reach it, every section ends with one question, and everything it uses is already on the A1. Choosing hardware or setting up a drive of your own? Start with the <a href="https://guide.organizedai.vip/local-compute/" target="_blank" rel="noopener">Local Compute guide</a>.</p>
         <div class="lp-stats">
           <div><span>[ 01 ]</span><b>${CHAPTERS.length}</b><small>chapters</small></div>
           <div><span>[ 02 ]</span><b data-lp="done">${ctx.stepsDone.size ? [...ctx.stepsDone].filter(s => L[s]).length : 0}<i>/${total}</i></b><small>sections done</small></div>
@@ -382,6 +382,7 @@
   .lp-hero{border:1px solid var(--line);border-radius:12px;padding:26px 24px;margin:0 0 28px;background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 6%,var(--panel)),var(--panel))}
   .lp-hero h2{font:600 clamp(26px,4vw,38px)/1.15 "IBM Plex Mono",monospace;margin:8px 0 10px;letter-spacing:-.01em}
   .lp-hero p{font:17px/1.6 var(--serif);color:var(--mute);max-width:62ch;margin:0 0 20px}
+  .lp-hero p a,.lp-sec>p a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
   .lp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .lp-stats>div{padding:14px 16px;border-right:1px solid var(--line);display:grid;gap:2px}
   .lp-stats>div:last-child{border-right:0}
