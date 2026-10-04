@@ -221,8 +221,9 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const color = id => `var(--c-${id in CATEGORY_INTRO ? id : "other"})`;
 
 async function call(p, opts = {}) {
-  const r = await fetch(p, { ...opts, headers: { authorization: "Bearer " + token, "content-type": "application/json" } });
-  if (r.status === 401) { gate("That token didn't work."); throw new Error("unauthorized"); }
+  // Signed in through Cloudflare Access, the browser needs no token; the paste-a-token gate is only the fallback.
+  const r = await fetch(p, { ...opts, credentials: "same-origin", headers: { ...(token ? { authorization: "Bearer " + token } : {}), "content-type": "application/json" } });
+  if (r.status === 401) { gate(token ? "That token didn't work." : ""); throw new Error("unauthorized"); }
   return r.json();
 }
 function gate(msg = "") {
@@ -234,7 +235,6 @@ function gate(msg = "") {
   gsap.fromTo(".gate", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: .4, ease: "power2.out", clearProps: "all" });
 }
 async function load() {
-  if (!token) return gate();
   [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
   render(true);
   // measured bench numbers feed the Lab; repaint it if it's open when they arrive

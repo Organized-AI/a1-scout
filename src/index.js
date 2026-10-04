@@ -97,6 +97,31 @@ function authed(req, env) {
   const h = req.headers.get("authorization") || "";
   return env.SCOUT_TOKEN && h === `Bearer ${env.SCOUT_TOKEN}`;
 }
+// Cloudflare Access: the browser signs in at the Access login page and Access attaches a signed JWT to every request.
+// The Worker still verifies it (signature, audience, issuer, expiry, and that the email is ACCESS_EMAIL), so a request
+// that skips Access (or a forged header) gets nothing. The Mac keeps using SCOUT_TOKEN.
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), c => c.charCodeAt(0));
+let accessKeys = null, accessKeysAt = 0;
+export async function accessOk(req, env, fetcher = fetch) {
+  if (!env.ACCESS_TEAM || !env.ACCESS_AUD || !env.ACCESS_EMAIL) return false;
+  const jwt = req.headers.get("cf-access-jwt-assertion");
+  if (!jwt) return false;
+  try {
+    const [h, p, sig] = jwt.split(".");
+    const head = JSON.parse(new TextDecoder().decode(b64u(h))), c = JSON.parse(new TextDecoder().decode(b64u(p)));
+    const iss = `https://${env.ACCESS_TEAM}.cloudflareaccess.com`;
+    if (c.iss !== iss || ![].concat(c.aud || []).includes(env.ACCESS_AUD) || !(c.exp * 1000 > Date.now())) return false;
+    if (String(c.email || "").toLowerCase() !== env.ACCESS_EMAIL.toLowerCase()) return false;
+    if (!accessKeys || Date.now() - accessKeysAt > 3600e3 || !accessKeys.some(k => k.kid === head.kid)) {
+      accessKeys = (await (await fetcher(`${iss}/cdn-cgi/access/certs`)).json()).keys || []; accessKeysAt = Date.now();
+    }
+    const jwk = accessKeys.find(k => k.kid === head.kid);
+    if (!jwk) return false;
+    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64u(sig), new TextEncoder().encode(`${h}.${p}`));
+  } catch { return false; }
+}
+export const _resetAccessKeys = () => { accessKeys = null; };
 async function kvGet(env, k) {
   const row = await env.DB.prepare("SELECT v FROM kv WHERE k=?").bind(k).first();
   return row ? JSON.parse(row.v) : null;
@@ -557,7 +582,7 @@ async function benchApi(req, env, url, p) {
 async function api(req, env, url) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
-  if (!authed(req, env)) return json({ error: "unauthorized" }, 401);
+  if (!authed(req, env) && !(await accessOk(req, env))) return json({ error: "unauthorized" }, 401);
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
 
   if (p === "/api/state" && req.method === "GET") {

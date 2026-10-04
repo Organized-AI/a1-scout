@@ -72,7 +72,10 @@ def notify(title, text):
 def api(path, method="GET", body=None, raw=False):
     data = None if body is None else (body if raw else json.dumps(body)).encode()
     req = urllib.request.Request(ENV["SCOUT_URL"].rstrip("/") + path, data=data, method=method, headers={
-        "authorization": f"Bearer {ENV['SCOUT_TOKEN']}", "content-type": "application/json", "user-agent": "a1-scout-agent"})
+        "authorization": f"Bearer {ENV['SCOUT_TOKEN']}", "content-type": "application/json", "user-agent": "a1-scout-agent",
+        # Cloudflare Access service token: lets the Mac through the Access login that guards the site
+        **({"CF-Access-Client-Id": ENV["CF_ACCESS_CLIENT_ID"], "CF-Access-Client-Secret": ENV["CF_ACCESS_CLIENT_SECRET"]}
+           if ENV.get("CF_ACCESS_CLIENT_ID") and ENV.get("CF_ACCESS_CLIENT_SECRET") else {})})
     with urllib.request.urlopen(req, timeout=180) as r:
         return json.loads(r.read() or b"{}")
 
