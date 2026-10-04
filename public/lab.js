@@ -102,6 +102,18 @@
         { id: "drift", name: "Did purchases drop after the change?", input: "180 days of daily purchases, forecast the last 14", series: 180, horizon: 14, questions: 1, budget: 10,
           expect: "Days that fall under the forecast's low band are flagged for a tag check.", risk: "Sales and holidays look like drops; give it a full year when you have it." }],
       words: /autoresearch|evolution|optimi|privacy|pii|forecast|decision|calibrat/i },
+    skills: { title: "Pick a skill before loading it", tag: "Skill Loop router", icon: "?→1",
+      blurb: "Skill Loop's select-skill route, run locally: the task and every installed skill's name and description go to a decision model, one yes/no per skill, and only the chosen skill's instructions enter the context. An embedder can shortlist first so fewer questions are asked.",
+      slots: [{ id: "sel", label: "Selector", kinds: ["decision"] }, { id: "emb", label: "Shortlist embedder", kinds: ["embedding"], optional: true },
+              { id: "work", label: "Agent model", kinds: ["llm", "llm-code"], optional: true }],
+      scenarios: [
+        { id: "pick", name: "Pick one of 67 skills", input: "One task, 67 skill names and descriptions, one yes/no each", questions: 67, chunks: 0, budget: 3,
+          expect: "One skill picked at 0.75 or more, or a top-3 shortlist, or nothing when no skill fits; about 114k tokens of skill bodies never loaded.", risk: "A false pick loads the wrong instructions silently; the gateway's target is zero false picks when nothing fits." },
+        { id: "short", name: "Shortlist with embeddings, then ask 10", input: "Embed the task against 67 cached skill descriptions, ask the top 10", chunks: 1, questions: 10, budget: 2,
+          expect: "Same pick with a sixth of the questions.", risk: "If the embedder drops the right skill from the 10, the selector can't recover it; measure top-10 recall first." },
+        { id: "nightly", name: "Nightly regression: 40 fixtures", input: "40 recorded tasks with known right skills, 67 questions each", questions: 2680, chunks: 0, budget: 1800,
+          expect: "Decided precision and top-3 recall per rubric version, compared with last night's.", risk: "Fixtures go stale as skills change; refresh them from /v1/skill-outcome results." }],
+      words: /skill|route|select|retriev|decision|calibrat/i },
     inside: { title: "Look inside a model", tag: "Interpretability", icon: "◉→",
       blurb: "Run a full-precision model with its activations cached, then read them with the logit lens or a sparse autoencoder.",
       slots: [{ id: "mdl", label: "Model to inspect", kinds: ["interp-model"] }, { id: "sae", label: "Sparse autoencoder", kinds: ["sae"], optional: true }],
@@ -131,23 +143,23 @@
   const tps = (i, mid) => Math.min(150, 0.6 * BW[mid].gbs * 1e9 / Math.max(i.bytes, 1e8));
   // Measured beats estimated: A1 Bench numbers for this model (speed and load on this Mac, memory from any Mac).
   const measured = (i, mid) => (window.BenchView && i?.path ? window.BenchView.measured(i.path, mid) : null);
-  const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4", loop: "gtm-gate" };
+  const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4", loop: "gtm-gate", skills: "skill-select" };
   // the part whose quality the suite measures; checked first, then any other part with a run
-  const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm", loop: "gate" };
+  const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm", loop: "gate", skills: "sel" };
   // The model the bench picked for this job on this Mac (it searched every model that fits), for that template's main slot.
   const benchPick = (tplId, slotId, mid) => (SUITE_SLOT[tplId] === slotId && window.BenchView?.best?.(SUITE_FOR[tplId], mid)?.model_path) || null;
 
   function stageTime(slotId, i, sc, mid) {
     const scale = Math.max(i.bytes, 1e8) / 0.35e9;
     switch (i.kind) {
-      case "embedding": return { s: (sc.chunks || 20) * 0.012 * scale, what: `embed ${sc.chunks || 20} chunks` };
+      case "embedding": return sc.chunks === 0 ? { s: 0, what: "skipped (no shortlist in this scenario)" } : { s: (sc.chunks || 20) * 0.012 * scale, what: `embed ${sc.chunks || 20} chunks` };
       case "reranker": return { s: (sc.cands || 20) * 0.035 * scale, what: `rerank ${sc.cands || 20} candidates` };
       case "asr": return sc.audioIn ? { s: sc.audioIn * (0.04 + 0.025 * i.bytes / 1e9), what: `transcribe ${secs(sc.audioIn)} of audio` } : { s: 0, what: "skipped (no audio in)" };
       case "tts": return sc.audioOut ? { s: sc.audioOut * (0.25 + 0.1 * i.bytes / 1e9), what: `speak ${secs(sc.audioOut)}` } : { s: 0, what: "skipped (no audio out)" };
       case "decision": case "guard": {
-        // a gtm-gate bench run measures one change with 4 questions; scale its median to this scenario
-        const lat = i.kind === "decision" ? measured(i, mid)?.ttft_ms : null;
-        return lat ? { s: (sc.questions || 1) / 4 * lat / 1000, what: `${sc.questions || 1} typed question(s), measured`, measured: true }
+        // decision-model bench runs report questions per second as tok_s; scale it to this scenario's question count
+        const qps = i.kind === "decision" ? measured(i, mid)?.tok_s : null;
+        return qps ? { s: (sc.questions || 1) / qps, what: `${sc.questions || 1} typed question(s) at ${qps.toFixed(1)}/s, measured`, measured: true }
                    : { s: (sc.questions || 1) * 0.18 * Math.max(1, i.bytes / 1e9), what: `${sc.questions || 1} typed question(s)` };
       }
       case "pii": return sc.piiKB ? { s: sc.piiKB * 0.02 * Math.max(1, i.bytes / 1e9), what: `scan ${sc.piiKB} KB for personal data` } : { s: 0, what: "skipped (nothing to scan)" };

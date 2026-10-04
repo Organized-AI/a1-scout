@@ -194,4 +194,5 @@ test("gtm-gate runs are accepted like any other suite", async () => {
   const lb = await call(env, "/api/bench/leaderboard?suite=gtm-gate");
   assert.equal(lb.rows[0].model, "clef-flash-4bit");
   assert.ok(lb.suites.some(s => s.id === "gtm-gate"));
+  assert.equal((await call(env, "/api/bench/runs", "POST", run("clef-flash-4bit", { suite: "skill-select", uid: "s1" }))).ok, true);
 });

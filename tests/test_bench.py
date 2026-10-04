@@ -541,3 +541,38 @@ class DecisionBench(unittest.TestCase):
         self.assertEqual(set(found), {"clef-flash-4bit", "kev-0.8b", "kev-4b-mlx-8bit"})   # kev-9b has no base on the drive
         self.assertNotIn(orphan.name, found)
         self.assertEqual(B.model_kind(kev, "gtm-gate"), "kev")
+
+
+class SkillSelectBench(unittest.TestCase):
+    """skill-select: the jev-gateway decision rule applied to one yes/no probability per skill."""
+
+    def ans(self, t, top, p=0.9, rest=0.05, second=None):
+        out = {k: {"noul": (p if k == top else rest)} for k in t["questions"]}
+        if second:
+            out[second[0]] = {"noul": second[1]}
+        return json.dumps(out)
+
+    def test_bank_has_picks_and_no_match_cases(self):
+        tasks = B.load_bank("skill-select")
+        golds = [t["select_gold"] for t in tasks]
+        self.assertGreaterEqual(golds.count(None), 3)
+        for t in tasks:
+            self.assertGreaterEqual(len(t["questions"]), 20)
+            if t["select_gold"]:
+                self.assertIn(t["select_gold"], t["questions"])
+
+    def test_decision_rule(self):
+        self.assertEqual(B.select_decision({"a": 0.9, "b": 0.1}), ("selected", "a"))
+        self.assertEqual(B.select_decision({"a": 0.9, "b": 0.88})[0], "top3")       # tied at the top: shortlist
+        self.assertEqual(B.select_decision({"a": 0.5, "b": 0.45, "c": 0.2}), ("top3", ["a", "b"]))
+        self.assertEqual(B.select_decision({"a": 0.3, "b": 0.1}), ("none", []))
+
+    def test_scores(self):
+        tasks = B.load_bank("skill-select")
+        pick = next(t for t in tasks if t["select_gold"]); none = next(t for t in tasks if t["select_gold"] is None)
+        g = pick["select_gold"]; other = next(k for k in pick["questions"] if k != g)
+        self.assertEqual(B.score(pick, self.ans(pick, g))[:2], (True, 1.0))
+        self.assertEqual(B.score(pick, self.ans(pick, g, p=0.6))[:2], (False, 0.5))
+        self.assertEqual(B.score(pick, self.ans(pick, other))[:2], (False, 0.0))
+        self.assertEqual(B.score(none, self.ans(none, None, rest=0.1))[:2], (True, 1.0))
+        self.assertEqual(B.score(none, self.ans(none, other))[:2], (False, 0.0))

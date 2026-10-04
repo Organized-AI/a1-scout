@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BANKS = ROOT / "tests" / "bench"
 RUNNER = Path(__file__).resolve().parent / "bench_runner.py"
 DECISION_RUNNER = Path(__file__).resolve().parent / "decision_runner.py"
-SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate"]
-DECISION_SUITES = {"gtm-gate"}           # typed questions to decision models (decision_runner.py), not chat prompts
+SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select"]
+DECISION_SUITES = {"gtm-gate", "skill-select"}           # typed questions to decision models (decision_runner.py), not chat prompts
 TYPES = {"exact", "sql_result", "json_schema", "click_in_box", "decision"}
 MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32, "decision": 0}
 # Chat models only: embedders, rerankers, routers, decision heads, OCR and speech models answer other questions.
@@ -322,6 +322,44 @@ def _gold_prob(q, ans, gold):
     return best == str(gold), probs.get(str(gold), 0.0)
 
 
+SELECT_PICK, SELECT_SHORTLIST, SELECT_TIE = 0.75, 0.40, 0.05   # jev-gateway /v1/select-skill decision rule
+
+
+def select_decision(probs):
+    """The gateway's decision from one yes/no probability per skill: ('selected', id), ('top3', [ids]) or ('none', [])."""
+    ranked = sorted(probs.items(), key=lambda kv: -kv[1])
+    if not ranked:
+        return "none", []
+    (top, p1), p2 = ranked[0], (ranked[1][1] if len(ranked) > 1 else 0.0)
+    if p1 >= SELECT_PICK and not (p2 >= SELECT_PICK and p1 - p2 < SELECT_TIE):
+        return "selected", top
+    if p1 >= SELECT_SHORTLIST:
+        return "top3", [k for k, v in ranked[:3] if v >= SELECT_SHORTLIST]
+    return "none", []
+
+
+def score_select(task, output):
+    """Skill selection, scored the way the gateway acts on it. Right skill picked outright: 1. Right skill only in a top-3
+    shortlist (three bodies loaded instead of one): 0.5. Wrong skill picked, or a skill picked when none fits: 0, the
+    failure the gateway's targets rule out. No pick when none fits: 1."""
+    try:
+        answers = json.loads(output) if isinstance(output, str) else output
+        answers = answers.get("answers", answers)
+        probs = {k: float(v.get("noul", 0)) for k, v in answers.items() if isinstance(v, dict)}
+    except (ValueError, AttributeError, TypeError):
+        return False, 0.0, "answers were not JSON"
+    kind, pick = select_decision(probs)
+    gold = task["select_gold"]
+    shown = f"{kind}: {pick}" if pick else kind
+    if gold is None:
+        return (True, 1.0, None) if kind == "none" else (False, 0.5 if kind == "top3" else 0.0, f"no skill fits, but {shown}")
+    if kind == "selected":
+        return (True, 1.0, None) if pick == gold else (False, 0.0, f"false select: {pick} (wanted {gold})")
+    if kind == "top3" and gold in pick:
+        return False, 0.5, f"shortlisted {pick}, not decided"
+    return False, 0.0, f"{shown} (wanted {gold})"
+
+
 def score_decision(task, output):
     """Every question's top answer must match the gold one to pass. The score is the mean probability put on the gold
     answers, so a confident right answer beats a hesitant one and a confident wrong answer costs the most."""
@@ -347,7 +385,7 @@ def score(task, output, db=None):
     """(pass, score 0..1, why) for one task."""
     t = task["type"]
     if t == "decision":
-        return score_decision(task, output)
+        return score_select(task, output) if "select_gold" in task else score_decision(task, output)
     if t == "exact":
         return score_exact(task, output)
     if t == "sql_result":

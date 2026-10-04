@@ -67,3 +67,15 @@ test("Bench labels the gate suite in questions per second", () => {
   const r = Bench.suiteResult(GATE, "gtm-gate");
   assert.equal(r.passed, 17);
 });
+
+test("the skill-selection stack scales measured questions per second to 67 skills and reads the skill-select pass rate", () => {
+  Bench.setData({ rows: [{ id: 2, suite: "skill-select", machine: "m1", model: "clef-flash-4bit", model_path: GATE, tok_s: 20, ttft_ms: 1500,
+    load_s: 9, peak_rss: 6.5e9, passed: 15, total: 17, score: 0.91 }] });
+  Lab._setCatalog(catalog, []);
+  const e = Lab.evaluate({ tpl: "skills", sc: "pick", mach: "m1", pick: { sel: GATE } });
+  const g = e.stages.find(s => s.slot.id === "sel");
+  assert.equal(g.measured, true);
+  assert.ok(Math.abs(g.s - 67 / 20) < 1e-9);
+  assert.equal(e.tests.find(t => t.id === "quality").st, "pass");   // 15 of 17
+  assert.ok(Bench.suites["skill-select"]);
+});

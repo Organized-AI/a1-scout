@@ -19,6 +19,8 @@
     "gtm-gate": { label: "GTM change gate", speed: "q/s", first: "Per change",
       blurb: "Decision models review proposed GTM changes: does the tag still fire, is a conversion lost or double counted, how risky is it. Passes when every answer is right; the score is the probability put on the right answers, so calibration counts." },
   };
+  SUITES["skill-select"] = { label: "Skill selection", speed: "q/s", first: "Per task",
+    blurb: "Skill Loop's router: a task plus 30 installed skills (name and description only), one yes/no per skill. Scored with the jev-gateway rule: pick at 0.75 or more, shortlist three at 0.40, never pick when nothing fits. A shortlist earns half; a wrong or unneeded pick earns nothing." };
   const unit = s => SUITES[s]?.speed || "tok/s", firstLabel = s => SUITES[s]?.first || "First token";
   // Lab machine ids; anything else shows as reported.
   const MACH = { m1: "M1 Pro 16GB", m4: "M4 16GB", m6: "M6 32GB", m5p: "M5 Pro 64GB" };
@@ -93,7 +95,7 @@
         <span class="bn-cell" role="cell" data-label="Load"><em>${r.load_s != null ? r.load_s.toFixed(1) + " s" : "—"}</em></span>
         <span class="bn-cell" role="cell" data-label="Elo"><em>${r.elo ?? "—"}</em><small>${r.battles ? `${r.battles} battle${r.battles > 1 ? "s" : ""}` : "no battles"}</small></span>
       </div>`).join("")}</div>
-      <p class="bn-note">${suite === "gtm-gate" ? "Latest run per model. Score is the mean probability on the right answers; speed is questions per second and the per-change time is the median for one change with all its questions. Peak memory is the runner process's high-water mark." : "Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark."}</p>`;
+      <p class="bn-note">${SUITES[suite]?.speed === "q/s" ? "Latest run per model. Score is the mean probability on the right answers; speed is questions per second and the per-change time is the median for one change with all its questions. Peak memory is the runner process's high-water mark." : "Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark."}</p>`;
   }
 
   function battleHtml() {
