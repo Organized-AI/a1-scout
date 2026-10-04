@@ -47,3 +47,21 @@ test("bigger models are slower and need more memory", { skip: !catalog && "no ca
   assert.equal(b.tests.find(t => t.id === "fit").st, "fail");   // a 17 GB model can't fit a 16 GB Mac
   assert.equal(a.tests.find(t => t.id === "fit").st, "pass");
 });
+
+test("grade: a fast, roomy, offline, client-safe, complete stack scores S; an empty one D", () => {
+  const ok = id => ({ id, st: "pass" });
+  const full = { stages: [1], total: 1, peak: 1e9, budget: 12e9, sc: { budget: 10 }, tests: ["present", "fit", "offline", "license", "budget"].map(ok) };
+  assert.equal(Lab.grade(full).letter, "S");
+  const empty = { stages: [], total: 0, peak: 0, budget: 12e9, sc: { budget: 10 }, tests: [{ id: "present", st: "fail" }] };
+  assert.equal(Lab.grade(empty).letter, "D");
+  const tooBig = { ...full, peak: 13e9 };
+  assert.ok(Lab.grade(tooBig).pts < Lab.grade(full).pts);
+});
+
+test("levels and missions are well formed", () => {
+  assert.equal(Lab.levelOf(0).n, 1);
+  assert.ok(Lab.levelOf(160).n > Lab.levelOf(39).n);
+  const ids = Lab.missions.map(m => m.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const m of Lab.missions) assert.ok(m.xp > 0 && m.how && m.icon, m.id);
+});

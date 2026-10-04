@@ -75,7 +75,7 @@ class Apply(unittest.TestCase):
 
     def test_yes_on_ack_gate_posts_ask_access_once(self):
         posts = []
-        post = lambda url, data: posts.append((url, data)) or (200, "")
+        post = lambda url, data: posts.append((url, data)) or (200, "", None)
         res, recheck = A.apply_decisions({"google/gemma-2-2b": {"decision": "yes", "kind": "model", "state": "pending"}},
                                          {}, http=http_for(GEMMA), post=post, api_call=self.fake_api)
         self.assertEqual(posts, [("https://huggingface.co/google/gemma-2-2b/ask-access", {})])
@@ -100,9 +100,22 @@ class Apply(unittest.TestCase):
 
     def test_refused_submit_reports_failure(self):
         res, recheck = A.apply_decisions({"google/gemma-2-2b": {"decision": "yes", "state": "pending"}}, {},
-                                         http=http_for(GEMMA), post=lambda u, d: (403, "forbidden"), api_call=self.fake_api)
+                                         http=http_for(GEMMA), post=lambda u, d: (403, "forbidden", None), api_call=self.fake_api)
         self.assertEqual(res["google/gemma-2-2b"]["outcome"], "failed")
         self.assertEqual(recheck, set())
+
+    def test_redirect_to_an_outside_consent_page_hands_it_to_you(self):
+        kaggle = "https://www.kaggle.com/models/google/gemma/license/consent/verify/huggingface?returnModelRepoId=google%2Fgemma-2-2b"
+        res, recheck = A.apply_decisions({"google/gemma-2-2b": {"decision": "yes", "state": "pending"}}, {},
+                                         http=http_for(GEMMA), post=lambda u, d: (303, "", kaggle), api_call=self.fake_api)
+        r = res["google/gemma-2-2b"]
+        self.assertEqual((r["outcome"], r["url"]), ("needs_you", kaggle))      # not "requested": nothing was granted
+        self.assertEqual(recheck, set())
+        self.assertEqual(A.licenses()["google/gemma-2-2b"]["gate"]["consent_url"], kaggle)
+
+    def test_redirect_to_login_is_a_failure_and_back_to_the_repo_is_success(self):
+        self.assertEqual(A.request_access("a/b", "model", {}, post=lambda u, d: (302, "", "/login?next=x"))[0], "failed")
+        self.assertEqual(A.request_access("a/b", "model", {}, post=lambda u, d: (303, "", "/a/b"))[0], "requested")
 
     def test_done_decisions_are_ignored(self):
         res, _ = A.apply_decisions({"a/b": {"decision": "yes", "state": "done"}}, {}, http=http_for(GEMMA), post=mock.Mock())

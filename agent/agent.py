@@ -589,18 +589,24 @@ def hf_user():
     return name
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
 def _hf_post(url, data):
-    """Form POST with the Mac's Hugging Face token. Returns (status, body text)."""
+    """Form POST with the Mac's Hugging Face token, without following redirects.
+    Returns (status, body text, Location header or None)."""
     body = urllib.parse.urlencode(data or {}).encode()
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={**hf_headers(), "content-type": "application/x-www-form-urlencoded"})
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return r.status, r.read(2000).decode("utf-8", "ignore")
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=20) as r:
+            return r.status, r.read(2000).decode("utf-8", "ignore"), None
     except urllib.error.HTTPError as e:
-        return e.code, (e.read(2000) or b"").decode("utf-8", "ignore")
+        return e.code, (e.read(2000) or b"").decode("utf-8", "ignore"), e.headers.get("location")
     except Exception as e:
-        return 0, str(e)
+        return 0, str(e), None
 
 
 def _is_checkbox(v):
@@ -653,13 +659,22 @@ def decide_license(gate, decision, access):
 
 
 def request_access(repo, kind, gate, post=None):
-    """Submit the acknowledgement on the repo's gate as the Mac's account. Returns (ok, detail)."""
+    """Submit the acknowledgement on the repo's gate as the Mac's account.
+    Returns (state, detail, url): state is 'requested', 'external' (the author sends you to their own consent page,
+    e.g. Google's Kaggle consent for Gemma, which only you can complete) or 'failed'."""
     post = post or _hf_post
     data = {b: "on" for b in (gate or {}).get("boxes") or []}
-    st, text = post(f"{hub_url(repo, kind)}/ask-access", data)
-    if st in (200, 201, 204, 302, 303):
-        return True, f"Submitted ({st})."
-    return False, f"Hugging Face answered {st or 'nothing'}" + (f": {text[:160]}" if text and st else "")
+    st, text, loc = post(f"{hub_url(repo, kind)}/ask-access", data)
+    if 200 <= st < 300:
+        return "requested", f"Submitted ({st}).", None
+    if st in (301, 302, 303, 307, 308) and loc:
+        u = urllib.parse.urlparse(urllib.parse.urljoin(HF_SITE, loc))
+        if u.netloc.endswith("huggingface.co"):
+            if "login" in u.path:
+                return "failed", "Hugging Face didn't accept the Mac's token for this; sign in on the page instead.", hub_url(repo, kind)
+            return "requested", f"Submitted ({st}).", None
+        return "external", f"{repo.split('/')[0]} asks you to accept on {u.netloc}; only you can do that step.", u.geturl()
+    return "failed", f"Hugging Face answered {st or 'nothing'}" + (f": {text[:160]}" if text and st else ""), hub_url(repo, kind)
 
 
 def apply_decisions(decisions, picks, http=None, post=None, api_call=None):
@@ -686,10 +701,17 @@ def apply_decisions(decisions, picks, http=None, post=None, api_call=None):
             record_license(repo, kind, gate.get("gated", "manual"), "declined", gate=gate, decision="no")
             res["outcome"] = "skipped"
         elif plan["action"] == "submit":
-            ok, detail = request_access(repo, kind, gate, post=post)
-            res["outcome"], res["detail"] = ("requested" if ok else "failed"), detail
+            state, detail, url = request_access(repo, kind, gate, post=post)
+            res["detail"] = detail
+            if state == "external":
+                gate = {**gate, "consent_url": url}
+                res.update(outcome="needs_you", url=url, reason=f"{detail} Open it signed in, accept, then come back; the Mac re-checks every 15 minutes.")
+            else:
+                res["outcome"] = state
+                if url:
+                    res["url"] = url
             record_license(repo, kind, gate.get("gated", "manual"), access or "blocked", gate=gate, decision="yes")
-            if ok:
+            if state == "requested":
                 recheck.add(repo)
         elif plan["action"] == "recheck":
             res["outcome"] = "rechecking"; recheck.add(repo)

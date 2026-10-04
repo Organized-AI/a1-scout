@@ -472,17 +472,18 @@ function licGateLine(r) {
   return `The Mac reads the gate when you answer.`;
 }
 function licDecision(r, user) {
-  const d = (a1act?.license_decisions || {})[r.repo], url = licUrl(r.repo, r.kind);
-  const terms = `<a class="a1-lic-terms" href="${url}" target="_blank" rel="noopener">Read the terms ↗</a>`;
+  const d = (a1act?.license_decisions || {})[r.repo], url = d?.url || r.gate?.consent_url || licUrl(r.repo, r.kind);
+  const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "huggingface.co"; } })();
+  const terms = `<a class="a1-lic-terms" href="${url}" target="_blank" rel="noopener">${host === "huggingface.co" ? "Read the terms" : "Consent page on " + esc(host)} ↗</a>`;
   if (d?.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3)
     return `<div class="a1-lic-dec"><span class="a1-lic-q">${d.decision === "yes" ? "Yes" : "No"} · sent to the Mac. It acts within 2 minutes.</span>${terms}</div>`;
   const msg = !d || d.state !== "done" ? "" : d.outcome === "requested" ? `Requested as ${esc(user || "your account")}. Waiting on ${esc(r.repo.split("/")[0])} to approve; the Mac re-checks every 15 minutes.`
     : d.outcome === "needs_you" ? esc(d.reason) : d.outcome === "failed" ? `Couldn't submit: ${esc(d.detail || "")}. Use the page instead.` : "";
-  const form = d?.outcome === "needs_you" || d?.outcome === "failed" || r.gate?.mode === "form";
+  const form = d?.outcome === "needs_you" || d?.outcome === "failed" || r.gate?.mode === "form" || !!r.gate?.consent_url;
   return `<div class="a1-lic-dec">
     <span class="a1-lic-q">${msg || licGateLine(r)}</span>
     ${d?.outcome === "requested" ? "" : `<span class="a1-lic-yn">
-      ${form ? `<a class="btn go" href="${url}" target="_blank" rel="noopener" data-licyes="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">Yes · open form ↗</a>`
+      ${form ? `<a class="btn go" href="${url}" target="_blank" rel="noopener" data-licyes="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">${host === "huggingface.co" ? "Yes · open form" : "Yes · accept on " + esc(host)} ↗</a>`
              : `<button type="button" class="btn go" data-licyes="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">Yes, accept</button>`}
       <button type="button" class="btn" data-licno="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">No, skip it</button></span>`}
     ${terms}</div>`;

@@ -177,6 +177,159 @@
   const save = () => store.set("a1-lab", st);
   const saved = () => store.get("a1-lab-saved", []);
 
+
+  // ---------- game layer: XP, levels, missions, stack grade ----------
+  const fresh = () => ({ xp: 0, runs: 0, tried: [], green: [], macs: {}, done: [], seen: {} });
+  const game = () => ({ ...fresh(), ...(store.get("a1-lab-game", null) || {}) });
+  const saveGame = g => store.set("a1-lab-game", g);
+  const LEVELS = ["Tinkerer", "Builder", "Stack smith", "Pipeline pilot", "Systems wizard", "A1 Architect"];
+  const levelOf = xp => { const n = Math.floor(Math.sqrt(xp / 40)); return { n: n + 1, title: LEVELS[Math.min(n, LEVELS.length - 1)], next: LEVELS[Math.min(n + 1, LEVELS.length - 1)], from: 40 * n * n, to: 40 * (n + 1) * (n + 1) }; };
+  function grade(e) {
+    const T_ = id => e.tests.find(t => t.id === id)?.st;
+    const speed = !e.stages.length ? 0 : 40 * Math.min(1, e.sc.budget / Math.max(e.total, 1e-3) / 4);
+    const mem = e.peak > e.budget ? 0 : 25 * Math.min(1, .4 + (1 - e.peak / e.budget) * 1.2);
+    const parts = [["Speed", speed, 40], ["Memory headroom", mem, 25], ["Works offline", T_("offline") === "pass" ? 15 : 7, 15],
+                   ["Client-safe licenses", T_("license") === "pass" ? 10 : 4, 10], ["All parts present", T_("present") === "pass" ? 10 : 0, 10]];
+    const pts = Math.round(parts.reduce((t, p) => t + p[1], 0));
+    return { pts, letter: pts >= 90 ? "S" : pts >= 80 ? "A" : pts >= 65 ? "B" : pts >= 50 ? "C" : "D", parts };
+  }
+  const stackKey = s => `${s.tpl}:${Object.values(s.pick).sort().join("+")}`;
+  const allGreen = e => e.stages.length && e.tests.every(t => t.st === "pass" || t.st === "pending");
+  const MISSIONS = [
+    { id: "first", icon: "▶", name: "First light", how: "Run any simulation.", xp: 20, test: (e, g) => g.runs >= 1 },
+    { id: "green", icon: "✓", name: "All green", how: "Pass every test that can run, on any stack.", xp: 40, test: e => allGreen(e) },
+    { id: "clean", icon: "§", name: "Client-safe", how: "A stack where every part has a permissive license.", xp: 30, test: e => e.tests.find(t => t.id === "license")?.st === "pass" && e.stages.length },
+    { id: "sub1", icon: "⚡", name: "Speed demon", how: "Any stack under 1 second per request.", xp: 40, test: e => e.stages.length && e.total < 1 },
+    { id: "voice4", icon: "♪", name: "Talk back fast", how: "Voice assistant answers the spoken question within 4 s on the M1.", xp: 50, test: (e, g, s) => s.tpl === "voice" && s.sc === "ask" && s.mach === "m1" && e.stages.length >= 3 && e.total <= 4 },
+    { id: "tight", icon: "▦", name: "Tight fit", how: "Use over half of a Mac's usable memory and still fit.", xp: 50, test: e => e.peak > e.budget * .5 && e.peak <= e.budget },
+    { id: "shop", icon: "⌘", name: "Hardware shopper", how: "Run the same stack on three different Macs.", xp: 40, test: (e, g, s) => (g.macs[stackKey(s)] || []).length >= 3 },
+    { id: "trio", icon: "★", name: "Hat trick", how: "All green on three different stacks.", xp: 100, test: (e, g) => g.green.length >= 3 },
+    { id: "all7", icon: "◎", name: "Collector", how: "Run all seven stacks.", xp: 80, test: (e, g) => g.tried.length >= Object.keys(T).length },
+    { id: "sgrade", icon: "S", name: "S rank", how: "Score 90 or more on any stack.", xp: 120, test: e => grade(e).pts >= 90 },
+  ];
+  function award(e) {
+    const g = game(), s = st; let gained = 0; const unlocked = [], before = levelOf(g.xp);
+    g.runs++;
+    if (!g.tried.includes(s.tpl)) g.tried.push(s.tpl);
+    const k = stackKey(s); g.macs[k] = [...new Set([...(g.macs[k] || []), s.mach])];
+    const seen = `${k}|${s.sc}|${s.mach}`;
+    if (!g.seen[seen]) { g.seen[seen] = 1; gained += 10; }
+    if (allGreen(e) && !g.green.includes(s.tpl)) { g.green.push(s.tpl); gained += 25; }
+    for (const m of MISSIONS) if (!g.done.includes(m.id) && m.test(e, g, s)) { g.done.push(m.id); gained += m.xp; unlocked.push(m); }
+    g.xp += gained; saveGame(g);
+    const after = levelOf(g.xp);
+    return { gained, unlocked, before, after, levelUp: after.n > before.n, g };
+  }
+
+  // ---------- diagrams ----------
+  const GAUGE_L = Math.PI * 70;
+  function gaugeSvg(gr, live) {
+    const off = live ? GAUGE_L * (1 - gr.pts / 100) : GAUGE_L;
+    return `<svg class="lab-gauge" viewBox="0 0 160 100" role="img" aria-label="Stack grade ${gr.letter}, ${gr.pts} of 100">
+      <path d="M10,90 A70,70 0 0 1 150,90" class="lab-g-track"/>
+      <path d="M10,90 A70,70 0 0 1 150,90" class="lab-g-arc g-${gr.letter}" data-arc stroke-dasharray="${GAUGE_L.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+      ${[0, 25, 50, 75, 100].map(v => { const a = Math.PI * (1 - v / 100); return `<line x1="${80 + 58 * Math.cos(a)}" y1="${90 - 58 * Math.sin(a)}" x2="${80 + 64 * Math.cos(a)}" y2="${90 - 64 * Math.sin(a)}" class="lab-g-tick"/>`; }).join("")}
+      <text x="80" y="74" class="lab-g-letter g-${gr.letter}" data-letter>${live ? gr.letter : "?"}</text>
+      <text x="80" y="94" class="lab-g-pts" data-pts>${live ? gr.pts : "–"} / 100</text></svg>`;
+  }
+  function sysSvg(e) {
+    const W = 800, cy = 118, n = e.stages.length;
+    const xs = n ? e.stages.map((_, k) => n === 1 ? 545 : 435 + k * (230 / (n - 1))) : [];
+    const outX = 745, ramH = 150, ramY = 46, cap = e.mach.gb * 2 ** 30;
+    let y = ramY + ramH;
+    const blocks = e.stages.filter(s => isModel(s.item)).map((s, k) => {
+      const h = Math.max(3, Math.min(ramH, memNeed(s.item) / cap * ramH)); y -= h;
+      return `<rect class="lab-ramblk c${k % 4}" x="196" y="${y.toFixed(1)}" width="58" height="${h.toFixed(1)}" rx="3"><title>${esc(s.item.name)} · ${gb(memNeed(s.item))}</title></rect>`;
+    }).join("");
+    const budY = ramY + ramH * .25, toLoad = e.stages.reduce((t, s) => t + (isModel(s.item) ? s.item.bytes : 0), 0);
+    const pts = [370, ...xs, outX];
+    const wires = pts.slice(0, -1).map((x, k) => `<line class="lab-wireline" x1="${x + (k ? 26 : 0)}" y1="${cy}" x2="${pts[k + 1] - 26}" y2="${cy}"/>`).join("");
+    const nodes = e.stages.map((s, k) => `<g class="lab-dnode" data-dn="${k}" transform="translate(${xs[k]},${cy})">
+        <circle r="26" class="lab-dn-c"/><text class="lab-dn-g" y="5">${esc(glyph(s.item.kind))}</text>
+        <text class="lab-dn-name" y="46">${esc(s.slot.label)}</text><text class="lab-dn-t" y="-36" data-dt="${k}">${secs(s.s)}</text></g>`).join("");
+    return `<svg class="lab-sys" viewBox="0 0 ${W} 230" role="img" aria-label="How the stack runs: weights load from the A1 into the Mac's memory, then a request flows through each stage">
+      <defs><linearGradient id="labShine" x1="0" x2="1"><stop offset="0" stop-color="var(--brand)" stop-opacity="0"/><stop offset=".5" stop-color="var(--brand)" stop-opacity=".9"/><stop offset="1" stop-color="var(--brand)" stop-opacity="0"/></linearGradient></defs>
+      <g class="lab-a1"><rect x="8" y="78" width="118" height="80" rx="10" class="lab-box"/>
+        <rect x="20" y="92" width="94" height="10" rx="3" class="lab-slot-led"/><text x="67" y="126" class="lab-box-t">A1 · stash</text>
+        <text x="67" y="144" class="lab-box-s">${gb(toLoad)} to load</text></g>
+      <line x1="126" y1="${cy}" x2="170" y2="${cy}" class="lab-usb"/><line x1="126" y1="${cy}" x2="170" y2="${cy}" class="lab-flow" data-flow/>
+      <text x="148" y="${cy - 10}" class="lab-box-s">USB</text>
+      <g class="lab-mac"><rect x="170" y="14" width="200" height="202" rx="14" class="lab-box"/>
+        <text x="270" y="34" class="lab-box-t">${esc(e.mach.label)}</text>
+        <rect x="192" y="${ramY - 2}" width="66" height="${ramH + 4}" rx="5" class="lab-ram"/>${blocks}
+        <line x1="186" x2="264" y1="${budY}" y2="${budY}" class="lab-budline"/><text x="268" y="${budY + 4}" class="lab-box-s" text-anchor="start">75%</text>
+        <text x="315" y="96" class="lab-box-s">memory</text><text x="315" y="114" class="lab-box-v${e.peak > e.budget ? " bad" : ""}" data-peak>${gb(e.peak)}</text>
+        <text x="315" y="146" class="lab-box-s">bandwidth</text><text x="315" y="164" class="lab-box-v">${BW[e.mach.id]?.gbs || "?"} GB/s</text></g>
+      ${wires}${nodes}
+      <g class="lab-out" transform="translate(${outX},${cy})"><rect x="-24" y="-24" width="48" height="48" rx="12" class="lab-out-r" transform="rotate(45)"/><text y="6" class="lab-dn-g">✓</text>
+        <text y="50" class="lab-dn-name">Answer</text></g>
+      <circle r="7" class="lab-packet" cx="370" cy="${cy}" data-packet data-xs="${pts.join(",")}" opacity="0"/>
+    </svg>`;
+  }
+  function playerBar() {
+    const g = game(), L = levelOf(g.xp), pct = Math.min(100, (g.xp - L.from) / (L.to - L.from) * 100);
+    const next = MISSIONS.find(m => !g.done.includes(m.id));
+    return `<div class="lab-player">
+      <div class="lab-lvl"><svg viewBox="0 0 40 40" aria-hidden="true"><polygon points="20,2 37,11 37,29 20,38 3,29 3,11" class="lab-hex"/></svg><b data-lvl>${L.n}</b></div>
+      <div class="lab-xpwrap"><div class="lab-xptop"><b data-title>${esc(L.title)}</b><span data-xp>${g.xp} XP</span></div>
+        <div class="lab-xpbar"><i data-xpbar style="width:${pct}%"></i></div>
+        <small data-xpnext>${L.to - g.xp} XP to ${esc(L.next)}${next ? ` · next mission: <b>${esc(next.name)}</b> — ${esc(next.how)}` : " · every mission done"}</small></div>
+      <div class="lab-badges">${MISSIONS.map(m => `<span class="lab-badge${g.done.includes(m.id) ? " on" : ""}" data-badge="${m.id}" title="${esc(m.name)}: ${esc(m.how)} (+${m.xp} XP)">${esc(m.icon)}</span>`).join("")}</div>
+    </div>`;
+  }
+  function missionsPanel() {
+    const g = game();
+    return `<section class="lab-panel lab-missions"><div class="lab-h"><span class="lab-kick">Missions · ${g.done.length} of ${MISSIONS.length}</span><span class="lab-mut">Run simulations to earn XP. Each new stack, scenario and Mac combination is worth 10 XP; all green on a new stack is 25.</span></div>
+      <ul>${MISSIONS.map(m => `<li class="lab-m${g.done.includes(m.id) ? " on" : ""}" data-mission="${m.id}"><span class="lab-badge${g.done.includes(m.id) ? " on" : ""}">${esc(m.icon)}</span><div><b>${esc(m.name)}</b><small>${esc(m.how)}</small></div><em>+${m.xp}</em></li>`).join("")}</ul></section>`;
+  }
+  function toast(root, html, cls = "") {
+    let box = $(".lab-toasts"); if (!box) { box = document.createElement("div"); box.className = "lab-toasts"; box.setAttribute("aria-live", "polite"); document.body.appendChild(box); }
+    const t = document.createElement("div"); t.className = "lab-toast " + cls; t.innerHTML = html; box.appendChild(t);
+    if (window.gsap && !RM()) gsap.timeline().from(t, { x: 60, opacity: 0, duration: .45, ease: "back.out(2)" }).to(t, { opacity: 0, x: 40, duration: .4, delay: 3.2, onComplete: () => t.remove() });
+    else setTimeout(() => t.remove(), 3600);
+  }
+  function celebrate(root, e, res) {
+    const gr = grade(e), arc = $("[data-arc]", root), L0 = res.before, L1 = res.after, rm = RM() || !window.gsap;
+    const pBox = $(".lab-player", root);
+    const setText = (sel, v) => { const n = $(sel, root); if (n) n.textContent = v; };
+    if (rm) { if (arc) arc.setAttribute("stroke-dashoffset", GAUGE_L * (1 - gr.pts / 100)); setText("[data-letter]", gr.letter); setText("[data-pts]", `${gr.pts} / 100`); }
+    else {
+      const o = { v: 0 };
+      gsap.timeline()
+        .fromTo(arc, { attr: { "stroke-dashoffset": GAUGE_L } }, { attr: { "stroke-dashoffset": GAUGE_L * (1 - gr.pts / 100) }, duration: 1.1, ease: "power3.out" })
+        .to(o, { v: gr.pts, duration: 1.1, ease: "power3.out", onUpdate: () => setText("[data-pts]", `${Math.round(o.v)} / 100`) }, "<")
+        .add(() => setText("[data-letter]", gr.letter))
+        .fromTo($("[data-letter]", root), { scale: 0, transformOrigin: "50% 60%" }, { scale: 1, duration: .5, ease: "back.out(3)" });
+      $$(".lab-part i", root).forEach(b => gsap.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: .8, ease: "power2.out", transformOrigin: "left" }));
+    }
+    if (gr.letter === "S" || gr.letter === "A") { const a = $(".lab-gauge", root); if (a && window.burst && !rm) { const r = a.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 18, 70); } }
+    // XP
+    if (pBox) {
+      const toPct = Math.min(100, (res.g.xp - L1.from) / (L1.to - L1.from) * 100), bar = $("[data-xpbar]", root);
+      setText("[data-lvl]", L1.n); setText("[data-title]", L1.title);
+      if (res.gained && !rm) {
+        const f = document.createElement("span"); f.className = "lab-xpfloat"; f.textContent = `+${res.gained} XP`; pBox.appendChild(f);
+        gsap.fromTo(f, { y: 10, opacity: 0 }, { y: -26, opacity: 1, duration: .6, ease: "power2.out", onComplete: () => gsap.to(f, { opacity: 0, duration: .5, delay: .8, onComplete: () => f.remove() }) });
+        const o = { v: res.g.xp - res.gained };
+        gsap.to(o, { v: res.g.xp, duration: .9, onUpdate: () => setText("[data-xp]", `${Math.round(o.v)} XP`) });
+        if (res.levelUp) gsap.timeline().to(bar, { width: "100%", duration: .5 }).set(bar, { width: "0%" }).to(bar, { width: toPct + "%", duration: .6 })
+          .fromTo($(".lab-lvl", root), { scale: 1.5, rotate: -20 }, { scale: 1, rotate: 0, duration: .7, ease: "elastic.out(1,.4)" }, "<");
+        else gsap.to(bar, { width: toPct + "%", duration: .9, ease: "power2.out" });
+      } else { if (bar) bar.style.width = toPct + "%"; setText("[data-xp]", `${res.g.xp} XP`); }
+      const next = MISSIONS.find(m => !res.g.done.includes(m.id)), nx = $("[data-xpnext]", root);
+      if (nx) nx.innerHTML = `${L1.to - res.g.xp} XP to ${esc(L1.next)}${next ? ` · next mission: <b>${esc(next.name)}</b> — ${esc(next.how)}` : " · every mission done"}`;
+    }
+    if (!res.gained) toast(root, `<b>No new XP</b><span>Change a part, the scenario or the Mac to earn more.</span>`, "quiet");
+    if (res.levelUp) toast(root, `<span class="lab-badge on">${L1.n}</span><div><b>Level up · ${esc(L1.title)}</b><span>You reached level ${L1.n}.</span></div>`, "big");
+    res.unlocked.forEach((m, k) => setTimeout(() => {
+      toast(root, `<span class="lab-badge on">${esc(m.icon)}</span><div><b>Mission complete · ${esc(m.name)}</b><span>+${m.xp} XP · ${esc(m.how)}</span></div>`);
+      $$(`[data-badge="${m.id}"], [data-mission="${m.id}"], [data-mission="${m.id}"] .lab-badge`, root).forEach(b => b.classList.add("on"));
+      const b = $(`[data-badge="${m.id}"]`, root);
+      if (b && !rm) { gsap.fromTo(b, { scale: 0, rotate: -90 }, { scale: 1, rotate: 0, duration: .7, ease: "back.out(3)" }); if (window.burst) { const r = b.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 14, 50); } }
+    }, 900 + k * 700));
+    const mk = $(".lab-missions .lab-kick", root); if (mk) mk.textContent = `Missions · ${res.g.done.length} of ${MISSIONS.length}`;
+  }
+
   // ---------- rendering ----------
   function papersFor(tpl) {
     return (picks || []).filter(p => p.kind === "paper" && tpl.words.test(`${p.title || ""} ${p.summary || ""}`)).slice(0, 4);
@@ -191,6 +344,7 @@
       <header class="lab-hero"><span class="lab-kick">Lab · simulated</span>
         <h2>Build a stack. See how it would run.</h2>
         <p>Pick a job, choose parts from what's on the A1, and pick a Mac. The Lab estimates memory, speed and load time from file sizes, then runs a simulated test suite. Real offline runs come later; nothing here touches the drive.</p></header>
+      ${playerBar()}
       <div class="lab-tpls" role="tablist" aria-label="Stack templates">${Object.entries(T).map(([id, t]) => `
         <button type="button" class="lab-tpl" role="tab" aria-selected="${id === st.tpl}" data-tpl="${id}"><span class="lab-ic">${esc(t.icon)}</span><b>${esc(t.title)}</b><small>${esc(t.tag)}</small></button>`).join("")}</div>
       <div class="lab-grid">
@@ -208,6 +362,8 @@
         </section>
         <section class="lab-panel lab-sim">
           <div class="lab-h"><span class="lab-kick">Simulation</span><button type="button" class="lab-btn go" data-run>▶ Run simulation</button></div>
+          <div class="lab-sysw">${sysSvg(e)}</div>
+          <div class="lab-grade">${gaugeSvg(grade(e), false)}<ul class="lab-parts">${grade(e).parts.map(([n, v, m]) => `<li class="lab-part"><span>${esc(n)}</span><b>${Math.round(v)}/${m}</b><em><i style="width:${v / m * 100}%"></i></em></li>`).join("")}</ul></div>
           <div class="lab-pipe">${e.stages.length ? e.stages.map((s, k) => `${k ? '<i class="lab-wire"><b></b></i>' : ""}<div class="lab-node" data-k="${k}"><span class="lab-g">${esc(glyph(s.item.kind))}</span><b>${esc(s.item.name)}</b><small>${esc(label(s.item.kind))} · ${gb(s.item.bytes)}</small><em data-t="${k}">${secs(s.s)}</em></div>`).join("") : '<p class="lab-mut">Choose parts to see the pipeline.</p>'}</div>
           <div class="lab-stats">
             <div><span>Per request (warm)</span><b data-n="total">${secs(e.total)}</b></div>
@@ -227,6 +383,7 @@
         <ul class="lab-tlist">${e.tests.map(t => `<li class="lab-t ${t.st}" data-test="${t.id}"><span class="lab-ts">${{ pass: "✓", fail: "✗", warn: "!", pending: "…" }[t.st]}</span><div><b>${esc(t.name)}</b><small>${esc(t.why)}</small></div></li>`).join("")}</ul>
         ${saved().length ? `<div class="lab-saved"><span class="lab-kick">Saved stacks</span>${saved().map((s, k) => `<button type="button" class="lab-chip" data-load="${k}">${esc(T[s.tpl]?.tag || s.tpl)} · ${esc(Object.values(s.pick).map(p => p.split("/").pop()).join(" + "))}</button>`).join("")}</div>` : ""}
       </section>
+      ${missionsPanel()}
       <section class="lab-panel">
         <div class="lab-h"><span class="lab-kick">Papers behind this stack</span></div>
         ${P.length ? `<ul class="lab-papers">${P.map(p => `<li><a href="https://arxiv.org/abs/${esc(p.repo)}" target="_blank" rel="noopener">${esc(p.title || p.repo)}</a><small>${esc(p.repo)} · ${p.status === "stashed" ? "on the A1" : p.status}</small></li>`).join("")}</ul>`
@@ -237,20 +394,32 @@
 
   function animateSim(root) {
     const nodes = $$(".lab-node", root), wires = $$(".lab-wire b", root), logs = $$(".lab-log li", root);
-    if (RM() || !window.gsap) { nodes.forEach(n => n.classList.add("done")); return; }
-    const e = evaluate(st), times = e.stages.map(s => s.s), sum = times.reduce((a, b) => a + b, 0) || 1;
-    const tl = gsap.timeline();
-    tl.set(nodes, { className: "lab-node" }).set(logs, { opacity: .25 }).set(wires, { scaleX: 0 });
+    const e = evaluate(st), res = award(e), runBtn = $("[data-run]", root);
+    if (RM() || !window.gsap) { nodes.forEach(n => n.classList.add("done")); celebrate(root, e, res); return; }
+    if (runBtn) runBtn.disabled = true;
+    const times = e.stages.map(s => s.s), sum = times.reduce((a, b) => a + b, 0) || 1;
+    const pk = $("[data-packet]", root), xs = (pk?.dataset.xs || "").split(",").map(Number), dn = $$(".lab-dnode", root);
+    const tl = gsap.timeline({ onComplete: () => { if (runBtn) runBtn.disabled = false; celebrate(root, e, res); } });
+    tl.set(nodes, { className: "lab-node" }).set(logs, { opacity: .25 }).set(wires, { scaleX: 0 }).set(dn, { attr: { class: "lab-dnode" } })
+      .set($("[data-arc]", root), { attr: { "stroke-dashoffset": GAUGE_L } });
+    // 1. weights stream off the A1 and stack up in memory
+    tl.fromTo("[data-flow]", { strokeDashoffset: 0, opacity: 1 }, { strokeDashoffset: -80, duration: Math.min(1.6, .5 + e.firstLoad / 20), ease: "none" })
+      .from($$(".lab-ramblk", root), { y: -160, opacity: 0, duration: .55, stagger: .2, ease: "bounce.out" }, "<")
+      .to("[data-flow]", { opacity: 0, duration: .2 })
+      .set(pk, { attr: { cx: xs[0] }, opacity: 1 });
     nodes.forEach((n, k) => {
-      const d = Math.max(.35, Math.min(1.6, times[k] / sum * 4));
+      const d = Math.max(.3, Math.min(.9, times[k] / sum * 2.4));
       const t = $(`[data-t="${k}"]`, root), o = { v: 0 };
+      if (pk) tl.to(pk, { attr: { cx: xs[k + 1] }, duration: .35, ease: "power1.inOut" }).add(() => dn[k]?.setAttribute("class", "lab-dnode live"));
       tl.add(() => n.classList.add("live"))
         .fromTo(n, { scale: .96 }, { scale: 1.04, duration: .18, yoyo: true, repeat: 1 })
         .to(logs[k] || {}, { opacity: 1, duration: .2 }, "<")
         .fromTo(o, { v: 0 }, { v: times[k], duration: d, ease: "none", onUpdate: () => t && (t.textContent = secs(o.v)) }, "<")
-        .add(() => { n.classList.remove("live"); n.classList.add("done"); });
+        .add(() => { n.classList.remove("live"); n.classList.add("done"); dn[k]?.setAttribute("class", "lab-dnode done"); });
       if (wires[k]) tl.to(wires[k], { scaleX: 1, duration: .35, ease: "power1.inOut" });
     });
+    if (pk) tl.to(pk, { attr: { cx: xs[xs.length - 1] }, duration: .35, ease: "power1.in" }).to(pk, { attr: { r: 16 }, opacity: 0, duration: .3 })
+      .fromTo(".lab-out", { scale: .6, transformOrigin: "50% 50%" }, { scale: 1, duration: .5, ease: "back.out(3)" }, "<").set(pk, { attr: { r: 7 } });
     const tot = $('[data-n="total"]', root), o2 = { v: 0 };
     tl.fromTo(o2, { v: 0 }, { v: e.total, duration: .6, onUpdate: () => tot && (tot.textContent = secs(o2.v)) });
   }
@@ -277,7 +446,7 @@
     if (first && window.gsap && !RM()) gsap.from($$(".lab-hero > *, .lab-tpl, .lab-panel", root), { y: 14, opacity: .2, duration: .45, stagger: .03, ease: "power2.out", clearProps: "transform,opacity" });
   }
 
-  window.LabView = { html, wire, evaluate: s => evaluate(s), templates: T, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id) };
+  window.LabView = { html, wire, evaluate: s => evaluate(s), templates: T, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id), grade: e => grade(e), missions: MISSIONS, levelOf };
 
   const css = document.createElement("style");
   css.textContent = `
@@ -338,7 +507,65 @@
   .lab-t.warn .lab-ts{color:var(--warn);border-color:var(--warn)}.lab-t.pending .lab-ts{color:var(--mute)}
   .lab-saved{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px}
   .lab-chip{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font:12px "IBM Plex Mono",monospace}
-  .lab-papers{margin:0;padding-left:18px;display:grid;gap:6px}.lab-papers small{display:block;color:var(--mute);font-size:12px}.lab-papers a{color:var(--ink)}
+
+  .lab-player{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel)}
+  @media(max-width:720px){.lab-player{grid-template-columns:auto minmax(0,1fr)}.lab-badges{grid-column:1/-1}}
+  .lab-lvl{position:relative;width:48px;height:48px;display:grid;place-items:center}
+  .lab-lvl svg{position:absolute;inset:0;width:100%;height:100%}.lab-hex{fill:var(--brand);stroke:none}
+  .lab-lvl b{position:relative;font:700 18px "IBM Plex Mono",monospace;color:var(--on-brand)}
+  .lab-xptop{display:flex;justify-content:space-between;gap:8px;font:600 13px "IBM Plex Mono",monospace}.lab-xptop span{color:var(--mute);font-variant-numeric:tabular-nums}
+  .lab-xpbar{height:10px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin:6px 0 4px}
+  .lab-xpbar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--brand));border-radius:5px}
+  .lab-xpwrap small{color:var(--mute);font-size:12px}.lab-xpwrap small b{color:var(--ink)}
+  .lab-badges{display:flex;gap:6px;flex-wrap:wrap}
+  .lab-badge{width:28px;height:28px;border-radius:8px;display:inline-grid;place-items:center;font:700 12px "IBM Plex Mono",monospace;border:1px dashed var(--line);color:var(--mute);flex:none}
+  .lab-badge.on{border:1px solid var(--brand);background:color-mix(in srgb,var(--brand) 18%,transparent);color:var(--ink)}
+  .lab-xpfloat{position:absolute;right:16px;top:6px;font:700 15px "IBM Plex Mono",monospace;color:var(--brand);pointer-events:none}
+  .lab-sysw{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:6px;margin-bottom:10px;overflow-x:auto}
+  .lab-sys{display:block;width:100%;min-width:560px;height:auto}
+  .lab-box{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+  .lab-box-t{font:600 13px "IBM Plex Mono",monospace;fill:var(--ink);text-anchor:middle}
+  .lab-box-s{font:11px "IBM Plex Sans",sans-serif;fill:var(--mute);text-anchor:middle}
+  .lab-box-v{font:600 14px "IBM Plex Mono",monospace;fill:var(--ink);text-anchor:middle}.lab-box-v.bad{fill:var(--bad)}
+  .lab-slot-led{fill:color-mix(in srgb,var(--brand) 35%,transparent)}
+  .lab-usb{stroke:var(--line);stroke-width:4;stroke-linecap:round}
+  .lab-flow{stroke:var(--brand);stroke-width:4;stroke-linecap:round;stroke-dasharray:6 10;opacity:0}
+  .lab-ram{fill:var(--chip);stroke:var(--line)}
+  .lab-ramblk.c0{fill:var(--accent)}.lab-ramblk.c1{fill:#6cc4f2}.lab-ramblk.c2{fill:#b99cf2}.lab-ramblk.c3{fill:#7cf2a0}
+  .lab-budline{stroke:var(--bad);stroke-width:1.5;stroke-dasharray:4 3}
+  .lab-wireline{stroke:var(--line);stroke-width:3;stroke-linecap:round}
+  .lab-dn-c{fill:var(--panel);stroke:var(--line);stroke-width:2;transition:stroke .2s,fill .2s}
+  .lab-dnode.live .lab-dn-c{stroke:var(--brand);stroke-width:3;fill:color-mix(in srgb,var(--brand) 20%,var(--panel))}
+  .lab-dnode.done .lab-dn-c{stroke:var(--accent)}
+  .lab-dn-g{font:700 14px "IBM Plex Mono",monospace;fill:var(--accent);text-anchor:middle}
+  .lab-dn-name{font:12px "IBM Plex Sans",sans-serif;fill:var(--mute);text-anchor:middle}
+  .lab-dn-t{font:600 11px "IBM Plex Mono",monospace;fill:var(--ink);text-anchor:middle}
+  .lab-out-r{fill:color-mix(in srgb,var(--brand) 16%,var(--panel));stroke:var(--brand);stroke-width:2}
+  .lab-packet{fill:var(--brand);filter:drop-shadow(0 0 6px var(--brand))}
+  .lab-grade{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;align-items:center;margin-bottom:10px}
+  @media(max-width:520px){.lab-grade{grid-template-columns:1fr}}
+  .lab-gauge{width:150px;height:auto}
+  .lab-g-track{fill:none;stroke:var(--chip);stroke-width:12;stroke-linecap:round}
+  .lab-g-arc{fill:none;stroke:var(--brand);stroke-width:12;stroke-linecap:round}
+  .lab-g-arc.g-S{stroke:#7cf2a0}.lab-g-arc.g-A{stroke:var(--brand)}.lab-g-arc.g-B{stroke:#6cc4f2}.lab-g-arc.g-C{stroke:var(--warn)}.lab-g-arc.g-D{stroke:var(--bad)}
+  .lab-g-tick{stroke:var(--line);stroke-width:2}
+  .lab-g-letter{font:700 34px "IBM Plex Mono",monospace;fill:var(--ink);text-anchor:middle}
+  .lab-g-pts{font:11px "IBM Plex Mono",monospace;fill:var(--mute);text-anchor:middle}
+  .lab-parts{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+  .lab-part{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:2px 8px;font-size:12px}
+  .lab-part span{color:var(--mute)}.lab-part b{font:600 12px "IBM Plex Mono",monospace;text-align:right}
+  .lab-part em{grid-column:1/-1;height:5px;border-radius:3px;background:var(--chip);overflow:hidden}.lab-part em i{display:block;height:100%;background:var(--accent)}
+  .lab-missions ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .lab-m{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:9px 10px;opacity:.72}
+  .lab-m.on{opacity:1;border-color:color-mix(in srgb,var(--brand) 60%,var(--line))}
+  .lab-m b{font:600 13px "IBM Plex Sans",sans-serif;display:block}.lab-m small{color:var(--mute);font-size:12px;line-height:1.4}
+  .lab-m em{font:600 12px "IBM Plex Mono",monospace;font-style:normal;color:var(--accent)}
+  .lab-toasts{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:60;max-width:min(360px,calc(100vw - 32px))}
+  .lab-toast{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--brand);border-radius:12px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .lab-toast b{display:block;font:600 13px "IBM Plex Mono",monospace}.lab-toast span{color:var(--mute);font-size:12.5px}
+  .lab-toast.quiet{border-color:var(--line)}.lab-toast.big{border-width:2px}
+  .lab-btn:disabled{opacity:.55;cursor:default}
+    .lab-papers{margin:0;padding-left:18px;display:grid;gap:6px}.lab-papers small{display:block;color:var(--mute);font-size:12px}.lab-papers a{color:var(--ink)}
   `;
   document.head.appendChild(css);
 })();
