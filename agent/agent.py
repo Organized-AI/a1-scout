@@ -962,8 +962,66 @@ def fetch_approved(spent=0):
         api("/api/stashed", "POST", {"id": p["id"], "sha": p.get("sha"), "path": str(dest.relative_to(STASH)), "size_bytes": got})
         done.append((p["repo"], got))
         log(f"  stashed {got/1e9:.2f} GB")
+        if p["kind"] == "model" and dest.is_dir():
+            try:
+                base = complete_whisper_processor(dest, p["repo"])
+                if base:
+                    log(f"  added Whisper processor files from {base} so it loads offline")
+            except Exception as e:
+                log(f"  processor check skipped: {e}")
         activity(force=True, current=None, done=(ACT.get("done") or []) + [{"repo": p["repo"], "bytes": got, "what": "added"}])
     return done, waiting
+
+
+WHISPER_PROCESSOR_FILES = ["preprocessor_config.json", "tokenizer.json", "tokenizer_config.json", "vocab.json", "merges.txt",
+                           "normalizer.json", "added_tokens.json", "special_tokens_map.json", "generation_config.json"]
+
+
+def _hf_json(url):
+    st, body = _hf_http(url)
+    return json.loads(body) if st == 200 else None
+
+
+def _hf_get_file(url, out: Path):
+    req = urllib.request.Request(url, headers=hf_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            tmp = out.with_name(out.name + ".part")
+            tmp.write_bytes(r.read())
+            tmp.rename(out)
+            return True
+    except Exception:
+        return False
+
+
+def complete_whisper_processor(dest: Path, repo, get_json=None, get_file=None):
+    """Whisper repos converted with mlx-audio (model.safetensors + tiktoken) ship without the processor files mlx-audio
+    loads (preprocessor_config.json, tokenizer, normalizer), so they fail offline. Fetch those small files from the
+    repo's base model at a pinned revision. Only adds files; never overwrites or deletes. Returns the base repo or None."""
+    get_json, get_file = get_json or _hf_json, get_file or _hf_get_file
+    if not dest.is_dir() or (dest / "preprocessor_config.json").exists():
+        return None
+    if (dest / "weights.safetensors").exists() or (dest / "weights.npz").exists():
+        return None                       # mlx_whisper layout: carries its own mel filters and tokenizer
+    try:
+        cfg = json.loads((dest / "config.json").read_text())
+    except Exception:
+        return None
+    if "whisper" not in repo.lower() and cfg.get("model_type") != "whisper":
+        return None
+    info = get_json(f"{HF_SITE}/api/models/{repo}") or {}
+    base = ((info.get("cardData") or {}).get("base_model"))
+    base = base[0] if isinstance(base, list) and base else base
+    if not isinstance(base, str) or "/" not in base:
+        return None
+    rev = (get_json(f"{HF_SITE}/api/models/{base}") or {}).get("sha") or "main"
+    got = [f for f in WHISPER_PROCESSOR_FILES
+           if not (dest / f).exists() and get_file(f"{HF_SITE}/{base}/resolve/{rev}/{f}", dest / f)]
+    if "preprocessor_config.json" not in got:
+        return None
+    (dest / ".processor-source.json").write_text(json.dumps({"source": base, "revision": rev, "files": got,
+        "why": "processor files mlx-audio needs; the converted repo ships only weights and tiktoken"}))
+    return base
 
 
 def add_pin(entry):

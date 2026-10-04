@@ -402,6 +402,7 @@ def run_model(cmd, model: Path, kind, rtasks, timeout=1800):
     got = {"load_s": None, "runtime": None, "results": {}, "mlx_peak": None, "error": None, "peak_rss": None}
     env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_DATASETS_OFFLINE="1")   # no network during a run
     try:
+        cmd = cmd(model) if callable(cmd) else cmd
         proc = subprocess.Popen([*cmd, "--model", str(model), "--kind", kind], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, env=env)
     except OSError as e:
@@ -661,9 +662,15 @@ def main(argv, A, runner_cmd=None, ram_bytes=None):
     env = A.ENV
     cache = A.STATE_DIR / "bench"
     queue = cache / "pending.jsonl"
-    # Text models run in the offline MLX venv (mlx_lm, mlx_vlm); Whisper runs where mlx_whisper is (the agent's Python).
-    runners = {"text": runner_cmd or [env.get("BENCH_PYTHON") or str(Path.home() / ".nvme-stash/offline-test/bin/python"), str(RUNNER)],
-               "asr": runner_cmd or [env.get("BENCH_PYTHON_ASR") or sys.executable, str(RUNNER)]}
+    # Text models run in the offline MLX venv (mlx_lm, mlx_vlm). Whisper in the mlx-examples layout (weights.safetensors /
+    # weights.npz) runs where mlx_whisper is (the agent's Python); mlx-audio-converted Whisper runs in the offline venv,
+    # which has mlx_audio.
+    text_py = env.get("BENCH_PYTHON") or str(Path.home() / ".nvme-stash/offline-test/bin/python")
+    asr_py = env.get("BENCH_PYTHON_ASR") or sys.executable
+    def asr_cmd(model: Path):
+        mlx_whisper_layout = (Path(model) / "weights.safetensors").exists() or (Path(model) / "weights.npz").exists()
+        return [asr_py if mlx_whisper_layout else text_py, str(RUNNER)]
+    runners = {"text": runner_cmd or [text_py, str(RUNNER)], "asr": runner_cmd or asr_cmd}
     if ram_bytes is None:
         ram_bytes = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout.strip() or 16 * 2 ** 30)
     machine = machine_id(env)
