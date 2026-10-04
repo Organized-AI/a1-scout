@@ -1,6 +1,7 @@
 """Stand-in for agent/bench_runner.py in tests: same protocol, no model.
 
-Answers come from FAKE_OUTPUTS (a JSON file {task id: output}); anything else answers "no".
+Answers come from FAKE_OUTPUTS (a JSON file {task id: output}, or per model {model dir: {task id: output, "_tok_s": n}});
+anything else answers "no".
 Each start and end is appended to FAKE_LOG so tests can prove models ran one at a time.
 FAKE_LOAD_FAIL=1 makes the load fail; it holds ~24 MB so peak RSS is visible to wait4.
 """
@@ -12,6 +13,10 @@ a = ap.parse_args()
 tasks = json.load(sys.stdin)["tasks"]
 log = os.environ.get("FAKE_LOG")
 outputs = json.load(open(os.environ["FAKE_OUTPUTS"])) if os.environ.get("FAKE_OUTPUTS") else {}
+name = os.path.basename(a.model.rstrip("/"))
+if isinstance(outputs.get(name), dict):          # per-model answers: {"Model-Dir": {task id: output, "_tok_s": n}}
+    outputs = outputs[name]
+speed = float(outputs.get("_tok_s", 40.0))
 
 
 def note(**kw):
@@ -33,6 +38,6 @@ for i, t in enumerate(tasks):
     if a.kind == "asr":
         assert os.path.exists(t["audio"]), t
     print(json.dumps({"event": "result", "id": t["id"], "output": outputs.get(t["id"], "no"),
-                      "ttft_ms": 100.0 + 10 * i, "tok_s": 40.0 + i, "latency_ms": 300.0}), flush=True)
+                      "ttft_ms": 100.0 + 10 * i, "tok_s": speed + i, "latency_ms": 300.0}), flush=True)
 print(json.dumps({"event": "done", "mlx_peak": 1000}), flush=True)
 note(ev="end")

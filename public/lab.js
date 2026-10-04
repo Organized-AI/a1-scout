@@ -118,6 +118,8 @@
   const SUITE_FOR = { rag: "rag-notes", voice: "asr", scan: "html-json", screen: "screen", sql: "sql-ga4" };
   // the part whose quality the suite measures; checked first, then any other part with a run
   const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm" };
+  // The model the bench picked for this job on this Mac (it searched every model that fits), for that template's main slot.
+  const benchPick = (tplId, slotId, mid) => (SUITE_SLOT[tplId] === slotId && window.BenchView?.best?.(SUITE_FOR[tplId], mid)?.model_path) || null;
 
   function stageTime(slotId, i, sc, mid) {
     const scale = Math.max(i.bytes, 1e8) / 0.35e9;
@@ -188,7 +190,9 @@
   let st = store.get("a1-lab", null);
   const defaults = tplId => {
     const tpl = T[tplId], pick = {};
-    tpl.slots.forEach(sl => { const c = candidates(sl); const fit = c.find(i => memNeed(i) < 6e9) || c[0]; if (fit && !(sl.optional && sl.id === "ext")) pick[sl.id] = fit.path; });
+    tpl.slots.forEach(sl => { const c = candidates(sl); const fit = c.find(i => memNeed(i) < 6e9) || c[0]; if (fit && !(sl.optional && sl.id === "ext")) pick[sl.id] = fit.path;
+      const bp = benchPick(tplId, sl.id, "m1");               // the bench's pick beats the smallest-that-fits guess
+      if (bp && c.some(i => i.path === bp)) pick[sl.id] = bp; });
     return { tpl: tplId, sc: tpl.scenarios[0].id, mach: "m1", pick };
   };
   const save = () => store.set("a1-lab", st);
@@ -370,7 +374,7 @@
           ${e.tpl.slots.map(sl => { const c = candidates(sl); const cur = st.pick[sl.id] || "";
             return `<label class="lab-slot"><span class="lab-sl">${esc(sl.label)}${sl.optional ? " <em>optional</em>" : ""}</span>
               <select data-slot="${sl.id}" id="lab-${sl.id}">${sl.optional || !c.length ? `<option value="">${c.length ? "None" : "Nothing on the A1 for this yet"}</option>` : ""}
-                ${c.map(i => `<option value="${esc(i.path)}"${i.path === cur ? " selected" : ""}>${esc(i.name)} · ${gb(i.bytes)} · ${runtime(i)}</option>`).join("")}</select></label>`; }).join("")}
+                ${c.map(i => `<option value="${esc(i.path)}"${i.path === cur ? " selected" : ""}>${i.path === benchPick(st.tpl, sl.id, st.mach) ? "★ " : ""}${esc(i.name)} · ${gb(i.bytes)} · ${runtime(i)}${i.path === benchPick(st.tpl, sl.id, st.mach) ? " · best on the bench" : ""}</option>`).join("")}</select></label>`; }).join("")}
           <div class="lab-h" style="margin-top:14px"><span class="lab-kick">2 · Mac</span></div>
           <div class="lab-machs">${machines().map(m => `<button type="button" class="lab-mach" data-mach="${m.id}" aria-pressed="${m.id === st.mach}">${esc(m.label)}<small>${BW[m.id]?.gbs || "?"} GB/s${BW[m.id]?.note === "assumed" ? " · assumed" : ""}</small></button>`).join("")}</div>
           <div class="lab-h" style="margin-top:14px"><span class="lab-kick">3 · Scenario</span></div>

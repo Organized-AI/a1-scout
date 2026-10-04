@@ -71,3 +71,28 @@ test("Bench view renders an empty state and a leaderboard", () => {
   assert.match(h, /7\/8 pass/);
   assert.match(h, /M1 Pro 16GB/);
 });
+
+test("the Lab's default part is the bench's pick for that job; without one it guesses smallest-that-fits", () => {
+  Bench.setData({ rows: [], best: {} });
+  Lab._setCatalog(catalog, []);
+  assert.equal(Lab._defaults("rag").pick.llm, SMALL);
+  Bench.setData({ rows: [row()], best: { "rag-notes": { m1: { model: "Qwen3-4B-4bit", model_path: BIG, score: 0.9 } } } });
+  assert.equal(Lab._defaults("rag").pick.llm, BIG);
+  assert.equal(Lab._defaults("route").pick.work, SMALL);          // no suite covers routing: unchanged
+  // a pick for another Mac, or for a model no longer on the A1, is ignored
+  Bench.setData({ rows: [], best: { "rag-notes": { m5p: { model: "X", model_path: BIG } } } });
+  assert.equal(Lab._defaults("rag").pick.llm, SMALL);
+  Bench.setData({ rows: [], best: { "rag-notes": { m1: { model: "Gone", model_path: "models/mlx/Gone" } } } });
+  assert.equal(Lab._defaults("rag").pick.llm, SMALL);
+});
+
+test("Bench view shows the pick and stars its row", () => {
+  Bench.setData({ rows: [row(), row({ id: 3, model: "Qwen3-0.6B-4bit", model_path: SMALL, score: 0.5 })], suites: [], machines: [],
+    best: { "rag-notes": { m1: { model: "Qwen3-4B-4bit", model_path: BIG, score: 0.9, tok_s: 31.5, passed: 7, total: 8,
+      why: "highest score (90)", considered: 5, ran: 3, reused: 0, screened_out: [{ model: "Tiny<b>" }], at: "2026-10-04T00:00:00Z" } } } });
+  const h = Bench.html();
+  assert.match(h, /Best for you · M1 Pro 16GB/);
+  assert.match(h, /Searched 5 models/);
+  assert.match(h, /Tiny&lt;b&gt;/);                                   // escaped
+  assert.equal((h.match(/★ best/g) || []).length, 1);
+});

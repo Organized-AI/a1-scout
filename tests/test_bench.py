@@ -185,6 +185,33 @@ class Machine(unittest.TestCase):
         self.assertEqual(B.machine_id({"BENCH_MACHINE": "studio"}, "Apple M1 Pro", 16 * 2 ** 30), "studio")
 
 
+def row(model, score, tok_s, **kw):
+    return {"model": model, "model_path": f"models/mlx/{model}", "score": score, "tok_s": tok_s, "total": 8, "passed": 0,
+            "peak_rss": 1e9, "error": None, **kw}
+
+
+class ChooseBest(unittest.TestCase):
+    def test_highest_score_wins_when_clear(self):
+        best, why = B.choose_best([row("A", 0.9, 10), row("B", 0.7, 100)])
+        self.assertEqual(best["model"], "A"); self.assertIn("highest score", why)
+
+    def test_near_tie_goes_to_the_faster_model(self):
+        best, why = B.choose_best([row("Slow", 0.90, 10), row("Fast", 0.87, 60), row("Fastest-but-bad", 0.5, 300)])
+        self.assertEqual(best["model"], "Fast"); self.assertIn("Slow", why)
+
+    def test_errors_never_win(self):
+        best, _ = B.choose_best([row("Broken", 1.0, 99, error="load failed"), row("Ok", 0.2, 5)])
+        self.assertEqual(best["model"], "Ok")
+        self.assertEqual(B.choose_best([row("Broken", 1.0, 9, error="x")])[0], None)
+
+    def test_screen_split_spreads_and_partitions(self):
+        tasks = [{"id": str(i)} for i in range(10)]
+        screen, rest = B.screen_split(tasks, 4)
+        self.assertEqual([t["id"] for t in screen], ["0", "2", "5", "7"])
+        self.assertEqual(len(screen) + len(rest), 10)
+        self.assertEqual(B.screen_split(tasks, 20), (tasks, []))
+
+
 class Agent(unittest.TestCase):
     """`agent.py bench` against a temp stash with two empty "models" and the fake runner."""
 
@@ -200,15 +227,16 @@ class Agent(unittest.TestCase):
         w.mkdir(parents=True); (w / "config.json").write_text("{}"); (w / "weights.npz").write_bytes(b"\0" * 10)
         self.state = self.tmp / "state"; self.state.mkdir()
         self.log = self.tmp / "runner.log"
-        self.posted, self.fail_api = [], False
+        self.posted, self.fail_api, self.leaderboard, self.notes = [], False, {"rows": []}, []
 
         def api(path, method="GET", body=None, raw=False):
             if self.fail_api:
                 raise OSError("offline")
             self.posted.append((path, method, body))
-            return {"ok": True}
+            return self.leaderboard if path.startswith("/api/bench/leaderboard") else {"ok": True}
         self.patches = [mock.patch.object(A, "STASH", self.stash), mock.patch.object(A, "STATE_DIR", self.state),
                         mock.patch.object(A, "LOCK", self.state / "scout.lock"), mock.patch.object(A, "api", api),
+                        mock.patch.object(A, "notify", lambda title, text: self.notes.append(text)),
                         mock.patch.object(A, "activity", lambda **kw: None), mock.patch.object(A, "log", lambda m: None),
                         mock.patch.dict(A.ENV, {"BENCH_MACHINE": "m1"}),
                         mock.patch.dict(os.environ, {"FAKE_LOG": str(self.log)})]
@@ -320,6 +348,79 @@ class Agent(unittest.TestCase):
             rows = self.bench("asr")
         self.assertEqual([r["model"] for r in rows], ["whisper-large-v3-turbo"])
         self.assertEqual(self.runner_log()[0]["kind"], "asr")
+
+    # ---- picking the best model for you
+
+    def add_models(self, *names):
+        for k, name in enumerate(names):
+            d = self.stash / "models/mlx" / name
+            d.mkdir(parents=True)
+            (d / "config.json").write_text(json.dumps({"model_type": "qwen3"}))
+            (d / "model.safetensors").write_bytes(b"\0" * (1100 + 100 * k))
+
+    def outputs(self, per_model):
+        f = self.tmp / "outs.json"; f.write_text(json.dumps(per_model))
+        return mock.patch.dict(os.environ, {"FAKE_OUTPUTS": str(f)})
+
+    def picks(self):
+        return [b for p, m, b in self.posted if p == "/api/bench/best"]
+
+    def test_finds_the_best_model_without_being_told_which(self):
+        self.add_models("Alpha-1B", "Beta-2B", "Gamma-3B")           # 5 chat models: more than 3 finalists, so screening runs
+        tasks = B.load_bank("rag-notes")
+        right = {t["id"]: ideal(t) for t in tasks}
+        half = {k: v for i, (k, v) in enumerate(right.items()) if i % 2}
+        with self.outputs({"Gamma-3B": right, "Beta-2B": half}):
+            rows = self.bench("rag-notes")
+        pick = self.picks()[0]
+        self.assertEqual(pick["model"], "Gamma-3B")
+        self.assertEqual((pick["score"], pick["considered"], pick["ran"]), (1.0, 5, 3))
+        self.assertEqual(len(pick["screened_out"]), 2)
+        self.assertIn("Gamma-3B", self.notes[0])
+        # finalists post one full-bank run each; screened-out models post nothing
+        runs = [b for p, m, b in self.posted if p == "/api/bench/runs"]
+        self.assertEqual(len(runs), 3)
+        self.assertTrue(all(r["total"] == len(tasks) for r in runs))
+        self.assertEqual({r["model"] for r in rows}, {r["model"] for r in runs})
+        self.assertNotIn(pick["screened_out"][0]["model"], {r["model"] for r in runs})
+        # still one model at a time; finalists load twice (screen, then the rest), the others once
+        ev = self.runner_log()
+        self.assertEqual([e["ev"] for e in ev], ["start", "end"] * 8)
+        loads = {}
+        for e in ev:
+            if e["ev"] == "start":
+                loads[Path(e["model"]).name] = loads.get(Path(e["model"]).name, 0) + 1
+        self.assertEqual(sorted(loads.values()), [1, 1, 2, 2, 2])
+        self.assertEqual(loads["Gamma-3B"], 2)
+
+    def test_reuses_measured_runs_and_can_recommend_them(self):
+        self.leaderboard = {"rows": [row("Qwen3-4B-4bit", 0.99, 30, bank=B.bank_hash("rag-notes"), machine="m1")]}
+        self.bench("rag-notes")
+        started = {Path(e["model"]).name for e in self.runner_log() if e["ev"] == "start"}
+        self.assertEqual(started, {"Qwen3-0.6B-4bit"})               # 4B was already measured on this bank and Mac
+        pick = self.picks()[0]
+        self.assertEqual((pick["model"], pick["reused"], pick["ran"]), ("Qwen3-4B-4bit", 1, 1))
+
+    def test_old_bank_or_fresh_means_run_again(self):
+        self.leaderboard = {"rows": [row("Qwen3-4B-4bit", 0.99, 30, bank="oldbank00000", machine="m1")]}
+        self.bench("rag-notes")
+        self.assertEqual(len([e for e in self.runner_log() if e["ev"] == "start"]), 2)
+        self.log.unlink()
+        self.leaderboard = {"rows": [row("Qwen3-4B-4bit", 0.99, 30, bank=B.bank_hash("rag-notes"), machine="m1")]}
+        self.bench("rag-notes", "--fresh")
+        self.assertEqual(len([e for e in self.runner_log() if e["ev"] == "start"]), 2)
+
+    def test_offline_search_still_picks_locally(self):
+        self.fail_api = True
+        rows = self.bench("rag-notes")
+        self.assertEqual(len(rows), 2)
+        self.assertTrue((self.state / "bench/pending.jsonl").exists())
+        self.assertTrue(self.notes)                                   # you still hear which model won
+
+    def test_named_model_is_measured_but_not_recommended(self):
+        self.bench("rag-notes", "--model", "models/mlx/Qwen3-0.6B-4bit")
+        self.assertEqual(self.picks(), [])
+        self.assertEqual(self.notes, [])
 
     def test_agent_refuses_when_a1_absent(self):
         with mock.patch.object(A, "a1_present", lambda: False), mock.patch.object(sys, "argv", ["agent.py", "bench", "rag-notes"]):

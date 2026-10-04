@@ -30,7 +30,18 @@ Suites: `gtm-debug`, `sql-ga4`, `html-json`, `rag-notes`, `asr`, `screen`. One J
 - B2 · Trigger: any bank line · Expected: no non-example domains, no real-looking GTM/GA IDs, no emails outside example.com · Verify: `test_bench.Sanitized`.
 - B3 · Trigger: each scorer on right, wrong and malformed output · Expected: pass/score per the table · Verify: `test_bench.Scorers`.
 
-### P2 · `agent.py bench <suite> [--model PATH]`
+### P2 · `agent.py bench <suite|all> [--fresh] [--model PATH]`
+The bench picks the model; you don't have to. With no `--model`:
+- B12 · Candidates: every chat model (Whisper for `asr`) on the A1 that fits 75% of this Mac's memory.
+- B13 · Models already measured on the current bank and Mac are reused, not rerun (`--fresh` reruns them).
+- B14 · More new candidates than `BENCH_FINALISTS` (3): each answers `BENCH_SCREEN_TASKS` (4) spread-out tasks first;
+  only the top finalists answer the rest, merged into one full run. Screened-out models post nothing to the leaderboard.
+- B15 · `choose_best`: highest score wins; within 5 points of the top, the faster model wins; errored runs never win.
+  The pick goes to `POST /api/bench/best` (stored per suite and Mac), shows as "Best for you" on the Bench tab,
+  becomes the Lab's default part for that job, and a macOS notification names it.
+- `--model PATH` measures one named model and recommends nothing.
+- Verify: `test_bench.ChooseBest`, `test_bench.Agent.test_finds_the_best_model_without_being_told_which` and neighbours.
+
 - B4 · Trigger: A1 not mounted (or wrong UUID) · Expected: prints "A1 not present", runs nothing.
 - B5 · Trigger: another run holds `~/.nvme-stash/scout.lock` · Expected: prints "another a1-scout run is active", runs nothing.
 - B6 · Trigger: bench with N models · Expected: N runner subprocesses, strictly sequential, each loading exactly one model path under `/Volumes/A1/stash`; `--model` outside the stash is refused.

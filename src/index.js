@@ -455,6 +455,7 @@ async function benchTables(env) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS bench_runs_key ON bench_runs(suite, machine, model, id)"),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS bench_votes (id INTEGER PRIMARY KEY AUTOINCREMENT, suite TEXT NOT NULL, task_id TEXT,
       model_a TEXT NOT NULL, model_b TEXT NOT NULL, vote TEXT NOT NULL, created TEXT NOT NULL)`),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated TEXT NOT NULL)"),   // holds bench_best
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS bench_battles (id TEXT PRIMARY KEY, suite TEXT NOT NULL, task_id TEXT, a TEXT NOT NULL,
       b TEXT NOT NULL, expires INTEGER NOT NULL)`),
   ]);
@@ -510,6 +511,25 @@ async function benchApi(req, env, url, p) {
         num(b.peak_rss), num(b.load_s), passed, total, score, str(b.error, 500), JSON.stringify(results), str(b.started, 40), now()).first();
     return json({ ok: true, id: row.id });
   }
+  // The agent's recommendation after it searched every model that fits a Mac: best[suite][machine].
+  if (p === "/api/bench/best" && req.method === "POST") {
+    const b = await req.json().catch(() => null);
+    if (!b || !BENCH_SUITES.includes(b.suite)) return json({ error: "suite required" }, 400);
+    const model = str(b.model, 200), machine = str(b.machine, 40);
+    if (!model || !/^[\w.\-]+$/.test(model) || !machine || !/^[\w.\-]+$/.test(machine)) return json({ error: "model and machine required" }, 400);
+    const pick = {
+      model, model_path: str(b.model_path, 300), score: num(b.score), tok_s: num(b.tok_s), peak_rss: num(b.peak_rss),
+      passed: num(b.passed), total: num(b.total), why: str(b.why, 300), bank: str(b.bank, 40),
+      considered: num(b.considered), ran: num(b.ran), reused: num(b.reused),
+      screened_out: (Array.isArray(b.screened_out) ? b.screened_out : []).slice(0, 50)
+        .map(x => ({ model: str(x?.model, 200), screen_score: num(x?.screen_score), error: str(x?.error, 200) })).filter(x => x.model),
+      at: now(),
+    };
+    const all = (await kvGet(env, "bench_best")) || {};
+    (all[b.suite] ||= {})[machine] = pick;
+    await kvSet(env, "bench_best", all);
+    return json({ ok: true, best: pick });
+  }
   if (p === "/api/bench/run" && req.method === "GET") {
     const r = await env.DB.prepare("SELECT * FROM bench_runs WHERE id=?").bind(Number(url.searchParams.get("id"))).first();
     return r ? json({ ...r, results: JSON.parse(r.results || "[]") }) : json({ error: "not found" }, 404);
@@ -527,6 +547,7 @@ async function benchApi(req, env, url, p) {
     const machines = (await env.DB.prepare("SELECT machine, COUNT(*) n, MAX(created) last FROM bench_runs GROUP BY machine ORDER BY n DESC").all()).results;
     const suites = (await env.DB.prepare("SELECT suite, COUNT(DISTINCT model) models, MAX(created) last FROM bench_runs GROUP BY suite").all()).results;
     return json({
+      best: (await kvGet(env, "bench_best")) || {},
       suite, machine, machines, suites: BENCH_SUITES.map(s => ({ id: s, ...(suites.find(x => x.suite === s) || { models: 0, last: null }) })),
       rows: rows.map(r => { const e = elos[r.suite]?.[r.model]; return { ...r, elo: e ? Math.round(e.elo) : null, battles: e?.n || 0 }; }),
     });

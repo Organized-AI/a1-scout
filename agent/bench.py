@@ -1,6 +1,11 @@
 """A1 Bench: offline benchmarks for the models on the A1.
 
-    agent.py bench <suite|all> [--model PATH]
+    agent.py bench <suite|all> [--fresh] [--model PATH]
+
+With no --model the bench picks the model for you: it searches every model on the A1 that fits this Mac,
+screens new ones on a few tasks, runs the finalists on the whole bank, reuses runs already measured on this
+bank and Mac (unless --fresh), and posts the winner per suite (find_best, choose_best). --model measures one
+named model and recommends nothing.
 
 agent.py checks the A1 is mounted and takes scout.lock before calling main() here, so a bench never runs
 beside a download. Each model runs in its own subprocess (bench_runner.py in the MLX venv), strictly one after
@@ -335,8 +340,8 @@ def model_kind(d: Path, suite):
     return "vlm" if cfg.get("vision_config") or (d / "preprocessor_config.json").exists() else "llm"
 
 
-def discover_models(A, suite, ram_bytes, limit=3):
-    """Smallest MLX models first that suit the suite and fit in 75% of this Mac's memory."""
+def discover_models(A, suite, ram_bytes, limit=None):
+    """Every MLX model on the A1 that suits the suite and fits in 75% of this Mac's memory, smallest first."""
     roots = [A.STASH / "models" / "mlx", A.STASH / "models"]
     found = []
     for root in roots:
@@ -356,7 +361,7 @@ def discover_models(A, suite, ram_bytes, limit=3):
             size = A.walk_size(d)[0]
             if size * 1.2 <= ram_bytes * 0.75:
                 found.append((size, Path(os.path.realpath(d))))
-    return [d for _, d in sorted(found)[:limit]]
+    return [d for _, d in sorted(found)][:limit]
 
 
 def resolve_model(A, arg):
@@ -445,7 +450,8 @@ def _median(xs):
     return round(statistics.median(xs), 2) if xs else None
 
 
-def bench_model(suite, tasks, model: Path, stash: Path, machine, runner_cmd, cache: Path, timeout=1800):
+def run_tasks(suite, tasks, model: Path, runner_cmd, cache: Path, timeout=1800):
+    """Load the model once, answer these tasks, score them. One runner process, exited before this returns."""
     db = sample_db(cache) if suite == "sql-ga4" else None
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     got = run_model(runner_cmd, model, model_kind(model, suite), runner_tasks(tasks, cache), timeout)
@@ -457,16 +463,131 @@ def bench_model(suite, tasks, model: Path, stash: Path, machine, runner_cmd, cac
         shown = t["prompt"] + (f"\n\nReference: {t['audio_text']}" if t.get("audio_text") else "")
         results.append({"id": t["id"], "pass": bool(ok), "score": sc, "why": why, "ttft_ms": r.get("ttft_ms"), "tok_s": r.get("tok_s"),
                         "latency_ms": r.get("latency_ms"), "output": (out or "")[:2000], "prompt": shown[:3000]})
+    return {"started": started, "runtime": got["runtime"], "load_s": got["load_s"], "peak_rss": got["peak_rss"] or None,
+            "error": got["error"], "results": results}
+
+
+def make_row(suite, model: Path, stash: Path, machine, parts):
+    """One leaderboard row from one or more run_tasks parts (a finalist's screen plus the rest of the bank)."""
+    results = [r for part in parts for r in part["results"]]
     return {
         "uid": uuid.uuid4().hex, "suite": suite, "machine": machine, "model": model.name, "model_path": str(model.relative_to(stash)),
-        "runtime": got["runtime"], "bank": bank_hash(suite), "started": started,
+        "runtime": next((p["runtime"] for p in parts if p["runtime"]), None), "bank": bank_hash(suite), "started": parts[0]["started"],
         "finished": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "load_s": got["load_s"], "peak_rss": got["peak_rss"] or None,
+        "load_s": parts[0]["load_s"], "peak_rss": max((p["peak_rss"] or 0 for p in parts), default=0) or None,
         "ttft_ms": _median(r["ttft_ms"] for r in results), "tok_s": _median(r["tok_s"] for r in results),
         "passed": sum(r["pass"] for r in results), "total": len(results),
         "score": round(sum(r["score"] for r in results) / max(1, len(results)), 4),
-        "error": got["error"], "results": results,
+        "error": next((p["error"] for p in parts if p["error"]), None), "results": results,
     }
+
+
+def bench_model(suite, tasks, model: Path, stash: Path, machine, runner_cmd, cache: Path, timeout=1800):
+    return make_row(suite, model, stash, machine, [run_tasks(suite, tasks, model, runner_cmd, cache, timeout)])
+
+
+# ---------------------------------------------------------------- picking the best model
+
+def screen_split(tasks, n):
+    """A small, spread-out subset for the screening round (every k-th task, so each task kind shows up), and the rest."""
+    if n <= 0 or n >= len(tasks):
+        return tasks, []
+    step = len(tasks) / n
+    idx = {int(i * step) for i in range(n)}
+    return [t for i, t in enumerate(tasks) if i in idx], [t for i, t in enumerate(tasks) if i not in idx]
+
+
+def choose_best(rows, margin=0.05):
+    """The model to recommend for a suite on this Mac, and why.
+
+    Quality first: only models whose score is within `margin` of the top score are in the running.
+    Among those, the fastest wins (higher tok/s, then lower peak memory), since a near-tie on quality
+    is better spent on speed. Runs that errored never win."""
+    ok = [r for r in rows if not r.get("error") and r.get("total")]
+    if not ok:
+        return None, "no model finished the suite"
+    top = max(r["score"] for r in ok)
+    close = [r for r in ok if r["score"] >= top - margin]
+    best = max(close, key=lambda r: (r.get("tok_s") or 0, -(r.get("peak_rss") or 0)))
+    if len(close) == 1:
+        why = f"highest score ({best['score'] * 100:.0f})"
+    else:
+        others = ", ".join(r["model"] for r in close if r is not best)
+        why = f"fastest of the models within {margin * 100:.0f} points of the top score (tied with {others})"
+    return best, why
+
+
+def known_runs(api, suite, machine, bank):
+    """Full runs already on the leaderboard for this suite, Mac and task bank, keyed by model_path. Empty when offline."""
+    try:
+        lb = api(f"/api/bench/leaderboard?suite={suite}&machine={machine}")
+    except Exception:
+        return {}
+    return {r["model_path"]: r for r in (lb or {}).get("rows", []) if r.get("bank") == bank and not r.get("error") and r.get("model_path")}
+
+
+def find_best(suite, tasks, models, A, machine, runner_cmd, cache, env, fresh=False, queue=None, recommend=True):
+    """Search the candidates for the best model on this suite, loading one model at a time.
+
+    1. Models already measured on this bank and Mac are reused (unless fresh).
+    2. If there are more new candidates than BENCH_FINALISTS, each answers a small screening subset first and
+       only the top finalists go on to the rest of the bank (their two parts merge into one full run).
+    3. choose_best() picks from every full run; the pick is posted as the recommendation."""
+    timeout = int(env.get("BENCH_TIMEOUT_S", "1800"))
+    finalists_n = int(env.get("BENCH_FINALISTS", "3"))
+    bank = bank_hash(suite)
+    known = {} if fresh else known_runs(A.api, suite, machine, bank)
+    rel = lambda m: str(m.relative_to(A.STASH))
+    todo = [m for m in models if rel(m) not in known]
+    reused = [known[rel(m)] for m in models if rel(m) in known]
+    full, screened_out = [], []
+
+    def finish(m, parts):
+        row = make_row(suite, m, A.STASH, machine, parts)
+        posted = post_or_queue(row, A.api, queue, A.log)
+        (cache / "runs").mkdir(parents=True, exist_ok=True)
+        (cache / "runs" / f"{row['started'][:19].replace(':', '')}-{suite}-{m.name}.json").write_text(json.dumps(row, indent=1))
+        A.log(f"bench {suite}: {m.name} {row['passed']}/{row['total']} score {row['score']:.2f} tok/s {row['tok_s']} ttft {row['ttft_ms']} ms "
+              f"load {row['load_s']} s peak {(row['peak_rss'] or 0) / 1e9:.1f} GB{'' if posted else ' (queued)'}"
+              + (f" error: {row['error']}" if row["error"] else ""))
+        full.append(row)
+
+    def step(m, phase, ts):
+        A.log(f"bench {suite}: {phase} {m.name} ({len(ts)} tasks)")
+        A.activity(force=True, state="running", trigger="bench", phase=f"{phase.capitalize()}: {m.name} on {suite}", current=None)
+        return run_tasks(suite, ts, m, runner_cmd, cache, timeout)
+
+    screen, rest = screen_split(tasks, int(env.get("BENCH_SCREEN_TASKS", "4")))
+    if len(todo) <= finalists_n or not rest:
+        for m in todo:                                   # few enough to run everything in full
+            finish(m, [step(m, "benchmarking", tasks)])
+    else:
+        first = []
+        for m in todo:                                   # round 1: every new candidate, small subset
+            part = step(m, "screening", screen)
+            sc = sum(r["score"] for r in part["results"]) / max(1, len(part["results"]))
+            tps = _median(r["tok_s"] for r in part["results"]) or 0
+            first.append((-(sc if not part["error"] else -1), -tps, m.name, m, part))
+        first.sort(key=lambda x: x[:3])
+        for _, _, _, m, part in first[:finalists_n]:      # round 2: finalists answer the rest of the bank
+            finish(m, [part, step(m, "finals", rest)])
+        for neg, _, _, m, part in first[finalists_n:]:
+            screened_out.append({"model": m.name, "model_path": rel(m), "screen_score": round(-neg, 4) if neg <= 0 else None,
+                                 "screen_tasks": len(screen), "error": part["error"]})
+    best, why = choose_best(full + reused)
+    pick = None
+    if best and recommend:
+        pick = {"suite": suite, "machine": machine, "model": best["model"], "model_path": best["model_path"], "score": best["score"],
+                "tok_s": best.get("tok_s"), "peak_rss": best.get("peak_rss"), "passed": best.get("passed"), "total": best.get("total"),
+                "why": why, "bank": bank, "considered": len(models), "ran": len(full), "reused": len(reused),
+                "screened_out": screened_out}
+        try:
+            A.api("/api/bench/best", "POST", pick)
+        except Exception as e:
+            A.log(f"bench {suite}: pick not sent ({type(e).__name__}); it is in the local log")
+        A.log(f"bench {suite}: BEST on {machine}: {best['model']} score {best['score']:.2f}, {best.get('tok_s')} tok/s ({why}); "
+              f"{len(models)} considered, {len(full)} run in full, {len(reused)} reused, {len(screened_out)} screened out")
+    return pick, full
 
 
 # ---------------------------------------------------------------- posting
@@ -517,23 +638,26 @@ def flush_queue(api, queue: Path):
 # ---------------------------------------------------------------- entry point
 
 def parse_args(argv):
-    suite, model = None, None
+    suite, model, fresh = None, None, False
     it = iter(argv)
     for a in it:
         if a == "--model":
             model = next(it, None)
         elif a.startswith("--model="):
             model = a.split("=", 1)[1]
+        elif a == "--fresh":
+            fresh = True
         elif suite is None:
             suite = a
     if suite not in SUITES + ["all"]:
-        raise SystemExit(f"usage: agent.py bench <{'|'.join(SUITES)}|all> [--model PATH]")
-    return suite, model
+        raise SystemExit(f"usage: agent.py bench <{'|'.join(SUITES)}|all> [--fresh] [--model PATH]\n"
+                         "  with no --model the bench searches every model on the A1 that fits this Mac and picks the best")
+    return suite, model, fresh
 
 
 def main(argv, A, runner_cmd=None, ram_bytes=None):
     """Called by agent.py with the A1 mounted and scout.lock held."""
-    suite, model_arg = parse_args(argv)
+    suite, model_arg, fresh = parse_args(argv)
     env = A.ENV
     cache = A.STATE_DIR / "bench"
     queue = cache / "pending.jsonl"
@@ -546,24 +670,26 @@ def main(argv, A, runner_cmd=None, ram_bytes=None):
     sent = flush_queue(A.api, queue)
     if sent:
         A.log(f"bench: posted {sent} queued run(s)")
-    rows = []
+    rows, picks = [], []
     for s in (SUITES if suite == "all" else [suite]):
         tasks = load_bank(s)
-        models = [resolve_model(A, model_arg)] if model_arg else discover_models(A, s, ram_bytes, int(env.get("BENCH_MAX_MODELS", "3")))
-        if not models:
-            A.log(f"bench {s}: no suitable model on the A1")
-            continue
-        for m in models:            # one model at a time: each run_model returns only after its process has exited
-            A.log(f"bench {s}: {m.name} ({len(tasks)} tasks) on {machine}")
-            A.activity(force=True, state="running", trigger="bench", phase=f"Benchmarking {m.name} on {s}", current=None)
-            row = bench_model(s, tasks, m, A.STASH, machine, runners["asr" if s == "asr" else "text"], cache, int(env.get("BENCH_TIMEOUT_S", "1800")))
-            posted = post_or_queue(row, A.api, queue, A.log)
-            (cache / "runs").mkdir(parents=True, exist_ok=True)
-            (cache / "runs" / f"{row['started'][:19].replace(':', '')}-{s}-{m.name}.json").write_text(json.dumps(row, indent=1))
-            A.log(f"bench {s}: {m.name} {row['passed']}/{row['total']} score {row['score']:.2f} tok/s {row['tok_s']} ttft {row['ttft_ms']} ms "
-                  f"load {row['load_s']} s peak {(row['peak_rss'] or 0) / 1e9:.1f} GB{'' if posted else ' (queued, offline)'}"
-                  + (f" error: {row['error']}" if row["error"] else ""))
-            rows.append(row)
-    A.activity(force=True, state="idle", phase="Finished", trigger="bench", current=None,
-               summary=f"Bench: {len(rows)} run(s) " + ", ".join(f"{r['model']} {r['suite']} {r['passed']}/{r['total']}" for r in rows[:4]))
+        cmd = runners["asr" if s == "asr" else "text"]
+        if model_arg:                # one named model, full bank, no pick
+            m = resolve_model(A, model_arg)
+            find = lambda: find_best(s, tasks, [m], A, machine, cmd, cache, env, fresh=True, queue=queue, recommend=False)
+        else:
+            models = discover_models(A, s, ram_bytes, int(env["BENCH_MAX_MODELS"]) if env.get("BENCH_MAX_MODELS") else None)
+            if not models:
+                A.log(f"bench {s}: no suitable model on the A1")
+                continue
+            A.log(f"bench {s}: searching {len(models)} model(s) that fit {machine}: {', '.join(m.name for m in models)}")
+            find = lambda: find_best(s, tasks, models, A, machine, cmd, cache, env, fresh=fresh, queue=queue)
+        pick, full = find()
+        rows += full
+        if pick and not model_arg:
+            picks.append(pick)
+    summary = " · ".join(f"{p['suite']}: {p['model']}" for p in picks) or f"{len(rows)} run(s)"
+    A.activity(force=True, state="idle", phase="Finished", trigger="bench", current=None, summary=f"Best models: {summary}")
+    if picks:
+        A.notify("A1 Bench", f"Best on this Mac · {summary}")
     return rows

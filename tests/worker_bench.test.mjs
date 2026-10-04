@@ -169,3 +169,20 @@ test("battles only pair runs of the current task bank", async () => {
   await call(env, "/api/bench/runs", "POST", run("Old", { bank: "new000000000" }));
   assert.equal((await req(env, "/api/bench/battle?suite=rag-notes")).status, 200);
 });
+
+test("the agent's pick is stored per suite and Mac and comes back with the leaderboard", async () => {
+  const env = mkEnv();
+  const pick = { suite: "rag-notes", machine: "m1", model: "Qwen3-4B-4bit", model_path: "models/mlx/Qwen3-4B-4bit", score: 0.9, tok_s: 31,
+    why: "highest score (90)", considered: 6, ran: 3, reused: 1, screened_out: [{ model: "Tiny", screen_score: 0.2 }, { nope: 1 }] };
+  assert.equal((await req(env, "/api/bench/best", "POST", pick, "wrong")).status, 401);
+  assert.equal((await req(env, "/api/bench/best", "POST", { ...pick, suite: "x" })).status, 400);
+  assert.equal((await req(env, "/api/bench/best", "POST", { ...pick, model: "../x" })).status, 400);
+  await call(env, "/api/bench/best", "POST", pick);
+  await call(env, "/api/bench/best", "POST", { ...pick, machine: "m5p", model: "Qwen3.8-27B-4bit" });
+  const lb = await call(env, "/api/bench/leaderboard?suite=rag-notes");
+  assert.equal(lb.best["rag-notes"].m1.model, "Qwen3-4B-4bit");
+  assert.equal(lb.best["rag-notes"].m5p.model, "Qwen3.8-27B-4bit");
+  assert.deepEqual(lb.best["rag-notes"].m1.screened_out.map(x => x.model), ["Tiny"]);
+  await call(env, "/api/bench/best", "POST", { ...pick, model: "Qwen3-1.7B-4bit" });       // a newer search replaces the pick
+  assert.equal((await call(env, "/api/bench/leaderboard")).best["rag-notes"].m1.model, "Qwen3-1.7B-4bit");
+});

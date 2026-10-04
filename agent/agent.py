@@ -13,7 +13,7 @@ When the A1 drive (matched by volume UUID, not just name) is present it:
   7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
 
-Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]|bench <suite|all> [--model PATH]]
+Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]|bench <suite|all> [--fresh] [--model PATH]]
 `bench` runs the A1 Bench task banks (tests/bench) against stash models, one model at a time (see bench.py).
 """
 import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request

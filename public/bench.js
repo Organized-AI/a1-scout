@@ -53,6 +53,20 @@
   function suiteResult(path, s) {
     return (data?.rows || []).filter(r => r.model_path === path && r.suite === s).sort((a, b) => b.id - a.id)[0] || null;
   }
+  // The agent's pick after searching every model that fits that Mac (agent.py bench <suite>).
+  const best = (s, mach) => data?.best?.[s]?.[mach] || null;
+
+  function bestHtml() {
+    const picks = Object.entries(data?.best?.[suite] || {}).filter(([m]) => !machine || m === machine);
+    if (!picks.length) return "";
+    return `<div class="bn-best-list">${picks.map(([m, b]) => `<article class="bn-best">
+      <span class="bn-crown" aria-hidden="true">★</span>
+      <div><span class="bn-kick">Best for you · ${esc(machLabel(m))}</span>
+        <h3>${esc(b.model)}</h3>
+        <p>${b.score != null ? `Score ${Math.round(b.score * 100)}` : ""}${b.tok_s != null ? ` · ${Math.round(b.tok_s)} tok/s` : ""}${b.total ? ` · ${b.passed}/${b.total} tasks` : ""}. Picked for the ${esc(b.why || "best score")}.</p>
+        <small>Searched ${b.considered ?? "?"} model${b.considered === 1 ? "" : "s"} that fit this Mac: ${b.ran ?? 0} run in full, ${b.reused ?? 0} reused from earlier runs${b.screened_out?.length ? `, ${b.screened_out.length} screened out early (${b.screened_out.map(x => esc(x.model)).join(", ")})` : ""}. ${new Date(b.at).toLocaleDateString()}</small></div>
+    </article>`).join("")}</div>`;
+  }
 
   // ---------- rendering ----------
   const rowsFor = () => (data?.rows || []).filter(r => r.suite === suite && (!machine || r.machine === machine));
@@ -62,13 +76,13 @@
     const maxTps = Math.max(1, ...rows.map(r => r.tok_s || 0));
     if (!data) return `<div class="bn-empty">${err ? `Couldn't load the bench: ${esc(err)}` : "Loading measured runs…"}</div>`;
     if (!rows.length) return `<div class="bn-empty"><b>No ${esc(SUITES[suite].label)} runs${machine ? ` on ${esc(machLabel(machine))}` : ""} yet.</b>
-      Plug in the A1, then on the Mac: <code>python3 agent/agent.py bench ${esc(suite)}</code> (add <code>--model models/mlx/&lt;name&gt;</code> for one model).</div>`;
-    return `<div class="bn-table" role="table" aria-label="${esc(SUITES[suite].label)} leaderboard">
+      Plug in the A1, then on the Mac: <code>python3 agent/agent.py bench ${esc(suite)}</code>. It tries every model on the A1 that fits that Mac and picks the best one for you (<code>bench all</code> does every suite).</div>`;
+    return `${bestHtml()}<div class="bn-table" role="table" aria-label="${esc(SUITES[suite].label)} leaderboard">
       <div class="bn-tr bn-th" role="row"><span role="columnheader">#</span><span role="columnheader">Model</span><span role="columnheader">Score</span><span role="columnheader">Speed</span>
         <span role="columnheader">First token</span><span role="columnheader">Peak memory</span><span role="columnheader">Load</span><span role="columnheader">Elo</span></div>
       ${rows.map((r, k) => `<div class="bn-tr" role="row" data-run="${r.id}">
         <span class="bn-rank" role="cell">${k + 1}</span>
-        <span class="bn-model" role="cell"><b>${esc(r.model)}</b><small>${esc(machLabel(r.machine))} · ${esc(r.runtime || "?")} · ${new Date(r.created).toLocaleDateString()}${r.error ? ` · <em class="bn-bad" title="${esc(r.error)}">error</em>` : ""}</small></span>
+        <span class="bn-model" role="cell"><b>${esc(r.model)}${best(suite, r.machine)?.model === r.model ? ' <em class="bn-pick">★ best</em>' : ""}</b><small>${esc(machLabel(r.machine))} · ${esc(r.runtime || "?")} · ${new Date(r.created).toLocaleDateString()}${r.error ? ` · <em class="bn-bad" title="${esc(r.error)}">error</em>` : ""}</small></span>
         <span class="bn-cell" role="cell" data-label="Score"><i class="bn-bar sc"><b style="width:${(r.score * 100).toFixed(1)}%"></b></i><em data-num="${(r.score * 100).toFixed(0)}">${(r.score * 100).toFixed(0)}</em><small>${r.passed}/${r.total} pass</small></span>
         <span class="bn-cell" role="cell" data-label="Speed"><i class="bn-bar tp"><b style="width:${((r.tok_s || 0) / maxTps * 100).toFixed(1)}%"></b></i><em>${r.tok_s != null ? r.tok_s.toFixed(0) : "—"}</em><small>tok/s</small></span>
         <span class="bn-cell" role="cell" data-label="First token"><em>${ms(r.ttft_ms)}</em></span>
@@ -143,7 +157,11 @@
   function animateBoard(root) {
     if (RM() || !window.gsap) return;
     const rows = $$(".bn-tr:not(.bn-th)", root);
-    gsap.from(rows, { y: 10, opacity: 0, duration: .35, stagger: .05, ease: "power2.out", clearProps: "transform,opacity" });
+    const picks = $$(".bn-best", root);
+    if (picks.length) gsap.timeline()
+      .from(picks, { scale: .94, opacity: 0, duration: .45, stagger: .08, ease: "back.out(1.8)", clearProps: "transform,opacity" })
+      .from($$(".bn-crown", root), { rotation: -180, scale: 0, duration: .6, ease: "back.out(2.5)" }, "<.1");
+    gsap.from(rows, { y: 10, opacity: 0, duration: .35, stagger: .05, ease: "power2.out", clearProps: "transform,opacity", delay: picks.length ? .2 : 0 });
     gsap.from($$(".bn-bar b", root), { scaleX: 0, transformOrigin: "left", duration: .7, stagger: .03, ease: "power3.out", delay: .1 });
     $$("[data-num]", root).forEach(el => { const o = { v: 0 }, to = +el.dataset.num;
       gsap.to(o, { v: to, duration: .8, ease: "power2.out", onUpdate: () => el.textContent = Math.round(o.v) }); });
@@ -185,7 +203,7 @@
     }
   }
 
-  window.BenchView = { html, wire, load, setData, measured, suiteResult, suites: SUITES, machLabel };
+  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel };
 
   const css = document.createElement("style");
   css.textContent = `
@@ -246,6 +264,13 @@
   .bn-btn:hover{border-color:var(--brand)}.bn-btn[disabled]{opacity:.5;cursor:default}
   .bn-btn.go{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}
   .bn-btn.ghost{margin-left:auto;color:var(--mute)}
+  .bn-best-list{display:grid;gap:8px;margin-bottom:12px}
+  .bn-best{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;align-items:start;padding:14px;border:1px solid var(--brand);border-radius:12px;
+    background:linear-gradient(135deg,color-mix(in srgb,var(--brand) 14%,var(--panel)),var(--panel))}
+  .bn-crown{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:22px}
+  .bn-best h3{font:600 clamp(17px,2.4vw,21px)/1.2 "IBM Plex Mono",monospace;margin:4px 0;overflow-wrap:anywhere}
+  .bn-best p{margin:0 0 4px;font-size:14px}.bn-best small{color:var(--mute);font-size:12px;line-height:1.45;display:block}
+  .bn-pick{font:600 10.5px "IBM Plex Mono",monospace;font-style:normal;color:var(--accent);white-space:nowrap}
   `;
   document.head.appendChild(css);
 })();
