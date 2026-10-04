@@ -196,6 +196,11 @@ button.chip:hover{border-color:var(--accent)}
   .pick[data-pick]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   ul.upd { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
   ul.upd b { font-weight: 600; }
+.a1-lic-dec{grid-column:1/-1;flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:6px}
+.a1-lic-q{flex:1 1 320px;font-size:13px;color:var(--mute)}
+.a1-lic-yn{display:flex;gap:8px;flex-wrap:wrap}
+.a1-lic-yn .btn[aria-disabled=true]{opacity:.5;pointer-events:none}
+.a1-lic-terms{font:12px "IBM Plex Mono",monospace;color:var(--mute)}
 </style>
 </head>
 <body>
@@ -205,6 +210,7 @@ button.chip:hover{border-color:var(--accent)}
 <script src="lessons.js"></script>
 <script src="explain.js"></script>
 <script src="map.js"></script>
+<script src="lab.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
@@ -233,15 +239,15 @@ async function load() {
   pollActivity();
 }
 function shell(inner) {
-  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : "Scout"}</h1>
-   <div class="nav">${["map","scout"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
+  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "lab" ? "Lab" : "Scout"}</h1>
+   <div class="nav">${["map","scout","lab"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="lab"?"Lab":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
    <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}
    <footer class="foot"><img class="brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="47" height="12"><img class="brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="47" height="12"><span>· A1 Scout · an Organized AI asset · Austin, TX</span><a href="https://github.com/organized-ai/a1-scout">source</a></footer>`;
 }
 function render(first) {
-  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : scoutView());
+  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "lab" ? LabView.html(catalog, picks) : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
-  view === "map" ? MapView.wire(first, () => render()) : wireScout(first);
+  view === "map" ? MapView.wire(first, () => render()) : view === "lab" ? LabView.wire(first, () => render()) : wireScout(first);
   if (!render.introDone && !RM()) {
     render.introDone = true;
     gsap.timeline()
@@ -458,6 +464,29 @@ function licenseRows() {
     for (const [repo, r] of Object.entries(lc.results || {})) if (r.access === "granted") rows.set(repo, { repo, kind: r.kind, access: "granted", justGranted: true });
   return [...rows.values()];
 }
+// The decision panel: the agent's read of the gate (gate_form on the Mac) decides what Yes can do.
+function licGateLine(r) {
+  const g = r.gate || {}, lic = g.license ? `${esc(g.license)} license` : "license";
+  if (g.mode === "ack") return `Acknowledge-only ${lic}${g.button ? ` (“${esc(g.button)}”)` : ""}. Yes submits it from the Mac.`;
+  if (g.mode === "form") return `The form asks for ${esc((g.asks || []).slice(0, 5).join(", ").toLowerCase())}. Yes opens it for you; the agent never types personal details.`;
+  return `The Mac reads the gate when you answer.`;
+}
+function licDecision(r, user) {
+  const d = (a1act?.license_decisions || {})[r.repo], url = licUrl(r.repo, r.kind);
+  const terms = `<a class="a1-lic-terms" href="${url}" target="_blank" rel="noopener">Read the terms ↗</a>`;
+  if (d?.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3)
+    return `<div class="a1-lic-dec"><span class="a1-lic-q">${d.decision === "yes" ? "Yes" : "No"} · sent to the Mac. It acts within 2 minutes.</span>${terms}</div>`;
+  const msg = !d || d.state !== "done" ? "" : d.outcome === "requested" ? `Requested as ${esc(user || "your account")}. Waiting on ${esc(r.repo.split("/")[0])} to approve; the Mac re-checks every 15 minutes.`
+    : d.outcome === "needs_you" ? esc(d.reason) : d.outcome === "failed" ? `Couldn't submit: ${esc(d.detail || "")}. Use the page instead.` : "";
+  const form = d?.outcome === "needs_you" || d?.outcome === "failed" || r.gate?.mode === "form";
+  return `<div class="a1-lic-dec">
+    <span class="a1-lic-q">${msg || licGateLine(r)}</span>
+    ${d?.outcome === "requested" ? "" : `<span class="a1-lic-yn">
+      ${form ? `<a class="btn go" href="${url}" target="_blank" rel="noopener" data-licyes="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">Yes · open form ↗</a>`
+             : `<button type="button" class="btn go" data-licyes="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">Yes, accept</button>`}
+      <button type="button" class="btn" data-licno="${esc(r.repo)}" data-kind="${esc(r.kind || "model")}">No, skip it</button></span>`}
+    ${terms}</div>`;
+}
 const licUrl = (repo, kind) => `https://huggingface.co/${kind && kind !== "model" ? kind + "s/" : ""}${repo}`;
 function licensePanel() {
   const rows = licenseRows(); if (!rows.length) return "";
@@ -467,17 +496,31 @@ function licensePanel() {
   const anyBlocked = rows.some(r => r.access !== "granted");
   return `<div class="a1-lic">
     <div class="a1-lic-head"><span class="a1-lbl">Needs license · ${rows.filter(r => r.access !== "granted").length}</span>
-      <span class="a1-lic-how">1. Open the page and accept the terms${user ? ` signed in as <b>${esc(user)}</b>` : " with the account the Mac downloads with"}. 2. Check access. When it's granted the pick is approved and, if the A1 is plugged in and idle, it downloads right away.</span></div>
+      <span class="a1-lic-how">Answer Yes or No. Yes accepts the license${user ? ` as <b>${esc(user)}</b>` : ""} from the Mac and, once access comes through, the pick downloads when the A1 is plugged in. No skips it. Forms that ask for personal details always stay with you.</span></div>
     ${rows.map(r => `<div class="a1-lic-row${r.access === "granted" ? " ok" : ""}">
       <span class="a1-lic-name" title="${esc(r.repo)}">${esc(short(r.repo))}<small>${esc(r.repo.split("/")[0])}${r.gated === "auto" ? " · approved as soon as you accept" : r.gated ? " · the author reviews each request" : ""}</small></span>
       <span class="a1-lic-st">${r.access === "granted" ? "✓ Access granted" + (lc?.started ? " · downloading now" : "") : r.checked_at ? `Not granted yet · checked ${esc(ago(r.checked_at))}` : "Not granted yet"}</span>
-      ${r.access === "granted" ? "" : `<a class="btn" href="${licUrl(r.repo, r.kind)}" target="_blank" rel="noopener">Accept license ↗</a>`}
+      ${r.access === "granted" ? "" : licDecision(r, user)}
     </div>`).join("")}
-    ${anyBlocked ? `<div class="a1-lic-foot"><button type="button" class="btn go" data-liccheck${checking ? " disabled" : ""}>${checking ? "Checking on the Mac…" : "I've accepted · check access"}</button>
+    ${anyBlocked ? `<div class="a1-lic-foot"><button type="button" class="btn" data-liccheck${checking ? " disabled" : ""}>${checking ? "Checking on the Mac…" : "Check access again"}</button>
       <span class="a1-lic-note" data-licnote>${checking ? "The Mac checks within 2 minutes using its own Hugging Face login." : done ? `Checked ${esc(ago(lc.acked_at))}.` : "Manual approvals can take minutes to days; the Mac also re-checks every 15 minutes."}</span></div>` : ""}
   </div>`;
 }
 function wireLicensePanel(el) {
+  el.querySelectorAll("[data-licyes],[data-licno]").forEach(x => x.addEventListener("click", async ev => {
+    const yes = x.hasAttribute("data-licyes"), repo = x.dataset.licyes || x.dataset.licno;
+    if (x.tagName !== "A") ev.preventDefault();
+    x.closest(".a1-lic-yn")?.querySelectorAll(".btn").forEach(b => b.setAttribute("aria-disabled", "true"));
+    if (!RM()) { const [cx, cy] = centerOf(x); burst(cx, cy, yes ? 12 : 6, 40); gsap.fromTo(x.closest(".a1-lic-row"), { x: yes ? 0 : -6 }, { x: 0, duration: .5, ease: "elastic.out(1,.4)" }); }
+    try {
+      const r = await call("/api/license-decision", { method: "POST", body: JSON.stringify({ repo, kind: x.dataset.kind, decision: yes ? "yes" : "no" }) });
+      a1act.license_decisions = r.license_decisions;
+      const q = x.closest(".a1-lic-dec")?.querySelector(".a1-lic-q");
+      if (q) q.textContent = (yes ? "Yes" : "No") + (r.mac_checking_in ? " · sent to the Mac. It acts within 2 minutes." : " · saved. The Mac acts as soon as it wakes.");
+      x.closest(".a1-lic-yn")?.remove();
+      clearTimeout(actTimer); actTimer = setTimeout(pollActivity, 15000);
+    } catch (e) { x.closest(".a1-lic-yn")?.querySelectorAll(".btn").forEach(b => b.removeAttribute("aria-disabled")); }
+  }));
   const b = el.querySelector("[data-liccheck]"); if (!b || b.disabled) return;
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Checking on the Mac…";

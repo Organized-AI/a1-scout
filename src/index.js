@@ -519,6 +519,27 @@ async function api(req, env, url) {
     const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
     return json({ ok: true, license_check: lc, mac_checking_in: !!fresh });
   }
+  // Yes/No on a gated repo from the dashboard: the Mac's heartbeat carries it out (submit the acknowledgement, or skip the pick).
+  if (p === "/api/license-decision" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const repo = typeof body.repo === "string" && /^[\w.-]+\/[\w.-]+$/.test(body.repo) ? body.repo : null;
+    const decision = ["yes", "no"].includes(body.decision) ? body.decision : null;
+    if (!repo || !decision) return json({ ok: false, error: "repo and decision (yes|no) required" }, 400);
+    const kind = ["model", "dataset", "space"].includes(body.kind) ? body.kind : "model";
+    const all = (await kvGet(env, "license_decisions")) || {};
+    all[repo] = { decision, kind, state: "pending", at: now() };
+    await kvSet(env, "license_decisions", all);
+    const presence = await kvGet(env, "presence");
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    return json({ ok: true, license_decisions: all, mac_checking_in: !!fresh });
+  }
+  if (p === "/api/license-decision/ack" && req.method === "POST") {
+    const { results } = await req.json();
+    const all = (await kvGet(env, "license_decisions")) || {};
+    for (const [repo, r] of Object.entries(results || {})) if (all[repo]) all[repo] = { ...all[repo], ...r, state: "done", acked_at: now() };
+    await kvSet(env, "license_decisions", all);
+    return json({ ok: true });
+  }
   if (p === "/api/license-check/ack" && req.method === "POST") {
     const { results, started } = await req.json();
     const lc = await kvGet(env, "license_check");
@@ -541,12 +562,14 @@ async function api(req, env, url) {
         const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
         const lc = await kvGet(env, "license_check");
         const lcLive = lc?.state === "pending" && Date.now() - Date.parse(lc.at) < 15 * 60e3;
-        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null });
+        const ld = (await kvGet(env, "license_decisions")) || {};
+        const pendingLd = Object.fromEntries(Object.entries(ld).filter(([, d]) => d.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3));
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
     }
-    const [activity, presence, run_request, license_check] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence"), kvGet(env, "run_request"), kvGet(env, "license_check")]);
+    const [activity, presence, run_request, license_check, license_decisions] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence"), kvGet(env, "run_request"), kvGet(env, "license_check"), kvGet(env, "license_decisions")]);
     // What the next plug-in will download: same order and cap rule as the agent (one over-cap item may go first).
     const approved = (await env.DB.prepare("SELECT repo, kind, size_bytes FROM picks WHERE status='approved' ORDER BY score DESC").all()).results;
     const cap = (presence?.cap_gb || 60) * 1e9;
@@ -563,7 +586,7 @@ async function api(req, env, url) {
       if (fits) spent += size;
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
     });
-    return json({ activity, presence, next, run_request, license_check, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
+    return json({ activity, presence, next, run_request, license_check, license_decisions: license_decisions || {}, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
   }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {

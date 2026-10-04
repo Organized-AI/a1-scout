@@ -37,3 +37,19 @@ test("a granted repo is counted again even if an old refusal lingers", async () 
   const a = await call(env, "/api/activity");
   assert.equal(a.next[0].when, "next plug-in");
 });
+
+test("Yes/No decision goes to the Mac's next heartbeat, then shows the outcome", async () => {
+  const { env } = fakeEnv({ presence: { present: true, at: new Date().toISOString() } });
+  const bad = await worker.fetch(new Request("https://x/api/license-decision", { method: "POST",
+    headers: { authorization: "Bearer t", "content-type": "application/json" }, body: JSON.stringify({ repo: "x", decision: "maybe" }) }), env);
+  assert.equal(bad.status, 400);
+  const r = await call(env, "/api/license-decision", "POST", { repo: "google/gemma-2-2b", kind: "model", decision: "yes" });
+  assert.equal(r.license_decisions["google/gemma-2-2b"].state, "pending");
+  const hb = await call(env, "/api/activity", "POST", { kind: "presence", present: true });
+  assert.equal(hb.license_decisions["google/gemma-2-2b"].decision, "yes");
+  await call(env, "/api/license-decision/ack", "POST", { results: { "google/gemma-2-2b": { outcome: "granted", action: "submit" } } });
+  const hb2 = await call(env, "/api/activity", "POST", { kind: "presence", present: true });
+  assert.deepEqual(hb2.license_decisions, {});                 // done decisions aren't handed out again
+  const a = await call(env, "/api/activity");
+  assert.equal(a.license_decisions["google/gemma-2-2b"].outcome, "granted");
+});

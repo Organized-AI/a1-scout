@@ -87,6 +87,7 @@
     return MACHINES.map(m => ({ ...m, need, fits: need <= m.gb * 2 ** 30 * 0.75 }));
   }
   window.MachineFit = fitsOn;
+  window.A1Classify = classify;
   function machineTags(i) {
     if (!i.path.startsWith("models") || !i.bytes) return "";
     const ok = fitsOn(i.bytes, i.name).filter(x => x.fits);

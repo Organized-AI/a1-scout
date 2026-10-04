@@ -561,13 +561,15 @@ def licenses():
     return load_state().get("licenses", {})
 
 
-def record_license(repo, kind, gated, access):
-    """Remember the latest access check; returns the previous access value."""
+def record_license(repo, kind, gated, access, **extra):
+    """Remember the latest access check (plus gate details and the last decision); returns the previous access value."""
     s = load_state()
     L = s.setdefault("licenses", {})
-    prev = (L.get(repo) or {}).get("access")
-    L[repo] = {"kind": kind, "gated": gated, "access": access, "url": hub_url(repo, kind),
-               "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    old = L.get(repo) or {}
+    prev = old.get("access")
+    keep = {k: old[k] for k in ("gate", "decision") if k in old}
+    L[repo] = {**keep, "kind": kind, "gated": gated, "access": access, "url": hub_url(repo, kind),
+               "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **extra}
     save_state(s)
     return prev
 
@@ -587,6 +589,120 @@ def hf_user():
     return name
 
 
+def _hf_post(url, data):
+    """Form POST with the Mac's Hugging Face token. Returns (status, body text)."""
+    body = urllib.parse.urlencode(data or {}).encode()
+    req = urllib.request.Request(url, data=body, method="POST",
+                                 headers={**hf_headers(), "content-type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, r.read(2000).decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return e.code, (e.read(2000) or b"").decode("utf-8", "ignore")
+    except Exception as e:
+        return 0, str(e)
+
+
+def _is_checkbox(v):
+    return v == "checkbox" or (isinstance(v, dict) and v.get("type") == "checkbox")
+
+
+def gate_form(repo, kind="model", http=None):
+    """What the repo's access gate asks for, read from its model card.
+    mode 'ack': only an acknowledgement (and maybe checkboxes), so the Mac can submit it for you.
+    mode 'form': it asks for personal details (name, date of birth, ...), which the agent never types.
+    mode 'open': not gated. mode 'unknown': Hugging Face didn't answer."""
+    http = http or _hf_http
+    st, body = http(f"{HF_SITE}/api/{kind}s/{repo}", "GET")
+    if st != 200:
+        return {"mode": "unknown"}
+    try:
+        d = json.loads(body)
+    except Exception:
+        return {"mode": "unknown"}
+    c = d.get("cardData") or {}
+    fields = c.get("extra_gated_fields") or {}
+    asks = [k for k, v in fields.items() if not _is_checkbox(v) and v != "ip_location"]
+    boxes = [k for k, v in fields.items() if _is_checkbox(v)]
+    lic = c.get("license")
+    gated = d.get("gated")
+    mode = "open" if not gated else "form" if asks else "ack"
+    return {"mode": mode, "gated": str(gated), "asks": asks[:10], "boxes": boxes,
+            "button": c.get("extra_gated_button_content") or None,
+            "license": ",".join(lic) if isinstance(lic, list) else lic}
+
+
+def decide_license(gate, decision, access):
+    """The decision model for a gated repo: your Yes/No plus what the gate asks for -> one action.
+    Pure and table-driven so every branch is tested. Actions: none, skip, submit, open_page, recheck."""
+    if access == "granted":
+        return {"action": "none", "reason": "Already granted."}
+    if decision == "no":
+        return {"action": "skip", "reason": "You said no. The pick is skipped and nothing is sent to Hugging Face."}
+    if decision != "yes":
+        return {"action": "none", "reason": "No decision yet."}
+    mode = (gate or {}).get("mode")
+    if mode == "ack":
+        return {"action": "submit", "reason": "The gate only asks you to acknowledge the license, so the Mac submits it with its own Hugging Face login."}
+    if mode == "form":
+        asks = ", ".join((gate.get("asks") or [])[:6]).lower()
+        return {"action": "open_page", "reason": f"The form asks for {asks}. The agent never types personal details; open the page and fill it yourself."}
+    if mode == "open":
+        return {"action": "recheck", "reason": "Not gated any more; re-checking access."}
+    return {"action": "open_page", "reason": "Couldn't read the gate from Hugging Face; open the page to accept it."}
+
+
+def request_access(repo, kind, gate, post=None):
+    """Submit the acknowledgement on the repo's gate as the Mac's account. Returns (ok, detail)."""
+    post = post or _hf_post
+    data = {b: "on" for b in (gate or {}).get("boxes") or []}
+    st, text = post(f"{hub_url(repo, kind)}/ask-access", data)
+    if st in (200, 201, 204, 302, 303):
+        return True, f"Submitted ({st})."
+    return False, f"Hugging Face answered {st or 'nothing'}" + (f": {text[:160]}" if text and st else "")
+
+
+def apply_decisions(decisions, picks, http=None, post=None, api_call=None):
+    """Carry out Yes/No decisions from the dashboard. Returns {repo: result} and the repos to re-check."""
+    api_call = api_call or api
+    out, recheck = {}, set()
+    L = licenses()
+    for repo, d in (decisions or {}).items():
+        if (d or {}).get("state") != "pending":
+            continue
+        pk = picks.get(repo) or {}
+        kind = d.get("kind") or pk.get("kind") or (L.get(repo) or {}).get("kind", "model")
+        gate = gate_form(repo, kind, http=http)
+        access = (L.get(repo) or {}).get("access")
+        plan = decide_license(gate, d.get("decision"), access)
+        res = {"decision": d.get("decision"), "action": plan["action"], "reason": plan["reason"], "gate": gate.get("mode"),
+               "url": hub_url(repo, kind)}
+        if plan["action"] == "skip":
+            if pk.get("id") and pk.get("status") != "stashed":
+                try:
+                    api_call("/api/picks/status", "POST", {"id": pk["id"], "status": "skipped"})
+                except Exception:
+                    pass
+            record_license(repo, kind, gate.get("gated", "manual"), "declined", gate=gate, decision="no")
+            res["outcome"] = "skipped"
+        elif plan["action"] == "submit":
+            ok, detail = request_access(repo, kind, gate, post=post)
+            res["outcome"], res["detail"] = ("requested" if ok else "failed"), detail
+            record_license(repo, kind, gate.get("gated", "manual"), access or "blocked", gate=gate, decision="yes")
+            if ok:
+                recheck.add(repo)
+        elif plan["action"] == "recheck":
+            res["outcome"] = "rechecking"; recheck.add(repo)
+        elif plan["action"] == "open_page":
+            res["outcome"] = "needs_you"
+            record_license(repo, kind, gate.get("gated", "manual"), access or "blocked", gate=gate, decision="yes")
+        else:
+            res["outcome"] = "nothing_to_do"
+        log(f"license decision {repo}: {d.get('decision')} -> {plan['action']} ({res.get('outcome')})")
+        out[repo] = res
+    return out, recheck
+
+
 def check_licenses(repos, kinds=None):
     """Re-check access for repos. kinds maps repo -> (kind, gated). Returns {repo: {access, was, kind, url}}."""
     kinds = kinds or {}
@@ -595,7 +711,10 @@ def check_licenses(repos, kinds=None):
     for r in sorted(repos):
         kind, gated = kinds.get(r) or ((L.get(r) or {}).get("kind", "model"), (L.get(r) or {}).get("gated", "manual"))
         acc = hub_access(r, kind)
-        was = record_license(r, kind, gated, acc)
+        extra = {}
+        if acc != "granted" and not (L.get(r) or {}).get("gate"):
+            extra["gate"] = gate_form(r, kind)
+        was = record_license(r, kind, gated, acc, **extra)
         out[r] = {"access": acc, "was": was, "kind": kind, "url": hub_url(r, kind)}
     return out
 
@@ -623,7 +742,7 @@ def needs_license(lines=None):
             blocked.discard(cur); cur = None
     if live:
         L = licenses()
-        blocked = {r for r in blocked if (L.get(r) or {}).get("access") != "granted"}
+        blocked = {r for r in blocked if (L.get(r) or {}).get("access") not in ("granted", "declined")}
         blocked |= {r for r, v in L.items() if v.get("access") == "blocked"}
     return blocked
 
@@ -1158,15 +1277,20 @@ def license_heartbeat(resp, present, busy):
     When access comes through, approve the pick (accepting the license is the intent) and start a run if the A1 is idle."""
     lc = (resp or {}).get("license_check")
     asked = bool(lc and lc.get("state") == "pending")
+    decisions = {r: d for r, d in ((resp or {}).get("license_decisions") or {}).items() if (d or {}).get("state") == "pending"}
     blocked = needs_license()
     st = load_state()
-    if not asked and not (blocked and time.time() - st.get("license_checked_at", 0) > 900):
+    if not asked and not decisions and not (blocked and time.time() - st.get("license_checked_at", 0) > 900):
         return
     try:
         picks = {p["repo"]: p for p in api("/api/picks")}
     except Exception:
         picks = {}
-    repos = blocked | set((lc or {}).get("repos") or [])
+    decided, recheck = apply_decisions(decisions, picks) if decisions else ({}, set())
+    if recheck:
+        time.sleep(3)   # gates that grant on acknowledgement take a moment to show up as access
+    blocked = needs_license()
+    repos = blocked | set((lc or {}).get("repos") or []) | recheck
     kinds = {r: (picks[r]["kind"], str(picks[r].get("gated"))) for r in repos if r in picks}
     res = check_licenses(repos, kinds)
     st = load_state(); st["license_checked_at"] = time.time(); save_state(st)
@@ -1174,7 +1298,7 @@ def license_heartbeat(resp, present, busy):
     started = False
     for r in newly:
         pk = picks.get(r)
-        if pk and pk.get("status") == "new":
+        if pk and pk.get("status") in ("new", "skipped"):
             try:
                 api("/api/picks/status", "POST", {"id": pk["id"], "status": "approved"})
             except Exception:
@@ -1190,6 +1314,15 @@ def license_heartbeat(resp, present, busy):
     if asked:
         try:
             api("/api/license-check/ack", "POST", {"results": res, "started": started})
+        except Exception:
+            pass
+    if decided:
+        for r, v in decided.items():
+            v["access"] = (res.get(r) or {}).get("access") or (licenses().get(r) or {}).get("access")
+            if v.get("outcome") == "requested" and v["access"] == "granted":
+                v["outcome"] = "granted"
+        try:
+            api("/api/license-decision/ack", "POST", {"results": decided, "started": started})
         except Exception:
             pass
 
