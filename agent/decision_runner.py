@@ -54,11 +54,19 @@ def _kev_imports():
     return C, M
 
 
-def _kev_answer(tok, model, run, device):
+def _local_checkpoint(C, run):
+    """A Checkpoint whose base model points at the stash copy, so config, tokenizer and weights never come from the Hub."""
+    ck = C.Checkpoint(run)
+    local = local_hub(ck.meta.base)
+    if local:
+        ck.meta.base, ck.meta.base_revision = local, None
+    return ck
+
+
+def _kev_answer(ck, tok, model, device):
     from kev.serve import Server
     from kev.api import SystemOneRequest
-    import kev.checkpoint as C
-    srv = Server(C.Checkpoint(run), tok, model, device, release_date="local")
+    srv = Server(ck, tok, model, device, release_date="local")
     return lambda req: srv.answer(SystemOneRequest(model="kev-latest", **req))
 
 
@@ -66,8 +74,9 @@ def load_kev(path):
     C, M = _kev_imports()
     from kev.device import default_device
     device = default_device()
-    tok, model = C.Checkpoint(path).load(device)
-    return "kev", _kev_answer(tok, model, path, device)
+    ck = _local_checkpoint(C, path)
+    tok, model = ck.load(device)
+    return "kev", _kev_answer(ck, tok, model, device)
 
 
 def load_kev_mlx(path):
@@ -82,7 +91,7 @@ def load_kev_mlx(path):
     model.head = PointerHead(model.text.embed_tokens.dims, dp=meta.head_dim).eval()
     model.head.load_state_dict(meta.head)
     model.head.temperature = meta.temperature
-    return "kev-mlx", _kev_answer(tok, model, path, "mps")
+    return "kev-mlx", _kev_answer(_local_checkpoint(C, path), tok, model, "mps")
 
 
 LOADERS = {"clef": load_clef, "kev": load_kev, "kev-mlx": load_kev_mlx}
