@@ -1,0 +1,19 @@
+2026-10-03T18:10:10 scan: 675 candidates, 2 new, 0 auto-approved, errors=0
+2026-10-03T18:10:13 downloading model meta-llama/Llama-Prompt-Guard-2-86M @ a8ded8e697 -> models/hf/Llama-Prompt-Guard-2-86M (~1.13 GB)
+2026-10-03T18:10:16   hf download failed: 
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]
+Error: Access denied. This repository requires approval.
+
+2026-10-03T18:10:16 downloading model google/gemma-2-2b @ c5ebcd40d2 -> models/hf/gemma-2-2b (~10.48 GB)
+2026-10-03T18:10:19   hf download failed: 
+Fetching 12 files:   0%|          | 0/12 [00:00<?, ?it/s]
+Error: Access denied. This repository requires approval.
+
+2026-10-03T18:10:20   waiting: meta-llama/Llama-Prompt-Guard-2-86M (download failed; retries next mount)
+2026-10-03T18:10:20   waiting: google/gemma-2-2b (download failed; retries next mount)
+2026-10-03T18:12:40 A1 present (dashboard); stash at /Volumes/A1/stash
+2026-10-03T18:15:44 catalog pushed: 133 items, 63514 bytes
+2026-10-03T18:15:46 profile pushed: 177 repos, 208 inventory names
+2026-10-03T18:16:29 update check: 75 tracked, 74 current, 1 with new files, 0 docs-only, 0 settling, 7 untraceable
+2026-10-03T18:16:29 updating dataset SALT-NLP/SWE-chat 651fe2a -> 202b071: 17148 changed files, ~29.78 GB to download
+2026-10-03T18:16:59   resuming staged download .SWE-chat.updating-2c89cde (30.0 GB already here)

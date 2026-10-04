@@ -275,7 +275,7 @@ function runModel() {
     const c = a.current;
     return { src: "live", asOf: a.updated_at, phase: a.phase, startedAt: a.started_at, dlStartedAt: a.dl_started_at || c?.started_at,
       done: a.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, rate: c.rate, startedAt: c.started_at } : null,
-      queue: a.queue || [] };
+      queue: a.queue || [], check: a.check || null };
   }
   const r = p.logrun;
   if (!r || r.finished) return null;
@@ -335,11 +335,12 @@ function paintBar(animate) {
   barTl?.kill(); barLoops.forEach(t => t.kill()); barLoops = [];
   let body = "", live = null;
   if (run && !run.queue.length && !run.current && !run.done.length && (a1act.next || []).length)
-    run.queue = a1act.next.map(q => ({ ...q, when: q.when === "later" ? "next plug-in" : "now" }));
+    run.queue = a1act.next.filter(q => q.when !== "needs license").map(q => ({ ...q, when: q.when === "later" ? "next plug-in" : "now" }));
+  const blockedList = (a1act.next || []).filter(q => q.when === "needs license");
   if (run) {
     const runKey = run.startedAt || "run";
     if (actPrev.runKey !== runKey) { disp.got = 0; disp.cur = 0; rateHist = []; actPrev.doneSet = null; }
-    const now = run.queue.filter(q => q.when === "now"), later = run.queue.filter(q => q.when !== "now");
+    const now = run.queue.filter(q => q.when === "now"), later = run.queue.filter(q => q.when === "next plug-in" || q.when === "later");
     const doneBytes = run.done.reduce((t, d) => t + (d.bytes || 0), 0);
     const curDone = run.current ? Math.min(run.current.done, run.current.total) : 0;
     const total = doneBytes + (run.current?.total || 0) + now.reduce((t, q) => t + (q.bytes || 0), 0);
@@ -378,17 +379,19 @@ function paintBar(animate) {
       ${run.current ? `<div class="a1-item" data-repo="${esc(run.current.repo)}"><div class="a1-line"><span>${esc(run.current.action || "Downloading")} <b>${esc(short(run.current.repo))}</b></span>
           <span class="a1-nums" data-k="cnum"></span></div>
           <div class="a1-track"><i data-k="cbar" style="width:0%"><b class="a1-sheen"></b></i></div></div>`
+        : run.check && run.check.total ? `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span><span class="a1-nums">${run.check.done} of ${run.check.total} checked</span></div><div class="a1-track"><i style="width:${Math.round(run.check.done / run.check.total * 100)}%"></i></div></div>`
         : `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span></div><div class="a1-track indet"><i></i></div></div>`}
       <div class="a1-lists">
         ${run.done.length ? `<div><span class="a1-lbl">Done</span>${run.done.slice(-6).map(d => `<span class="a1-chip ok${fresh_.includes(d.repo) ? " new" : ""}" title="${esc(d.repo)}"><em>✓</em> ${esc(short(d.repo))} <small>${d.bytes ? gb(d.bytes) : ""}</small></span>`).join("")}${run.done.length > 6 ? `<span class="a1-more">+${run.done.length - 6}</span>` : ""}</div>` : ""}
         ${now.length ? `<div><span class="a1-lbl">Up next</span>${now.slice(0, 5).map((q, k) => `<span class="a1-chip${k ? "" : " next"}" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}${now.length > 5 ? `<span class="a1-more">+${now.length - 5}</span>` : ""}</div>` : ""}
+        ${blockedList.length ? `<div><span class="a1-lbl">Needs license</span>${blockedList.map(q => `<a class="a1-chip later" href="https://huggingface.co/${esc(q.repo)}" target="_blank" rel="noopener" title="Accept the terms on Hugging Face, then it downloads next plug-in">${esc(short(q.repo))} ↗</a>`).join("")}</div>` : ""}
         ${later.length ? `<div><span class="a1-lbl">Next plug-in</span>${later.slice(0, 4).map(q => `<span class="a1-chip later" title="${esc(q.repo)}">${esc(short(q.repo))} <small>${q.bytes ? gb(q.bytes) : ""}</small></span>`).join("")}${later.length > 4 ? `<span class="a1-more">+${later.length - 4}</span>` : ""}</div>` : ""}
       </div>
-      <div class="a1-foot"><span class="a1-live"></span>${run.src === "live" ? "Live from the Mac" : "From the Mac's run log, checked every minute"} · as of ${esc(clock(run.asOf))}${fresh > 150 ? ` (${ago(run.asOf)})` : ""}${freeNote ? ` · ${esc(freeNote)}` : ""}</div>`;
+      <div class="a1-foot"><span class="a1-live"></span>${run.src === "live" ? "Live from the Mac" : "From the Mac's run log, checked every minute"} · as of ${esc(clock(run.asOf))}${fresh > 150 ? ` (${ago(run.asOf)})` : ""}${freeNote ? ` · ${esc(freeNote)}` : ""}${pres.bar_check && pres.bar_check.ok === false ? ` · <span class="a1-gatewarn" style="color:var(--warn)" title="${esc((pres.bar_check.notes || []).join(" · "))}">⚠ status check failed: ${esc(pres.bar_check.failed.join(", ").replace(/_/g, " "))}</span>` : ""}</div>`;
     actPrev = { ...actPrev, runKey, doneSet, curRepo: run.current?.repo, fresh: fresh_, prevDone: actPrev.prevDone };
   } else {
     const upNext = a1act.next || [];
-    const nowList = upNext.filter(q => q.when !== "later");
+    const nowList = upNext.filter(q => q.when === "next plug-in");
     const rr = a1act.run_request, rrT = rr ? Date.parse(rr.acked_at || rr.at) : 0;
     const pending = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
     const starting = rr?.state === "started" && Date.now() - rrT < 3 * 60e3;

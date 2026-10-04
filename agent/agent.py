@@ -15,7 +15,7 @@ When the A1 is not present on the weekly timer, it only reminds you to plug it i
 
 Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]]
 """
-import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
+import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -472,30 +472,85 @@ def activity(force=False, **kw):
         pass  # the status bar is nice-to-have; never let it break a run
 
 
+def disk_size(p: Path):
+    """Apparent bytes under p. `du -A` is far faster than a Python walk on exFAT folders with tens of thousands of files."""
+    if not p.exists():
+        return 0
+    try:
+        r = subprocess.run(["du", "-skA", str(p)], capture_output=True, text=True, timeout=300)
+        if r.returncode == 0 and r.stdout:
+            return int(r.stdout.split()[0]) * 1024
+    except Exception:
+        pass
+    return walk_size(p)[0]
+
+
 def hf_download(args, dest: Path, total: int):
-    """Run `hf download` and report bytes on disk, speed and time left while it runs."""
+    """Run `hf download` and report bytes on disk, speed and time left while it runs.
+    Disk is measured in a background thread; the main loop posts every 15 s with the latest sample, so the
+    dashboard stays live even when one measurement takes longer than its 90-second freshness window."""
     e = dict(os.environ, PATH=PATH_EXTRA + ":" + os.environ.get("PATH", ""))
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=e)
-    samples = []
-    while True:
-        try:
-            out, err = proc.communicate(timeout=15)
-            break
-        except subprocess.TimeoutExpired:
-            cur = walk_size(dest)[0] if dest.exists() else 0
-            samples = (samples + [(time.time(), cur)])[-8:]
-            dt = samples[-1][0] - samples[0][0]
-            rate = (samples[-1][1] - samples[0][1]) / dt if dt > 0 else 0
-            eta = (total - cur) / rate if rate > 0 and total > cur else None
-            activity(current={**(ACT.get("current") or {}), "done_bytes": cur, "rate": rate, "eta_s": eta})
+    samples, stop = [], threading.Event()
+
+    def sampler():
+        while not stop.is_set():
+            samples.append((time.time(), disk_size(dest)))
+            del samples[:-8]
+            stop.wait(15)
+
+    threading.Thread(target=sampler, daemon=True).start()
+    try:
+        while True:
+            try:
+                out, err = proc.communicate(timeout=15)
+                break
+            except subprocess.TimeoutExpired:
+                if not samples:
+                    activity(force=True); continue          # still measuring: keep the bar marked live
+                cur = samples[-1][1]
+                dt = samples[-1][0] - samples[0][0]
+                rate = (samples[-1][1] - samples[0][1]) / dt if dt > 0 else 0
+                eta = (total - cur) / rate if rate > 0 and total > cur else None
+                activity(force=True, current={**(ACT.get("current") or {}), "done_bytes": cur, "rate": rate, "eta_s": eta,
+                                              "sampled_at": datetime.fromtimestamp(samples[-1][0], timezone.utc).isoformat(timespec="seconds")})
+    finally:
+        stop.set()
     return subprocess.CompletedProcess(args, proc.returncode, out, err)
 
 
-def plan_queue(picks, spent, cap):
-    """Mirror fetch_approved's ordering and cap so the site can show what downloads now and what waits."""
+LICENSE_RE = re.compile(r"Access denied|requires approval|gated repo|accept the (?:license|conditions)", re.I)
+
+
+def needs_license(lines=None):
+    """Repos whose latest download attempt in the log was refused because the Hugging Face license isn't accepted.
+    A later successful download of the same repo clears it."""
+    if lines is None:
+        try:
+            lines = LOG.read_text(errors="ignore").splitlines()[-3000:]
+        except OSError:
+            return set()
+    blocked, cur = set(), None
+    for l in lines:
+        m = re.search(r" (?:downloading|updating) \w+ (\S+) ", l)
+        if m:
+            cur = m.group(1); continue
+        if cur and LICENSE_RE.search(l):
+            blocked.add(cur); cur = None
+        elif cur and ("  stashed " in l or "  updated; previous" in l):
+            blocked.discard(cur); cur = None
+    return blocked
+
+
+def plan_queue(picks, spent, cap, blocked=None):
+    """Mirror fetch_approved's ordering and cap so the site can show what downloads now and what waits.
+    Picks that need a license accepted on the Hub are listed as such and don't count toward the run's total."""
+    blocked = needs_license() if blocked is None else blocked
     q, s = [], spent
     for p in picks:
         size = p.get("size_bytes") or 0
+        if p["repo"] in blocked:
+            q.append({"repo": p["repo"], "kind": p["kind"], "bytes": size, "when": "needs license"}); continue
         now = not (s + size > cap and not (s == 0 and size > cap))
         if now:
             s += size
@@ -503,7 +558,7 @@ def plan_queue(picks, spent, cap):
     return q
 
 
-def run_from_log(busy):
+def run_from_log(busy, procs=None, disk=None):
     """Rebuild the current run's progress from scout.log: done items, the item downloading now (measured on disk), what's left."""
     try:
         lines = LOG.read_text(errors="ignore").splitlines()[-600:]
@@ -521,7 +576,7 @@ def run_from_log(busy):
         elif " scan" in l and ("scan:" in l or "scan skipped" in l):
             run["phase"] = "Scanning Hugging Face for new picks"
         m = re.search(r" downloading (\w+) (\S+) @ \S+ -> (\S+) \(~([\d.]+) GB\)", l)
-        u = re.search(r" updating (\w+) (\S+) \w+ -> \w+: .*?~([\d.]+) GB to download", l)
+        u = re.search(r" updating (\w+) (\S+) \w+ -> \w+: .*?~([\d.]+) GB to download(?:, ([\d.]+) GB in all)?", l)
         if m:
             run["phase"] = "Downloading approved picks"
             run["current"] = {"repo": m.group(2), "kind": m.group(1), "action": "Downloading", "dest": m.group(3),
@@ -529,7 +584,8 @@ def run_from_log(busy):
             run["dl_started_at"] = run["dl_started_at"] or when(l)
         elif u:
             run["phase"] = "Updating stashed items"
-            run["current"] = {"repo": u.group(2), "kind": u.group(1), "action": "Updating", "total_bytes": float(u.group(3)) * 1e9, "started_at": when(l)}
+            run["current"] = {"repo": u.group(2), "kind": u.group(1), "action": "Updating",
+                              "total_bytes": float(u.group(4) or u.group(3)) * 1e9, "started_at": when(l)}
             run["dl_started_at"] = run["dl_started_at"] or when(l)
         s2 = re.search(r"  stashed ([\d.]+) GB", l)
         if (s2 or "  updated; previous" in l) and run["current"]:
@@ -540,9 +596,22 @@ def run_from_log(busy):
         if "  waiting:" in l:
             run["finished"] = True
     c = run["current"]
-    if c and c.get("dest") and busy:
-        d = STASH / c["dest"]
-        c["done_bytes"] = walk_size(d)[0] if d.exists() else 0
+    disk = disk or disk_size
+    if c and busy:
+        if c.get("dest"):
+            c["done_bytes"] = disk(STASH / c["dest"])
+        else:
+            # Updates download into a hidden staging folder; read it off the running `hf download`.
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gates"))
+                from statusbar_probe import hf_downloads
+                procs = hf_downloads() if procs is None else procs
+            except Exception:
+                procs = procs or []
+            dl = next((x for x in procs if x["repo"] == c["repo"] and x.get("dest")), None)
+            if dl:
+                c["done_bytes"] = disk(Path(dl["dest"]))
+                c["total_bytes"] = max(c.get("total_bytes") or 0, c["done_bytes"])
     if not busy:
         run["current"] = None
         run["finished"] = True
@@ -557,11 +626,13 @@ def queue_after(run, cap):
         return []
     taken = {d["repo"] for d in run["done"]} | ({run["current"]["repo"]} if run.get("current") else set())
     spent = sum(d["bytes"] for d in run["done"]) + ((run.get("current") or {}).get("total_bytes") or 0)
-    q = []
+    q, blocked = [], needs_license()
     for p in picks:
         if p["repo"] in taken:
             continue
         size = p.get("size_bytes") or 0
+        if p["repo"] in blocked:
+            q.append({"repo": p["repo"], "kind": p["kind"], "bytes": size, "when": "needs license"}); continue
         fits = spent + size <= cap
         if fits:
             spent += size
@@ -626,7 +697,13 @@ def fetch_approved(spent=0):
             if not ok:
                 log(f"  hf download failed: {(r.stderr or r.stdout)[-400:]}")
         if not ok:
-            waiting.append((p["repo"], "download failed; retries next mount")); continue
+            refused = p["kind"] != "paper" and LICENSE_RE.search((r.stderr or "") + (r.stdout or ""))
+            waiting.append((p["repo"], f"needs license: accept the terms at https://huggingface.co/{p['repo']}, then it downloads next mount"
+                            if refused else "download failed; retries next mount"))
+            if refused:
+                activity(force=True, needs_license=sorted(needs_license() | {p["repo"]}),
+                         queue=[{**q, "when": "needs license"} if q["repo"] == p["repo"] else q for q in ACT.get("queue", [])])
+            continue
 
         got, _ = walk_size(dest)
         spent += got
@@ -740,7 +817,8 @@ def check_updates(catalog):
     plans = []
     report["settling"] = []
     settle = float(ENV["SETTLE_HOURS"]) * 3600
-    for it in items:
+    for i, it in enumerate(items):
+        activity(check={"done": i, "total": len(items), "repo": it["repo"]})
         try:
             info = hub(f"/{it['kind']}s/{it['repo']}")
             new = info.get("sha")
@@ -801,7 +879,7 @@ def apply_update(pl, report, spent, cap, floor):
     prev = STASH / "versions" / src.parent.relative_to(STASH) / f"{src.name}@{old7}"
     if not (inside_stash(tmp) and inside_stash(prev)) or prev.exists():
         wait("no safe place for the old copy"); return 0
-    log(f"updating {pl['kind']} {pl['repo']} {old7} -> {new7}: {len(pl['changed'])} changed files, ~{pl['download_bytes']/1e9:.2f} GB to download")
+    log(f"updating {pl['kind']} {pl['repo']} {old7} -> {new7}: {len(pl['changed'])} changed files, ~{pl['download_bytes']/1e9:.2f} GB to download, {pl['total_bytes']/1e9:.2f} GB in all")
     staged = staged_update(src)
     if staged and staged != tmp and not tmp.exists() and inside_stash(staged):
         # Resume an interrupted download aimed at an older revision: hf keeps every file whose etag still matches.
@@ -943,9 +1021,9 @@ def run_mounted(trigger):
     catalog = build_catalog()
     push_catalog(catalog)
     push_profile(catalog)
-    activity(force=True, phase="Checking stashed items for updates")
+    activity(force=True, phase="Checking stashed items for updates", needs_license=sorted(needs_license()))
     report, spent = run_updates(catalog)
-    activity(force=True, phase="Scanning Hugging Face for new picks", current=None)
+    activity(force=True, phase="Scanning Hugging Face for new picks", current=None, check=None)
     scan = api(f"/api/scan?if_stale=1&min_hours={ENV['SCAN_MIN_HOURS']}&trigger={trigger}", "POST")
     if "skipped" in scan:
         log(f"scan skipped: {scan['skipped']}")
@@ -995,8 +1073,21 @@ def main():
         logrun = run_from_log(busy) if present else None
         if logrun and busy:
             logrun["queue"] = queue_after(logrun, float(ENV["RUN_CAP_GB"]) * 1e9)
+        bar_check = None
+        if present:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gates"))
+                import statusbar_probe
+                bar_check = statusbar_probe.probe(A=sys.modules[__name__])
+                st = load_state()
+                if bar_check["failed"] != st.get("bar_check_failed", []):
+                    log(f"status bar gate: {'PASS' if bar_check['ok'] else 'FAIL ' + ', '.join(bar_check['failed'])}")
+                    st["bar_check_failed"] = bar_check["failed"]; save_state(st)
+            except Exception as e:
+                bar_check = {"ok": None, "failed": [], "error": f"{type(e).__name__}: {e}"[:200]}
         resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
-                                             "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"])})
+                                             "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
+                                             "needs_license": sorted(needs_license()) if present else [], "bar_check": bar_check})
         rr = (resp or {}).get("run_request")
         if rr and rr.get("state") == "pending":
             # "Run now" from the dashboard: same run a plug-in starts, via the mount LaunchAgent, minus the 10-minute debounce.

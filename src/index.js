@@ -532,11 +532,14 @@ async function api(req, env, url) {
     // What the next plug-in will download: same order and cap rule as the agent (one over-cap item may go first).
     const approved = (await env.DB.prepare("SELECT repo, kind, size_bytes FROM picks WHERE status='approved' ORDER BY score DESC").all()).results;
     const cap = (presence?.cap_gb || 60) * 1e9;
-    const big = approved.find(x => (x.size_bytes || 0) > cap);
+    // Picks Hugging Face refused (license not accepted) are listed as such and never counted toward a run.
+    const blocked = new Set([...(presence?.needs_license || []), ...(activity?.needs_license || [])]);
+    const big = approved.find(x => (x.size_bytes || 0) > cap && !blocked.has(x.repo));
     const ordered = big ? [big, ...approved.filter(x => x !== big)] : approved;
     let spent = 0;
     const next = ordered.map(x => {
       const size = x.size_bytes || 0;
+      if (blocked.has(x.repo)) return { repo: x.repo, kind: x.kind, bytes: size, when: "needs license" };
       const fits = !(spent + size > cap && !(spent === 0 && size > cap));
       if (fits) spent += size;
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
