@@ -105,6 +105,12 @@ class Scorers(unittest.TestCase):
         lst = {"type": "exact", "answer": ["41", "version 41"]}
         self.assertTrue(B.score(lst, "Answer: Version 41")[0])
         self.assertTrue(B.score({"type": "exact", "answer": "GA4 - purchase (old)"}, "`GA4 - purchase (old)`")[0])
+        # a real run: models cite the file the way the notes do; it is the right answer
+        self.assertEqual(B.score({"type": "exact", "answer": "dedupe-purchase-tag.md"}, "[dedupe-purchase-tag.md]")[:2], (True, 1.0))
+        # a failed task never keeps a perfect score
+        for t, out in [({"type": "exact", "answer": "no"}, "yes"), ({"type": "exact", "answer": "59.98"}, "59.99")]:
+            ok, sc, _ = B.score(t, out)
+            self.assertFalse(ok); self.assertLess(sc, 1.0)
 
     def test_exact_gives_no_credit_for_hedging(self):
         t = {"type": "exact", "answer": "no"}

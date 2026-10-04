@@ -64,7 +64,7 @@ def strip_think(s):
 def norm(s):
     s = re.sub(r"\s+", " ", str(s)).strip().lower()
     s = re.sub(r"^(final answer|answer)\s*[:\-]\s*", "", s)
-    return s.strip(" \t\"'`*.,;:!")
+    return s.strip(" \t\"'`*.,;:![]()<>")      # "[dedupe-purchase-tag.md]" echoes how the notes cite files
 
 
 def words(s):
@@ -99,7 +99,8 @@ def score_exact(task, output):
         cands |= {norm(ln) for ln in lines if re.match(r"\s*(final answer|answer)\s*[:\-]", ln, re.I)}
     if targets <= {"yes", "no"} and words(out):
         cands.add(norm(words(out)[0]))       # "No, because the trigger…" answers "no" (never both: checked above)
-    if cands & targets:
+    # the same words as an accepted answer, whatever the punctuation around them, is that answer
+    if cands & targets or w == 0:
         return True, 1.0, None
     if task.get("max_wer") is not None and w <= task["max_wer"]:
         return True, round(1 - w, 4), None
