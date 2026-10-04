@@ -509,6 +509,22 @@ async function api(req, env, url) {
     await kvSet(env, "run_request", rr);
     return json({ ok: true, run_request: rr });
   }
+  // "Check access" from the dashboard: the Mac's heartbeat re-checks gated repos with its own Hugging Face login.
+  if (p === "/api/license-check" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const repos = Array.isArray(body.repos) ? body.repos.filter(r => typeof r === "string").slice(0, 20) : [];
+    const presence = await kvGet(env, "presence");
+    const lc = { state: "pending", at: now(), repos };
+    await kvSet(env, "license_check", lc);
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    return json({ ok: true, license_check: lc, mac_checking_in: !!fresh });
+  }
+  if (p === "/api/license-check/ack" && req.method === "POST") {
+    const { results, started } = await req.json();
+    const lc = await kvGet(env, "license_check");
+    await kvSet(env, "license_check", { ...(lc || {}), state: "done", results: results || {}, started: !!started, acked_at: now() });
+    return json({ ok: true });
+  }
   if (p === "/api/run-request/ack" && req.method === "POST") {
     const { state, note } = await req.json();
     const rr = await kvGet(env, "run_request");
@@ -523,17 +539,20 @@ async function api(req, env, url) {
         // hand a pending dashboard request to the heartbeat (ignored after 10 minutes)
         const rr = await kvGet(env, "run_request");
         const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
-        return json({ ok: true, run_request: live ? rr : null });
+        const lc = await kvGet(env, "license_check");
+        const lcLive = lc?.state === "pending" && Date.now() - Date.parse(lc.at) < 15 * 60e3;
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
     }
-    const [activity, presence, run_request] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence"), kvGet(env, "run_request")]);
+    const [activity, presence, run_request, license_check] = await Promise.all([kvGet(env, "activity"), kvGet(env, "presence"), kvGet(env, "run_request"), kvGet(env, "license_check")]);
     // What the next plug-in will download: same order and cap rule as the agent (one over-cap item may go first).
     const approved = (await env.DB.prepare("SELECT repo, kind, size_bytes FROM picks WHERE status='approved' ORDER BY score DESC").all()).results;
     const cap = (presence?.cap_gb || 60) * 1e9;
     // Picks Hugging Face refused (license not accepted) are listed as such and never counted toward a run.
-    const blocked = new Set([...(presence?.needs_license || []), ...(activity?.needs_license || [])]);
+    const granted = new Set(Object.entries(presence?.licenses || {}).filter(([, v]) => v?.access === "granted").map(([r]) => r));
+    const blocked = new Set([...(presence?.needs_license || []), ...(activity?.needs_license || [])].filter(r => !granted.has(r)));
     const big = approved.find(x => (x.size_bytes || 0) > cap && !blocked.has(x.repo));
     const ordered = big ? [big, ...approved.filter(x => x !== big)] : approved;
     let spent = 0;
@@ -544,7 +563,7 @@ async function api(req, env, url) {
       if (fits) spent += size;
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
     });
-    return json({ activity, presence, next, run_request, server_time: now() });
+    return json({ activity, presence, next, run_request, license_check, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
   }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {

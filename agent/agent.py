@@ -519,17 +519,99 @@ def hf_download(args, dest: Path, total: int):
     return subprocess.CompletedProcess(args, proc.returncode, out, err)
 
 
+HF_SITE = "https://huggingface.co"
+
+
+def hub_url(repo, kind="model"):
+    return f"{HF_SITE}/{'' if kind == 'model' else kind + 's/'}{repo}"
+
+
+def _hf_http(url, method="GET"):
+    req = urllib.request.Request(url, method=method, headers=hf_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, (r.read() if method == "GET" else b"")
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+    except Exception:
+        return 0, b""
+
+
+def hub_access(repo, kind="model", http=None):
+    """'granted', 'blocked' or 'unknown': can this Mac's Hugging Face account download the repo's files?
+    Gated repos show their file list and model card to anyone, so this asks for one real file (HEAD, no download)."""
+    http = http or _hf_http
+    st, body = http(f"{HF_SITE}/api/{kind}s/{repo}/tree/main", "GET")
+    if st in (401, 403):
+        return "blocked"
+    if st != 200:
+        return "unknown"
+    try:
+        files = [f["path"] for f in json.loads(body) if f.get("type") == "file"]
+    except Exception:
+        return "unknown"
+    probe = [f for f in files if f not in ("README.md", ".gitattributes")] or files
+    if not probe:
+        return "unknown"
+    st, _ = http(f"{hub_url(repo, kind)}/resolve/main/{urllib.parse.quote(probe[0])}", "HEAD")
+    return "granted" if st in (200, 302, 307) else "blocked" if st in (401, 403) else "unknown"
+
+
+def licenses():
+    return load_state().get("licenses", {})
+
+
+def record_license(repo, kind, gated, access):
+    """Remember the latest access check; returns the previous access value."""
+    s = load_state()
+    L = s.setdefault("licenses", {})
+    prev = (L.get(repo) or {}).get("access")
+    L[repo] = {"kind": kind, "gated": gated, "access": access, "url": hub_url(repo, kind),
+               "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    save_state(s)
+    return prev
+
+
+def hf_user():
+    """The Hugging Face account the Mac downloads with (cached for a day), so the dashboard can say which login to accept with."""
+    s = load_state()
+    u = s.get("hf_user") or {}
+    if time.time() - u.get("at", 0) < 86400 and u.get("name"):
+        return u["name"]
+    st, body = _hf_http(f"{HF_SITE}/api/whoami-v2")
+    try:
+        name = json.loads(body).get("name") if st == 200 else None
+    except Exception:
+        name = None
+    s = load_state(); s["hf_user"] = {"name": name, "at": time.time()}; save_state(s)
+    return name
+
+
+def check_licenses(repos, kinds=None):
+    """Re-check access for repos. kinds maps repo -> (kind, gated). Returns {repo: {access, was, kind, url}}."""
+    kinds = kinds or {}
+    L = licenses()
+    out = {}
+    for r in sorted(repos):
+        kind, gated = kinds.get(r) or ((L.get(r) or {}).get("kind", "model"), (L.get(r) or {}).get("gated", "manual"))
+        acc = hub_access(r, kind)
+        was = record_license(r, kind, gated, acc)
+        out[r] = {"access": acc, "was": was, "kind": kind, "url": hub_url(r, kind)}
+    return out
+
+
 LICENSE_RE = re.compile(r"Access denied|requires approval|gated repo|accept the (?:license|conditions)", re.I)
 
 
 def needs_license(lines=None):
     """Repos whose latest download attempt in the log was refused because the Hugging Face license isn't accepted.
     A later successful download of the same repo clears it."""
-    if lines is None:
+    live = lines is None
+    if live:
         try:
             lines = LOG.read_text(errors="ignore").splitlines()[-3000:]
         except OSError:
-            return set()
+            lines = []
     blocked, cur = set(), None
     for l in lines:
         m = re.search(r" (?:downloading|updating) \w+ (\S+) ", l)
@@ -539,6 +621,10 @@ def needs_license(lines=None):
             blocked.add(cur); cur = None
         elif cur and ("  stashed " in l or "  updated; previous" in l):
             blocked.discard(cur); cur = None
+    if live:
+        L = licenses()
+        blocked = {r for r in blocked if (L.get(r) or {}).get("access") != "granted"}
+        blocked |= {r for r, v in L.items() if v.get("access") == "blocked"}
     return blocked
 
 
@@ -661,6 +747,15 @@ def fetch_approved(spent=0):
             waiting.append((p["repo"], "no safe destination")); continue
         if "gated" in p.get("flags", []) and not hf_logged_in:
             waiting.append((p["repo"], "gated: run `hf auth login` once, then it downloads next mount")); continue
+        gated = str(p.get("gated") or "false").lower()
+        if gated not in ("false", "none", "") and p["kind"] in ("model", "dataset"):
+            acc = hub_access(p["repo"], p["kind"])
+            record_license(p["repo"], p["kind"], gated, acc)
+            if acc == "blocked":
+                waiting.append((p["repo"], f"needs license: accept the terms at {hub_url(p['repo'], p['kind'])}, then it downloads automatically"))
+                activity(force=True, needs_license=sorted(needs_license() | {p["repo"]}),
+                         queue=[{**q, "when": "needs license"} if q["repo"] == p["repo"] else q for q in ACT.get("queue", [])])
+                continue
         size = p.get("size_bytes") or hub_size(p) or 0
         # A single item bigger than the cap still downloads when it is the first download of a plug-in.
         if spent + size > cap and not (spent == 0 and size > cap):
@@ -1058,6 +1153,47 @@ def run_mounted(trigger):
     s = load_state(); s["last_mount_run"] = time.time(); save_state(s)
 
 
+def license_heartbeat(resp, present, busy):
+    """Re-check gated repos when the dashboard asks (Check access) or every 15 minutes while any is blocked.
+    When access comes through, approve the pick (accepting the license is the intent) and start a run if the A1 is idle."""
+    lc = (resp or {}).get("license_check")
+    asked = bool(lc and lc.get("state") == "pending")
+    blocked = needs_license()
+    st = load_state()
+    if not asked and not (blocked and time.time() - st.get("license_checked_at", 0) > 900):
+        return
+    try:
+        picks = {p["repo"]: p for p in api("/api/picks")}
+    except Exception:
+        picks = {}
+    repos = blocked | set((lc or {}).get("repos") or [])
+    kinds = {r: (picks[r]["kind"], str(picks[r].get("gated"))) for r in repos if r in picks}
+    res = check_licenses(repos, kinds)
+    st = load_state(); st["license_checked_at"] = time.time(); save_state(st)
+    newly = [r for r, v in res.items() if v["access"] == "granted" and v["was"] != "granted"]
+    started = False
+    for r in newly:
+        pk = picks.get(r)
+        if pk and pk.get("status") == "new":
+            try:
+                api("/api/picks/status", "POST", {"id": pk["id"], "status": "approved"})
+            except Exception:
+                pass
+    if newly:
+        log(f"license granted: {', '.join(newly)}")
+        if present and not busy:
+            s2 = load_state(); s2.pop("last_mount_run", None); s2["next_trigger"] = "license"; save_state(s2)
+            r = sh(["launchctl", "kickstart", f"gui/{os.getuid()}/com.organizedai.a1-scout.mount"], timeout=30)
+            started = r.returncode == 0
+        notify("A1 Scout", f"Access granted: {', '.join(x.split('/')[-1] for x in newly)} · "
+               + ("downloading now" if started else "downloads on the next plug-in"))
+    if asked:
+        try:
+            api("/api/license-check/ack", "POST", {"results": res, "started": started})
+        except Exception:
+            pass
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "now"
     STATE_DIR.mkdir(exist_ok=True)
@@ -1087,7 +1223,8 @@ def main():
                 bar_check = {"ok": None, "failed": [], "error": f"{type(e).__name__}: {e}"[:200]}
         resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "busy": busy, "logrun": logrun,
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
-                                             "needs_license": sorted(needs_license()) if present else [], "bar_check": bar_check})
+                                             "needs_license": sorted(needs_license()), "bar_check": bar_check,
+                                             "licenses": licenses(), "hf_user": hf_user()})
         rr = (resp or {}).get("run_request")
         if rr and rr.get("state") == "pending":
             # "Run now" from the dashboard: same run a plug-in starts, via the mount LaunchAgent, minus the 10-minute debounce.
@@ -1101,6 +1238,7 @@ def main():
                 log(f"run requested from the dashboard: kickstart {'ok' if r.returncode == 0 else 'failed ' + (r.stderr or '')[-160:]}")
                 api("/api/run-request/ack", "POST", {"state": "started" if r.returncode == 0 else "failed",
                                                      "note": None if r.returncode == 0 else (r.stderr or "")[-200:]})
+        license_heartbeat(resp, present, busy)
         return
     lock = open(LOCK, "w")
     try:
