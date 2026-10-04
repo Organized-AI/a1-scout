@@ -83,11 +83,11 @@ def load_kev_mlx(path):
     """Merged + quantized Kev (e.g. RoderickQiu/kev-4b-mlx-8bit): the weights load with Kev's own MLX model class, the
     pointer head and temperature come from the head.pt shipped beside them, the tokenizer from the same folder."""
     C, M = _kev_imports()
-    from kev.mlx_model import MLXDecisionModel
+    from kev.mlx_model import MLXDecisionModel, load_base
     from kev.model import PointerHead
     meta = C.read_meta(path)
     tok = M.load_tokenizer(path) if (Path(path) / "tokenizer.json").exists() else M.load_tokenizer(meta.base, meta.base_revision)
-    model = MLXDecisionModel(path, M.pad_id(tok), head_dim=meta.head_dim)
+    model = MLXDecisionModel(load_base(path), M.pad_id(tok), head_dim=meta.head_dim)   # mlx-lm reads the quantization from config.json
     model.head = PointerHead(model.text.embed_tokens.dims, dp=meta.head_dim).eval()
     model.head.load_state_dict(meta.head)
     model.head.temperature = meta.temperature
