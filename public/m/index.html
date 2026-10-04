@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A1 · Organized AI</title>
+<meta name="description" content="The A1 drive from your phone: live run progress, Run now, eject and mount.">
+<link rel="manifest" href="/m/manifest.webmanifest" crossorigin="use-credentials">
+<meta name="theme-color" content="#0b0b0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="A1">
+<link rel="apple-touch-icon" href="/brand/app-180.png">
+<link rel="icon" type="image/png" href="/brand/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0b0a;--panel:#141412;--line:#2a2822;--ink:#f4f2ea;--mute:#9b978a;--brand:#fbe04d;--on-brand:#0b0b0a;--accent:#fbe04d;--warn:#ff9f5a;--bad:#f27c7c;--ok:#7cf2a0;--chip:#1c1b17;
+  --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#faf9f4;--panel:#fff;--line:#e4e1d6;--ink:#111110;--mute:#5f5b50;--brand:#f5d528;--accent:#8a6c00;--chip:#f1efe6;--ok:#1d8a4a}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+body{min-height:100dvh;padding:calc(var(--safe-t) + 10px) 16px calc(var(--safe-b) + 24px);overscroll-behavior-y:contain}
+.mono{font-family:"IBM Plex Mono",monospace}
+header{display:flex;align-items:center;gap:10px;margin:4px 0 14px}
+header img{width:34px;height:34px;border-radius:9px}
+header h1{font:600 18px "IBM Plex Mono",monospace;margin:0;flex:1}
+header small{display:block;font:500 11px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.04em}
+.iconbtn{all:unset;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--chip);border:1px solid var(--line);font-size:18px;cursor:pointer}
+.iconbtn:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.hero{position:relative;overflow:hidden;border-top:3px solid var(--brand)}
+.state{display:flex;align-items:center;gap:8px;font:600 13px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.06em}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute);position:relative;flex:none}
+.dot i{position:absolute;inset:0;border-radius:50%;background:inherit;opacity:0}
+[data-k="busy"] .dot,[data-k="ok"] .dot{background:var(--brand)} [data-k="ejected"] .dot,[data-k="warn"] .dot{background:var(--warn)}
+.sub{color:var(--mute);font-size:14px;margin:4px 0 0}
+.ringrow{display:grid;grid-template-columns:132px 1fr;gap:16px;align-items:center;margin-top:14px}
+.ring{position:relative;width:132px;height:132px}
+.ring svg{transform:rotate(-90deg)} .ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:var(--chip)} .ring .fg{stroke:var(--brand);stroke-linecap:round;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--brand) 45%,transparent))}
+.ring .t{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring b{font:600 30px/1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.ring span{font:500 10px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;margin-top:4px}
+.kv{display:grid;gap:8px}
+.kv div{display:flex;flex-direction:column}
+.kv dt{font:500 10.5px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.08em}
+.kv dd{margin:0;font:500 15px "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.bar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:var(--brand);border-radius:5px}
+.item{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.item .row{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.item b{font-family:"IBM Plex Mono",monospace;overflow-wrap:anywhere}
+.item small{color:var(--mute);font:12px "IBM Plex Mono",monospace;white-space:nowrap}
+h2{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);margin:0 0 10px}
+.list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.list li{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.list li span:first-child{overflow-wrap:anywhere}
+.list li span:last-child{color:var(--mute);font:12.5px "IBM Plex Mono",monospace;white-space:nowrap}
+.list li.ok span:first-child::before{content:"✓ ";color:var(--ok)}
+.actions{display:grid;gap:10px;margin:2px 0 12px}
+.btn{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:10px;min-height:56px;border-radius:16px;font:600 16px "IBM Plex Mono",monospace;cursor:pointer;text-align:center;padding:0 16px;user-select:none}
+.btn.primary{background:var(--brand);color:var(--on-brand)}
+.btn.ghost{background:var(--chip);color:var(--ink);border:1px solid var(--line)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn small{font:500 12px "IBM Plex Mono",monospace;opacity:.75}
+.note{font-size:13px;color:var(--mute);margin:-2px 4px 4px;text-align:center}
+.note.err{color:var(--bad)}
+.spin{width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;display:inline-block}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.tile{all:unset;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:2px;cursor:pointer}
+.tile b{font:600 24px "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.tile span{font-size:12.5px;color:var(--mute)}
+.tile.warn b{color:var(--warn)}
+.bench li span:first-child{display:flex;flex-direction:column}
+.bench li small{color:var(--mute);font:11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.06em}
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:18px;font:12px "IBM Plex Mono",monospace;color:var(--mute)}
+.foot a{color:var(--accent)}
+.install{display:none}
+.install.show{display:block}
+.install p{margin:0;font-size:14px}
+.stale{color:var(--warn)}
+.empty{color:var(--mute);font-size:14px}
+@media (min-width:600px){body{max-width:520px;margin:0 auto}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <img src="/brand/app-192.png" alt="" width="34" height="34">
+  <h1>A1 <small id="updated">connecting…</small></h1>
+  <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
+</header>
+<main id="app" aria-live="polite"></main>
+<section class="card install" id="install"><h2>Put it on your home screen</h2><p id="installtext"></p></section>
+<div class="foot"><span>Organized AI · A1 Scout</span><a href="/">Full dashboard →</a></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+// A1 on your phone: the same /api the desktop dashboard uses, reduced to what you check from a pocket.
+const $ = s => document.querySelector(s);
+const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const gb = b => b == null ? "?" : b >= 1e12 ? (b / 1e12).toFixed(2) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(0) + " MB" : (b / 1e3).toFixed(0) + " KB";
+const short = r => String(r || "").split("/").pop();
+const ago = iso => { const s = Math.round((Date.now() - Date.parse(iso)) / 1000); return s < 45 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(iso).toLocaleDateString(); };
+const clock = iso => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const dur = s => s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+const rate = r => r == null ? "—" : r >= 1e9 ? `${(r / 1e9).toFixed(2)} GB/s` : `${(r / 1e6).toFixed(0)} MB/s`;
+let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
+let A = null, state = null, bench = null, timer = null, prev = {}, ringTween = null, loops = [];
+
+async function call(p, opts = {}) {
+  const r = await fetch(p, { ...opts, credentials: "same-origin", headers: { ...(token ? { authorization: "Bearer " + token } : {}), "content-type": "application/json" } });
+  if (r.status === 401) throw Object.assign(new Error("Sign in on the full dashboard first, then come back."), { auth: true });
+  return r.json();
+}
+
+function stateOf() {
+  const p = A?.presence || {}, a = A?.activity || {};
+  const fresh = p.at && Date.now() - Date.parse(p.at) < 4 * 60e3;
+  const plugged = !!(fresh && p.present);
+  const live = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 90e3;
+  const running = live || !!(plugged && p.busy);
+  if (running && plugged) return { k: "busy", label: "Run in progress", sub: "Keep the A1 plugged in" };
+  if (running) return { k: "warn", label: "Unplugged mid-run", sub: "Unfinished items resume on the next plug-in" };
+  if (plugged) return { k: "ok", label: "Plugged in · idle", sub: "Safe to eject" };
+  if (fresh && p.attached) return { k: "ejected", label: "Ejected", sub: "Still connected · safe to unplug, or mount it again" };
+  if (fresh) return { k: "off", label: "Unplugged", sub: "The Mac is online; the A1 isn't connected" };
+  return { k: "off", label: "Mac offline", sub: p.at ? `Last heard from ${ago(p.at)}. Asleep, or off the network.` : "No heartbeat from the Mac yet" };
+}
+
+// One run model from the live agent posts or the heartbeat's reading of the log (same rules as the desktop bar).
+function runOf() {
+  const a = A?.activity || {}, p = A?.presence || {};
+  const live = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 90e3;
+  const src = live ? { asOf: a.updated_at, phase: a.phase, dl: a.dl_started_at || a.current?.started_at, done: a.done || [], cur: a.current, queue: a.queue || [] }
+    : p.logrun && !p.logrun.finished ? { asOf: p.at, phase: p.logrun.phase, dl: p.logrun.dl_started_at, done: p.logrun.done || [], cur: p.logrun.current, queue: p.logrun.queue || [] } : null;
+  if (!src) return null;
+  const now = src.queue.filter(q => q.when === "now");
+  const doneB = src.done.reduce((t, d) => t + (d.bytes || 0), 0);
+  const curT = src.cur?.total_bytes || 0, curD = Math.min(src.cur?.done_bytes || 0, curT);
+  const total = doneB + curT + now.reduce((t, q) => t + (q.bytes || 0), 0), got = doneB + curD;
+  const secs = src.dl ? (Date.parse(src.asOf) - Date.parse(src.dl)) / 1000 : 0;
+  const avg = secs > 20 && got > 0 ? got / secs : null;
+  return { ...src, now, total, got, avg, left: avg ? (total - got) / avg : null, pct: total ? Math.min(100, got / total * 100) : 0,
+    cPct: curT ? curD / curT * 100 : 0, curT, curD, items: src.done.length + (src.cur ? 1 : 0) + now.length };
+}
+
+function render(first) {
+  loops.forEach(t => t.kill()); loops = [];
+  const st = stateOf(), run = (st.k === "busy" || st.k === "warn") ? runOf() : null, p = A?.presence || {}, a = A?.activity || {};
+  const next = (A?.next || []).filter(q => q.when === "next plug-in");
+  const rr = A?.run_request, dr = A?.drive_request;
+  const rrPending = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
+  const drPending = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
+  const C = 2 * Math.PI * 56;
+  let hero = `<section class="card hero" data-k="${st.k}">
+    <div class="state"><span class="dot"><i></i></span>${esc(st.label)}</div><p class="sub">${esc(st.sub)}${run?.phase ? ` · ${esc(run.phase)}` : ""}</p>`;
+  if (run) {
+    hero += `<div class="ringrow">
+      <div class="ring" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(run.pct)}">
+        <svg viewBox="0 0 132 132" width="132" height="132"><circle class="bg" cx="66" cy="66" r="56"/><circle class="fg" id="ringfg" cx="66" cy="66" r="56" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - (prev.pct ?? 0) / 100)}"/></svg>
+        <div class="t"><b id="pct">${Math.round(prev.pct ?? 0)}%</b><span>${run.got ? "of run" : "preparing"}</span></div></div>
+      <dl class="kv">
+        <div><dt>Downloaded</dt><dd>${run.total ? `${gb(run.got)} / ${gb(run.total)}` : "—"}</dd></div>
+        <div><dt>Avg speed</dt><dd>${rate(run.avg)}</dd></div>
+        <div><dt>Time left</dt><dd>${run.left != null ? "~" + dur(run.left) : "estimating"}</dd></div>
+        <div><dt>Items</dt><dd>${run.items ? `${run.done.length} of ${run.items}` : "—"}</dd></div>
+      </dl></div>
+      ${run.cur ? `<div class="item"><div class="row"><b>${esc(short(run.cur.repo))}</b><small>${run.cPct.toFixed(0)}% · ${gb(run.curD)} / ${gb(run.curT)}</small></div><div class="bar"><i id="curbar" style="width:${prev.cPct ?? 0}%"></i></div></div>` : ""}`;
+  } else if (a.finished_at) {
+    hero += `<p class="sub" style="margin-top:12px;color:var(--ink)">Last run finished ${esc(clock(a.finished_at))}${a.summary ? `: ${esc(a.summary)}` : ""}</p>`;
+  }
+  if (p.free_bytes != null && (st.k === "ok" || st.k === "busy")) hero += `<p class="sub" style="margin-top:10px">${gb(p.free_bytes)} free on the A1</p>`;
+  hero += `</section>`;
+
+  // actions: only what the current state allows
+  let acts = "";
+  if (st.k === "ok" || rrPending) acts += `<button class="btn primary" data-act="run"${rrPending ? " disabled" : ""}>${rrPending ? `<span class="spin"></span> Requested` : `▶ Run now`}${next.length && !rrPending ? `<small>${next.length} waiting · ${gb(next.reduce((t, q) => t + (q.bytes || 0), 0))}</small>` : ""}</button>`;
+  if (st.k === "ok" || (drPending && dr.action === "eject")) acts += `<button class="btn ghost" data-act="eject"${drPending ? " disabled" : ""}>${drPending ? `<span class="spin"></span> Ejecting` : "⏏ Eject A1"}</button>`;
+  if (st.k === "ejected" || (drPending && dr.action === "mount")) acts += `<button class="btn primary" data-act="mount"${drPending ? " disabled" : ""}>${drPending ? `<span class="spin"></span> Mounting` : "⤒ Mount A1"}</button>`;
+  const note = rrPending || drPending ? "Sent. The Mac picks it up within a minute." : bounceNote(rr, dr);
+  acts = acts ? `<div class="actions">${acts}</div><p class="note${note && !rrPending && !drPending ? " err" : ""}" id="actnote">${esc(note || "")}</p>` : "";
+
+  // lists
+  let lists = "";
+  if (run && (run.done.length || run.now.length)) {
+    lists += `<section class="card"><h2>This run</h2><ul class="list">${run.done.slice(-4).map(d => `<li class="ok"><span>${esc(short(d.repo))}</span><span>${gb(d.bytes)}</span></li>`).join("")}${run.now.slice(0, 4).map(q => `<li><span>${esc(short(q.repo))}</span><span>${gb(q.bytes)}</span></li>`).join("")}</ul></section>`;
+  } else if (next.length) {
+    lists += `<section class="card"><h2>Next run · ${next.length}</h2><ul class="list">${next.slice(0, 5).map(q => `<li><span>${esc(short(q.repo))}</span><span>${gb(q.bytes)}</span></li>`).join("")}</ul></section>`;
+  }
+  const lic = Object.values(A?.licenses || {}).filter(v => v?.access === "blocked").length + (A?.next || []).filter(q => q.when === "needs license").length;
+  const newPicks = state?.counts?.new || 0;
+  const tiles = `<div class="tiles">
+    <a class="tile" href="/"><b>${newPicks}</b><span>new picks to review</span></a>
+    <a class="tile${lic ? " warn" : ""}" href="/"><b>${lic}</b><span>${lic === 1 ? "repo needs" : "repos need"} a license</span></a></div>`;
+  let benchCard = "";
+  if (bench?.rows?.length) {
+    const best = {};
+    for (const r of bench.rows) if (!r.error && (!best[r.suite] || r.score > best[r.suite].score || (r.score === best[r.suite].score && (r.tok_s || 0) > (best[r.suite].tok_s || 0)))) best[r.suite] = r;
+    benchCard = `<section class="card bench"><h2>Bench · best on each suite</h2><ul class="list">${Object.entries(best).map(([s, r]) => `<li><span><small>${esc(s)}</small>${esc(short(r.model))}</span><span>${Math.round(r.score * 100)}${r.tok_s ? ` · ${Math.round(r.tok_s)} tok/s` : ""}</span></li>`).join("")}</ul></section>`;
+  }
+  $("#app").innerHTML = hero + acts + tiles + lists + benchCard;
+  wire();
+  animate(st, run, first);
+  prev.k = st.k;
+}
+function bounceNote(rr, dr) {
+  const recent = x => x && Date.now() - Date.parse(x.acked_at || x.at) < 10 * 60e3;
+  if (recent(dr) && ["busy", "absent", "failed"].includes(dr.state)) return dr.state === "busy" ? "A run is going; eject when it's idle." : dr.state === "absent" ? (dr.action === "mount" ? "The A1 isn't connected to the Mac." : "The A1 wasn't mounted.") : `Couldn't ${dr.action}${dr.note ? ": " + dr.note : ""}`;
+  if (recent(rr) && ["busy", "absent", "failed"].includes(rr.state)) return rr.state === "busy" ? "A run was already going." : rr.state === "absent" ? "The Mac couldn't see the A1." : `Couldn't start the run${rr.note ? ": " + rr.note : ""}`;
+  return "";
+}
+
+function animate(st, run, first) {
+  if (RM()) { if (run) { const f = $("#ringfg"); f && f.setAttribute("stroke-dashoffset", 2 * Math.PI * 56 * (1 - run.pct / 100)); $("#pct") && ($("#pct").textContent = Math.round(run.pct) + "%"); $("#curbar") && ($("#curbar").style.width = run.cPct + "%"); } prev.pct = run?.pct; prev.cPct = run?.cPct; return; }
+  if (first) gsap.from("#app > *", { y: 14, opacity: 0, duration: .45, stagger: .06, ease: "power2.out", clearProps: "transform,opacity" });
+  if (prev.k && prev.k !== st.k) gsap.fromTo(".hero", { scale: .97 }, { scale: 1, duration: .5, ease: "back.out(2)", clearProps: "transform" });
+  if (st.k === "busy") loops.push(gsap.fromTo(".dot i", { scale: 1, opacity: .7 }, { scale: 3, opacity: 0, duration: 1.6, repeat: -1, ease: "power2.out" }));
+  if (run) {
+    const C = 2 * Math.PI * 56, o = { v: prev.pct ?? 0, c: prev.cPct ?? 0 };
+    gsap.to(o, { v: run.pct, c: run.cPct, duration: first ? 1.2 : .8, ease: first ? "expo.out" : "power2.out", onUpdate: () => {
+      const f = $("#ringfg"); if (f) f.setAttribute("stroke-dashoffset", C * (1 - o.v / 100));
+      const t = $("#pct"); if (t) t.textContent = Math.round(o.v) + "%";
+      const b = $("#curbar"); if (b) b.style.width = o.c + "%";
+    } });
+    prev.pct = run.pct; prev.cPct = run.cPct;
+  }
+}
+
+function wire() {
+  document.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
+    if (b.disabled) return;
+    b.disabled = true; navigator.vibrate?.(12);
+    if (!RM()) gsap.fromTo(b, { scale: .96 }, { scale: 1, duration: .3, ease: "back.out(3)" });
+    const act = b.dataset.act;
+    try {
+      const r = act === "run" ? await call("/api/run-request", { method: "POST", body: "{}" })
+        : await call("/api/drive-request", { method: "POST", body: JSON.stringify({ action: act }) });
+      if (!r.ok) throw new Error(r.error || "Couldn't send it.");
+      if (act === "run") A.run_request = r.run_request; else A.drive_request = r.drive_request;
+      render(false); schedule(8000);
+    } catch (e) { b.disabled = false; const n = $("#actnote"); if (n) { n.textContent = e.message; n.classList.add("err"); } }
+  });
+}
+
+async function refresh(first) {
+  try {
+    const [a, s] = await Promise.all([call("/api/activity"), state && !first ? Promise.resolve(state) : call("/api/state")]);
+    A = a; state = s;
+    if (first || !bench) call("/api/bench/leaderboard").then(b => { bench = b; render(false); }).catch(() => {});
+    render(first);
+    $("#updated").textContent = "updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    $("#updated").classList.remove("stale");
+  } catch (e) {
+    $("#updated").textContent = e.auth ? "not signed in" : "offline · retrying"; $("#updated").classList.add("stale");
+    if (e.auth && !A) $("#app").innerHTML = `<section class="card"><h2>Sign in</h2><p class="empty">${esc(e.message)}</p><div class="actions"><a class="btn primary" href="/">Open the dashboard</a></div></section>`;
+  }
+  const busy = A?.presence?.busy || A?.activity?.state === "running" || A?.run_request?.state === "pending" || A?.drive_request?.state === "pending";
+  schedule(busy ? 8000 : 30000);
+}
+function schedule(ms) { clearTimeout(timer); if (!document.hidden) timer = setTimeout(() => refresh(false), ms); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(false); });
+$("#refresh").onclick = () => { if (!RM()) gsap.fromTo("#refresh", { rotation: 0 }, { rotation: 360, duration: .6, ease: "power2.out" }); state = null; refresh(false); };
+
+// install hint, once, only in the browser (not when already opened from the home screen)
+(function installHint() {
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  let seen = false; try { seen = localStorage.getItem("a1-install-seen") === "1"; } catch {}
+  if (standalone || seen) return;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  $("#installtext").innerHTML = ios ? "Tap <b>Share</b>, then <b>Add to Home Screen</b>. It opens full screen like an app." : "Open your browser menu and choose <b>Install app</b> or <b>Add to Home screen</b>.";
+  $("#install").classList.add("show");
+  try { localStorage.setItem("a1-install-seen", "1"); } catch {}
+})();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/m/sw.js", { scope: "/m/" }).catch(() => {});
+refresh(true);
+</script>
+</body>
+</html>
