@@ -5,8 +5,15 @@
 set -eu
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 STATE="$HOME/.nvme-stash"
-PY="$(ls /opt/homebrew/bin/python3 /usr/local/bin/python3 2>/dev/null | head -1 || true)"
-[ -n "$PY" ] || PY=/usr/bin/python3
+# The LaunchAgents run on Apple's own Python when it's installed (Command Line Tools). macOS grants "read removable
+# volumes" per Python binary, and a Homebrew upgrade swaps that binary and brings the prompt back; Apple's keeps its grant.
+# Without the Command Line Tools /usr/bin/python3 is only an installer stub, so check before using it.
+PY=""
+if xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 -c "import sys; sys.exit(sys.version_info < (3, 9))" 2>/dev/null; then
+  PY=/usr/bin/python3
+fi
+[ -n "$PY" ] || PY="$(ls /opt/homebrew/bin/python3 /usr/local/bin/python3 2>/dev/null | head -1 || true)"
+[ -n "$PY" ] || { echo "no Python 3.9+ found: install the Command Line Tools (xcode-select --install)"; exit 1; }
 [ -f "$STATE/scout.env" ] || { echo "missing $STATE/scout.env (SCOUT_URL, SCOUT_TOKEN, A1_UUID)"; exit 1; }
 mkdir -p "$STATE/venvs" "$STATE/tmp" "$HOME/Library/LaunchAgents"
 # The hf CLI gets its own venv. Some Homebrew Pythons can't build one (pyexpat linked to an older system libexpat breaks

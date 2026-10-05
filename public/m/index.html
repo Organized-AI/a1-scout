@@ -135,7 +135,7 @@ function stateOf() {
 function runOf() {
   const a = A?.activity || {}, p = A?.presence || {};
   const live = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 90e3;
-  const src = live ? { asOf: a.updated_at, phase: a.phase, dl: a.dl_started_at || a.current?.started_at, done: a.done || [], cur: a.current, queue: a.queue || [] }
+  const src = live ? { asOf: a.updated_at, phase: a.phase, blocked: a.blocked || null, dl: a.dl_started_at || a.current?.started_at, done: a.done || [], cur: a.current, queue: a.queue || [] }
     : p.logrun && !p.logrun.finished ? { asOf: p.at, phase: p.logrun.phase, dl: p.logrun.dl_started_at, done: p.logrun.done || [], cur: p.logrun.current, queue: p.logrun.queue || [] } : null;
   if (!src) return null;
   const now = src.queue.filter(q => q.when === "now");
@@ -157,7 +157,7 @@ function render(first) {
   const drPending = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
   const C = 2 * Math.PI * 56;
   let hero = `<section class="card hero" data-k="${st.k}">
-    <div class="state"><span class="dot"><i></i></span>${esc(st.label)}</div><p class="sub">${esc(st.sub)}${run?.phase ? ` · ${esc(run.phase)}` : ""}</p>`;
+    <div class="state"><span class="dot"><i></i></span>${esc(st.label)}</div><p class="sub">${esc(st.sub)}${run?.phase ? ` · ${esc(run.phase)}` : ""}</p>${run?.blocked ? `<p class="sub stale" role="alert">${esc(run.blocked.hint || "")}</p>` : ""}`;
   if (run) {
     hero += `<div class="ringrow">
       <div class="ring" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(run.pct)}">

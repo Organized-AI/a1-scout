@@ -102,6 +102,7 @@ button.chip:hover{border-color:var(--accent)}
   .a1-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .a1-head b { font: 600 13px "IBM Plex Mono", monospace; }
   .a1-sub { color: var(--mute); }
+  .a1-block { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid #f2c46c; border-radius: 10px; background: color-mix(in srgb, #f2c46c 12%, transparent); } .a1-block small { color: var(--mute); }
   .a1-macs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .a1-mac { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--line, #3334); border-radius: 999px; font: 500 11px "IBM Plex Mono", monospace; color: var(--mute); }
   .a1-mac i { width: 7px; height: 7px; border-radius: 50%; background: #8888; }
@@ -323,7 +324,7 @@ function runModel() {
     const c = a.current;
     return { src: "live", asOf: a.updated_at, phase: a.phase, startedAt: a.started_at, dlStartedAt: a.dl_started_at || c?.started_at,
       done: a.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, rate: c.rate, startedAt: c.started_at } : null,
-      queue: a.queue || [], check: a.check || null };
+      queue: a.queue || [], check: a.check || null, blocked: a.blocked || null };
   }
   const r = p.logrun;
   if (!r || r.finished) return null;
@@ -428,6 +429,7 @@ function paintBar(animate) {
           <span class="a1-nums" data-k="cnum"></span></div>
           <div class="a1-track"><i data-k="cbar" style="width:0%"><b class="a1-sheen"></b></i></div></div>`
         : run.check && run.check.total ? `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span><span class="a1-nums">${run.check.done} of ${run.check.total} checked</span></div><div class="a1-track"><i style="width:${Math.round(run.check.done / run.check.total * 100)}%"></i></div></div>`
+        : run.blocked ? `<div class="a1-item a1-block" role="alert"><b>${esc(run.phase || "Waiting")}</b><span>${esc(run.blocked.hint || "")}</span>${run.blocked.since ? `<small>waiting since ${clock(run.blocked.since)}</small>` : ""}</div>`
         : `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span></div><div class="a1-track indet"><i></i></div></div>`}
       <div class="a1-lists">
         ${run.done.length ? `<div><span class="a1-lbl">Done</span>${run.done.slice(-6).map(d => `<span class="a1-chip ok${fresh_.includes(d.repo) ? " new" : ""}" title="${esc(d.repo)}"><em>✓</em> ${esc(short(d.repo))} <small>${d.bytes ? gb(d.bytes) : ""}</small></span>`).join("")}${run.done.length > 6 ? `<span class="a1-more">+${run.done.length - 6}</span>` : ""}</div>` : ""}

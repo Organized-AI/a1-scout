@@ -65,3 +65,39 @@ class Drive(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaitForDrive(unittest.TestCase):
+    """A read that macOS holds behind a permission prompt shows up on the dashboard as a hint, then clears."""
+    def setUp(self):
+        import threading
+        self.release, self.posts = threading.Event(), []
+        self._listdir, self._act, self._notify, self._log = A.os.listdir, A.activity, A.notify, A.log
+        A.activity = lambda force=False, **kw: self.posts.append(kw)
+        A.notify = lambda *a: None
+        A.log = lambda *a, **k: None
+
+    def tearDown(self):
+        self.release.set()
+        A.os.listdir, A.activity, A.notify, A.log = self._listdir, self._act, self._notify, self._log
+
+    def test_quick_read_posts_nothing(self):
+        A.os.listdir = lambda p: []
+        A.wait_for_drive(timeout=1, poll=0.01)
+        self.assertEqual(self.posts, [])
+
+    def test_blocked_read_posts_hint_then_clears(self):
+        real = self._listdir
+
+        def slow(p):
+            self.release.wait(5)
+            return []
+        A.os.listdir = slow
+        import threading
+        threading.Timer(0.2, self.release.set).start()
+        A.wait_for_drive(timeout=0.05, poll=0.02)
+        A.os.listdir = real
+        first = self.posts[0]
+        self.assertIn("blocked", first)
+        self.assertTrue(first["blocked"]["hint"])
+        self.assertEqual(self.posts[-1].get("blocked", "x"), None)

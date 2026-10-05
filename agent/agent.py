@@ -1490,11 +1490,43 @@ def run_updates(catalog, dry=False):
     return report, spent
 
 
+def wait_for_drive(timeout=20, poll=30):
+    """Read the stash once in a side thread before the run touches it. The first time a background job's Python reads a
+    removable drive, macOS shows an "allow access" prompt on that Mac's screen and the read blocks until someone answers;
+    without this the dashboard sits on "Reading the drive" with no hint why. Returns once the read goes through."""
+    done = threading.Event()
+
+    def probe():
+        try:
+            os.listdir(STASH)
+        except Exception:
+            pass
+        done.set()
+    threading.Thread(target=probe, daemon=True).start()
+    if done.wait(timeout):
+        return
+    who = machine()[1].split(" · ")[0]
+    if LINUX:
+        reason, hint = "io", f"Reading the A1 on {who} isn't responding. Check that the drive is mounted and readable."
+    else:
+        reason, hint = "permission", (f"macOS is asking for permission to read the A1. On {who}'s screen, click Allow "
+                                      f"(or turn on Removable Volumes for Python in System Settings > Privacy & Security > Files & Folders).")
+    log(f"waiting on the drive: {hint}")
+    notify("A1 Scout is waiting", hint)
+    activity(force=True, phase="Waiting for permission to read the A1" if reason == "permission" else "Waiting for the drive",
+             blocked={"reason": reason, "hint": hint, "since": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    while not done.wait(poll):
+        activity(force=True)  # keep the post fresh so the dashboard keeps showing the hint
+    log("drive readable; continuing")
+    activity(force=True, phase="Reading the drive", blocked=None)
+
+
 def run_mounted(trigger):
     log(f"A1 present ({trigger}); stash at {STASH}")
     ACT.clear()
     activity(force=True, state="running", trigger=trigger, started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-             phase="Reading the drive", current=None, queue=[], done=[], waiting=[], summary=None)
+             phase="Reading the drive", current=None, queue=[], done=[], waiting=[], summary=None, blocked=None)
+    wait_for_drive()
     catalog = build_catalog()
     push_catalog(catalog)
     push_profile(catalog)
