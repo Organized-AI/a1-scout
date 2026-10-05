@@ -1624,7 +1624,8 @@ def main():
         ts_name, peers = st_t.get("ts_name", ""), None
         if time.time() - st_t.get("tailnet_at", 0) > 600:
             ts_name, peers = tailnet()
-            st_t.update(ts_name=ts_name, tailnet_at=time.time()); save_state(st_t)
+            if ts_name:                                   # an unreadable Tailscale is retried next minute, not in 10
+                st_t.update(ts_name=ts_name, tailnet_at=time.time()); save_state(st_t)
         resp = api("/api/activity", "POST", {"kind": "presence", "host": host_id(), "ts_name": ts_name, **({"tailnet": peers} if peers else {}), "machine": machine()[0], "machine_label": machine()[1],
                                              "present": present, "attached": attached, "busy": busy, "logrun": logrun,
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
