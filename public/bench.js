@@ -117,18 +117,21 @@
       <p class="bn-note">Names stay hidden until you vote. Each battle takes one vote; Elo starts at 1000 and moves up to 32 points.</p>`;
   }
 
-  function html() {
+  // Embedded in the Bench tab's job view: the job picks the suite, so the hero and suite chips are hidden.
+  function setSuite(id) { if (SUITES[id] && id !== suite) { suite = id; store.set("a1-bench-suite", suite); battle = null; reveal = null; bErr = null; } }
+  function html(opts = {}) {
+    if (opts.suite) setSuite(opts.suite);
     const counts = Object.fromEntries((data?.suites || []).map(s => [s.id, s.models]));
     const machines = data?.machines || [];
-    return `<div class="bn">
-      <header class="bn-hero"><span class="bn-kick">Bench · measured on your Macs</span>
+    return `<div class="bn${opts.embedded ? " bn-embed" : ""}">
+      ${opts.embedded ? "" : `<header class="bn-hero"><span class="bn-kick">Bench · measured on your Macs</span>
         <h2>Which model actually does the job?</h2>
-        <p>Every number here came from a real run off the A1: one model loaded at a time, the same synthetic tasks, scored by code. The Lab uses these numbers in place of its estimates once a model has been benchmarked.</p></header>
+        <p>Every number here came from a real run off the A1: one model loaded at a time, the same synthetic tasks, scored by code. The Lab uses these numbers in place of its estimates once a model has been benchmarked.</p></header>`}
       <div class="bn-tabs" role="tablist" aria-label="Bench views">
         <button type="button" role="tab" class="bn-tab" data-tab="board" aria-selected="${tab === "board"}">Leaderboard</button>
         <button type="button" role="tab" class="bn-tab" data-tab="battle" aria-selected="${tab === "battle"}">Blind battle</button></div>
-      <div class="bn-suites" role="group" aria-label="Suite">${Object.entries(SUITES).map(([id, s]) => `
-        <button type="button" class="bn-suite" data-suite="${id}" aria-pressed="${id === suite}"><b>${esc(s.label)}</b><small>${counts[id] ? `${counts[id]} model${counts[id] > 1 ? "s" : ""}` : "no runs"}</small></button>`).join("")}</div>
+      ${opts.embedded ? "" : `<div class="bn-suites" role="group" aria-label="Suite">${Object.entries(SUITES).map(([id, s]) => `
+        <button type="button" class="bn-suite" data-suite="${id}" aria-pressed="${id === suite}"><b>${esc(s.label)}</b><small>${counts[id] ? `${counts[id]} model${counts[id] > 1 ? "s" : ""}` : "no runs"}</small></button>`).join("")}</div>`}
       <section class="bn-panel">
         <div class="bn-h"><p class="bn-mut">${esc(SUITES[suite].blurb)}</p>
           ${tab === "board" ? `<label class="bn-mach">Mac <select data-mach><option value="">All Macs</option>${machines.map(m => `<option value="${esc(m.machine)}"${m.machine === machine ? " selected" : ""}>${esc(machLabel(m.machine))}</option>`).join("")}</select></label>` : ""}</div>
@@ -208,7 +211,8 @@
     }
   }
 
-  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel };
+  const runCount = s => (data?.suites || []).find(x => x.id === s)?.models || 0;
+  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel, setSuite, runCount };
 
   const css = document.createElement("style");
   css.textContent = `

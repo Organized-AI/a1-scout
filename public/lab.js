@@ -390,19 +390,20 @@
   function papersFor(tpl) {
     return (picks || []).filter(p => p.kind === "paper" && tpl.words.test(`${p.title || ""} ${p.summary || ""}`)).slice(0, 4);
   }
-  function html(cat, pk) {
+  function html(cat, pk, opts = {}) {
     catalog = cat; picks = pk || [];
     if (!st || !T[st.tpl]) st = defaults("rag");
+    if (opts.tpl && T[opts.tpl] && st.tpl !== opts.tpl) { st = defaults(opts.tpl); save(); }
     const e = evaluate(st);
     const P = papersFor(e.tpl);
     const pass = e.tests.filter(t => t.st === "pass").length;
-    return `<div class="lab">
-      <header class="lab-hero"><span class="lab-kick">Lab · ${e.measured || e.quality ? "measured where benchmarked" : "simulated"}</span>
+    return `<div class="lab${opts.embedded ? " lab-embed" : ""}">
+      ${opts.embedded ? "" : `<header class="lab-hero"><span class="lab-kick">Lab · ${e.measured || e.quality ? "measured where benchmarked" : "simulated"}</span>
         <h2>Build a stack. See how it would run.</h2>
-        <p>Pick a job, choose parts from what's on the A1, and pick a Mac. The Lab estimates memory, speed and load time from file sizes, then runs a simulated test suite. Parts you've run through the Bench use their measured numbers instead, marked <em class="lab-meas">measured</em>. Nothing here touches the drive.</p></header>
+        <p>Pick a job, choose parts from what's on the A1, and pick a Mac. The Lab estimates memory, speed and load time from file sizes, then runs a simulated test suite. Parts you've run through the Bench use their measured numbers instead, marked <em class="lab-meas">measured</em>. Nothing here touches the drive.</p></header>`}
       ${playerBar()}
-      <div class="lab-tpls" role="tablist" aria-label="Stack templates">${Object.entries(T).map(([id, t]) => `
-        <button type="button" class="lab-tpl" role="tab" aria-selected="${id === st.tpl}" data-tpl="${id}"><span class="lab-ic">${esc(t.icon)}</span><b>${esc(t.title)}</b><small>${esc(t.tag)}</small></button>`).join("")}</div>
+      ${opts.embedded ? "" : `<div class="lab-tpls" role="tablist" aria-label="Stack templates">${Object.entries(T).map(([id, t]) => `
+        <button type="button" class="lab-tpl" role="tab" aria-selected="${id === st.tpl}" data-tpl="${id}"><span class="lab-ic">${esc(t.icon)}</span><b>${esc(t.title)}</b><small>${esc(t.tag)}</small></button>`).join("")}</div>`}
       <div class="lab-grid">
         <section class="lab-panel">
           <div class="lab-h"><span class="lab-kick">1 · Parts</span><span class="lab-mut">${esc(e.tpl.blurb)}</span></div>
@@ -502,7 +503,7 @@
     if (first && window.gsap && !RM()) gsap.from($$(".lab-hero > *, .lab-tpl, .lab-panel", root), { y: 14, opacity: .2, duration: .45, stagger: .03, ease: "power2.out", clearProps: "transform,opacity" });
   }
 
-  window.LabView = { html, wire, evaluate: s => evaluate(s), templates: T, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id), grade: e => grade(e), missions: MISSIONS, levelOf };
+  window.LabView = { html, wire, evaluate: s => evaluate(s), templates: T, suiteFor: SUITE_FOR, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id), grade: e => grade(e), missions: MISSIONS, levelOf };
 
   const css = document.createElement("style");
   css.textContent = `
