@@ -686,7 +686,7 @@ function animateBar(el, st, live, o) {
   }
 }
 /* ---------------- scout ---------------- */
-const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection" };
+const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection", code: "code (GitHub)" };
 function scoutView() {
   const c = state.counts || {}, lr = state.last_run;
   const shown = picks.filter(p => filter === "all" || p.status === filter);
@@ -721,6 +721,7 @@ function updatesBlock(u) {
   ${li(u.docs_only, x => `<li>Docs-only change: ${esc(x.repo)} ${short(x.from)} → ${short(x.to)} (nothing to download)</li>`)}`;
 }
 function hubUrl(p) {
+  if (p.kind === "code") return `https://github.com/${p.repo}`;
   return p.kind === "dataset" ? `https://huggingface.co/datasets/${p.repo}` : p.kind === "space" ? `https://huggingface.co/spaces/${p.repo}`
     : p.kind === "paper" ? `https://huggingface.co/papers/${p.repo}` : p.kind === "collection" ? `https://huggingface.co/collections/${p.repo}` : `https://huggingface.co/${p.repo}`;
 }

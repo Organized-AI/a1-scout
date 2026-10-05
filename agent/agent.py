@@ -612,7 +612,27 @@ def dest_for(p):
         return STASH / "spaces" / name
     if p["kind"] == "paper":
         return STASH / "papers" / f"{p['repo']}.pdf"
+    if p["kind"] == "code":
+        return STASH / "code" / name
     return None
+
+
+def git_clone(p, dest: Path):
+    """Shallow-clone a queued GitHub repo into code/<name>, next to code/<name>.commit like the hand-added repos.
+    Clones into <name>.part first and renames, so a failed clone never leaves a half repo under the real name."""
+    tmp = dest.with_name(dest.name + ".part")
+    if tmp.exists() and inside_stash(tmp):
+        shutil.rmtree(tmp)  # our own partial clone from an earlier try
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(keep_awake(["git", "clone", "--depth", "1", "--quiet", f"https://github.com/{p['repo']}.git", str(tmp)]),
+                       capture_output=True, text=True, timeout=3600)
+    if r.returncode != 0:
+        return r
+    head = subprocess.run(["git", "-C", str(tmp), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    tmp.rename(dest)
+    (dest.parent / f"{dest.name}.commit").write_text(head + "\n")
+    p["sha"] = head or p.get("sha")
+    return r
 
 
 def hub_size(p):
@@ -1105,6 +1125,13 @@ def fetch_approved(spent=0):
                 log(f"  paper failed: {e}"); ok = False
                 if tmp.exists() and inside_stash(tmp):
                     tmp.unlink()  # our own partial file only
+        elif p["kind"] == "code":
+            if dest.exists():
+                waiting.append((p["repo"], f"code/{dest.name} already exists on the A1")); continue
+            r = git_clone(p, dest)
+            ok = r.returncode == 0
+            if not ok:
+                log(f"  git clone failed: {(r.stderr or r.stdout)[-400:]}")
         else:
             args = keep_awake(["hf", "download", p["repo"], "--repo-type", p["kind"], "--local-dir", str(dest)])
             if p.get("sha"):
@@ -1116,7 +1143,7 @@ def fetch_approved(spent=0):
             if not ok:
                 log(f"  hf download failed: {(r.stderr or r.stdout)[-400:]}")
         if not ok:
-            refused = p["kind"] != "paper" and LICENSE_RE.search((r.stderr or "") + (r.stdout or ""))
+            refused = p["kind"] not in ("paper", "code") and LICENSE_RE.search((r.stderr or "") + (r.stdout or ""))
             waiting.append((p["repo"], f"needs license: accept the terms at https://huggingface.co/{p['repo']}, then it downloads next mount"
                             if refused else "download failed; retries next mount"))
             if refused:

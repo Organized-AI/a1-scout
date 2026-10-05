@@ -194,6 +194,36 @@ async function hf(path, env) {
   if (!r.ok) throw new Error(`HF ${r.status} on ${path.slice(0, 80)}`);
   return r.json();
 }
+async function gh(path, env) {
+  const headers = { "user-agent": "a1-scout (organized-ai)", accept: "application/vnd.github+json" };
+  if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  const r = await fetch(`https://api.github.com${path}`, { headers });
+  if (!r.ok) throw new Error(`GitHub ${r.status} on ${path.slice(0, 80)}`);
+  return r.json();
+}
+// A GitHub repo queued for the A1's code/ folder: the agent clones it (shallow) on the next plug-in.
+async function addCodePick(env, repo, { theme, note, source, status }) {
+  const id = `code:${repo}`;
+  const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(id).first();
+  if (existing?.status === "stashed") return { ok: true, id, already: "stashed" };
+  const info = await gh(`/repos/${repo}`, env);
+  const head = await gh(`/repos/${repo}/commits/${encodeURIComponent(info.default_branch)}`, env).catch(() => null);
+  const c = {
+    id, kind: "code", repo: info.full_name || repo, sha: head?.sha || null, title: info.description || null, summary: note || null,
+    extra: { added: "chat", source: "github", branch: info.default_branch, language: info.language || null },
+    size_bytes: info.size ? info.size * 1024 : null, likes: info.stargazers_count, trending: 0, lastModified: info.pushed_at,
+    gated: "false", license: info.license?.spdx_id && info.license.spdx_id !== "NOASSERTION" ? info.license.spdx_id : null, mlx: false,
+    theme: THEMES.some(t => t.id === theme) ? theme : "agents",
+  };
+  c.id = `code:${c.repo}`;
+  const { score, reasons, flags } = scoreCandidate(c, 1);
+  reasons.unshift(source || "added from chat");
+  if (note) reasons.push(note);
+  await upsertPick(env, c, score, reasons, [], flags, now()).run();
+  if (status === "approved" && existing?.status !== "skipped")
+    await env.DB.prepare("UPDATE picks SET status='approved', auto=1 WHERE id=? AND status IN ('new','approved')").bind(c.id).run();
+  return { ok: true, id: c.id, score, flags, size_bytes: c.size_bytes, license: c.license };
+}
 // Size of what a download will actually fetch: files at this revision, optionally filtered by fnmatch-style globs
 // (as the hf CLI's --include does: * also crosses folders). usedStorage counts every revision, so it overstates.
 const globRe = g => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
@@ -670,7 +700,11 @@ async function api(req, env, url) {
   // Add a specific Hub repo as a pick (from chat or the page). It lands as "new" for review.
   if (p === "/api/picks/add" && req.method === "POST") {
     const { repo, kind, theme, note, source, status, include } = await req.json();
-    if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space) required" }, 400);
+    if (kind === "code") {
+      if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return json({ error: "code repo must be owner/name on GitHub" }, 400);
+      return json(await addCodePick(env, repo, { theme, note, source, status }));
+    }
+    if (!repo || !["model", "dataset", "space"].includes(kind)) return json({ error: "repo and kind (model|dataset|space|code) required" }, 400);
     const existing = await env.DB.prepare("SELECT status FROM picks WHERE id=?").bind(`${kind}:${repo}`).first();
     if (existing?.status === "stashed") return json({ ok: true, id: `${kind}:${repo}`, already: "stashed" });
     const fields = kind === "model" ? ["usedStorage", "sha", "gated", "cardData", "likes", "lastModified", "library_name", "tags", "trendingScore"]

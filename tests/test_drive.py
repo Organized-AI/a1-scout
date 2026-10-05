@@ -101,3 +101,9 @@ class WaitForDrive(unittest.TestCase):
         self.assertIn("blocked", first)
         self.assertTrue(first["blocked"]["hint"])
         self.assertEqual(self.posts[-1].get("blocked", "x"), None)
+
+
+class CodePicks(unittest.TestCase):
+    def test_code_goes_to_code_folder(self):
+        self.assertEqual(A.dest_for({"kind": "code", "repo": "huggingface/OpenEnv"}), A.STASH / "code" / "OpenEnv")
+        self.assertTrue(A.inside_stash(A.dest_for({"kind": "code", "repo": "huggingface/OpenEnv"})))
