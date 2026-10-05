@@ -131,6 +131,13 @@ async function kvSet(env, k, v) {
     .bind(k, JSON.stringify(v), now()).run();
 }
 
+// Several Macs can run the agent; the A1 is on at most one of them at a time.
+const isFresh = x => !!x?.at && Date.now() - Date.parse(x.at) < 4 * 60e3;
+export function activePresence(all) {
+  const rank = x => (isFresh(x) ? 4 : 0) + (x.present ? 2 : 0) + (x.attached ? 1 : 0);
+  return [...all].sort((a, b) => rank(b) - rank(a) || String(b.at).localeCompare(String(a.at)))[0] || null;
+}
+
 // Normalize a repo name so quant/format variants of something already stashed are skipped.
 function baseName(repo) {
   let n = String(repo).split("/").pop().toLowerCase();
@@ -691,7 +698,7 @@ async function api(req, env, url) {
     }
     return json((await kvGet(env, "catalog")) || { categories: [] });
   }
-  // Live A1 activity for the status bar. The agent posts run progress; a 2-minute heartbeat posts presence.
+    // Live A1 activity for the status bar. The agent posts run progress; a 2-minute heartbeat posts presence.
   // "Run now" from the dashboard: the Mac's heartbeat picks the request up within a minute and starts a run.
   if (p === "/api/run-request" && req.method === "POST") {
     const presence = await kvGet(env, "presence");
@@ -772,7 +779,18 @@ async function api(req, env, url) {
     if (req.method === "POST") {
       const body = await req.json();
       if (body.kind === "presence") {
-        await kvSet(env, "presence", { ...body, at: now() });
+        // Each Mac posts its own presence. "presence" is the active one: the Mac that has the A1 mounted, else the one it's
+        // attached to, else the most recent. Requests from the dashboard go only to the active Mac.
+        const m = typeof body.machine === "string" && /^[\w-]{1,40}$/.test(body.machine) ? body.machine : "mac";
+        const mine = { ...body, machine: m, at: now() };
+        await kvSet(env, `presence:${m}`, mine);
+        const index = (await kvGet(env, "machines")) || {};
+        index[m] = { label: String(body.machine_label || m).slice(0, 80), at: mine.at };
+        await kvSet(env, "machines", index);
+        const all = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
+        const active = activePresence(all);
+        await kvSet(env, "presence", active);
+        if (active.machine !== m) return json({ ok: true, active: active.machine, run_request: null, license_check: null, license_decisions: {}, drive_request: null });
         // hand a pending dashboard request to the heartbeat (ignored after 10 minutes)
         const rr = await kvGet(env, "run_request");
         const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
@@ -805,7 +823,11 @@ async function api(req, env, url) {
       return { repo: x.repo, kind: x.kind, bytes: size, when: fits ? "next plug-in" : "later" };
     });
     const drive_request = await kvGet(env, "drive_request");
-    return json({ activity, presence, next, run_request, drive_request, license_check, license_decisions: license_decisions || {}, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
+    const index = (await kvGet(env, "machines")) || {};
+    const machines = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean).map(x => ({
+      machine: x.machine, label: index[x.machine]?.label || x.machine, at: x.at, fresh: isFresh(x), present: !!x.present, attached: !!x.attached,
+      busy: !!x.busy, active: x.machine === presence?.machine })).sort((a, b) => (b.active - a.active) || String(b.at).localeCompare(String(a.at)));
+    return json({ activity, presence, machines, next, run_request, drive_request, license_check, license_decisions: license_decisions || {}, licenses: presence?.licenses || {}, hf_user: presence?.hf_user || null, server_time: now() });
   }
   // "I tried this" survey answers from the drive map, one row per stashed item.
   if (p === "/api/notes") {

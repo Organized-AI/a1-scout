@@ -102,6 +102,10 @@ button.chip:hover{border-color:var(--accent)}
   .a1-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .a1-head b { font: 600 13px "IBM Plex Mono", monospace; }
   .a1-sub { color: var(--mute); }
+  .a1-macs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .a1-mac { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--line, #3334); border-radius: 999px; font: 500 11px "IBM Plex Mono", monospace; color: var(--mute); }
+  .a1-mac i { width: 7px; height: 7px; border-radius: 50%; background: #8888; }
+  .a1-mac.on { color: inherit; border-color: var(--brand); } .a1-mac.on i { background: #3ecf8e; } .a1-mac.att i { background: #f2c46c; } .a1-mac.stale { opacity: .55; }
   .a1-count { margin-left: auto; color: var(--mute); font: 12px "IBM Plex Mono", monospace; }
   .a1-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); flex: none; }
   .a1bar[data-state="ok"] .a1-dot, .a1bar[data-state="busy"] .a1-dot { background: var(--brand); }
@@ -286,15 +290,26 @@ async function pollActivity() {
   if (!document.hidden) actTimer = setTimeout(pollActivity, busy ? 10000 : 45000);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && token) pollActivity(); });
+// Every Mac running the agent, and which one has the A1. Requests from the dashboard go to that one.
+function macsHtml() {
+  const ms = a1act?.machines || [];
+  if (!ms.length) return "";
+  return `<div class="a1-macs" aria-label="Macs">${ms.map(m => {
+    const cls = !m.fresh ? "stale" : m.active && m.present ? "on" : m.attached ? "att" : "";
+    const what = !m.fresh ? `last seen ${ago(m.at)}` : m.present ? (m.busy ? "A1 · running" : "A1 mounted") : m.attached ? "A1 ejected" : "no A1";
+    return `<span class="a1-mac ${cls}" title="${esc(m.label)}"><i></i>${esc(String(m.label).split(" · ")[0])} · ${esc(what)}</span>`;
+  }).join("")}</div>`;
+}
+const macName = () => { const m = (a1act?.machines || []).find(x => x.active); return m ? String(m.label).split(" · ")[0] : ""; };
 function barState() {
   const p = a1act?.presence || {}, a = a1act?.activity || {};
   const fresh = p.at && Date.now() - Date.parse(p.at) < 4 * 60e3;
   const plugged = !!(fresh && p.present);
   const live = a.state === "running" && a.updated_at && Date.now() - Date.parse(a.updated_at) < 90e3;
   const running = live || !!(plugged && p.busy);
-  if (running && plugged) return { key: "busy", plugged, running, label: "Plugged in · run in progress" };
+  if (running && plugged) return { key: "busy", plugged, running, label: `Plugged in${macName() ? ` · ${macName()}` : ""} · run in progress` };
   if (running) return { key: "warn", plugged, running, label: "Unplugged mid-run", sub: "Anything unfinished resumes on the next plug-in" };
-  if (plugged) return { key: "ok", plugged, running, label: "Plugged in", sub: "Idle · safe to eject" };
+  if (plugged) return { key: "ok", plugged, running, label: macName() ? `Plugged in · ${macName()}` : "Plugged in", sub: "Idle · safe to eject" };
   if (fresh && p.attached) return { key: "ejected", plugged, running, label: "Ejected", sub: "Still connected to the Mac · safe to unplug, or mount it again" };
   return { key: "off", plugged, running, label: "Unplugged", sub: p.at ? `Last seen ${ago(p.at)}` : "Waiting for the first heartbeat from the Mac" };
 }
@@ -466,7 +481,7 @@ function paintBar(animate) {
       ${freeNote ? `<div class="a1-foot">${esc(freeNote)}</div>` : ""}`;
   }
   el.dataset.state = st.key;
-  el.innerHTML = `<div class="a1-head"><span class="a1-dot"><i class="a1-ripple"></i></span><b class="a1-label">A1 ${esc(st.label)}</b>${st.sub ? `<span class="a1-sub">${esc(st.sub)}</span>` : ""}${run?.phase ? `<span class="a1-sub a1-phase">· ${esc(run.phase)}</span>` : ""}</div>${body}`;
+  el.innerHTML = `<div class="a1-head"><span class="a1-dot"><i class="a1-ripple"></i></span><b class="a1-label">A1 ${esc(st.label)}</b>${st.sub ? `<span class="a1-sub">${esc(st.sub)}</span>` : ""}${run?.phase ? `<span class="a1-sub a1-phase">· ${esc(run.phase)}</span>` : ""}</div>${macsHtml()}${body}`;
   animateBar(el, st, live, { first, animate, prevKey: actPrev.key, prevPhase: actPrev.phase, phase: run?.phase });
   const rb = el.querySelector("[data-runnow]");
   if (rb && !rb.disabled) rb.onclick = async () => {

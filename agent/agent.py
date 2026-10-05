@@ -26,7 +26,7 @@ ENV_FILE = STATE_DIR / "scout.env"
 LOG = STATE_DIR / "scout.log"
 STATE = STATE_DIR / "scout-state.json"
 LOCK = STATE_DIR / "scout.lock"
-PATH_EXTRA = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+PATH_EXTRA = f"{STATE_DIR}/venvs/hf/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"   # venvs/hf: the hf CLI on Macs without a global one
 
 
 def load_env():
@@ -62,6 +62,21 @@ def log(msg):
 def sh(args, timeout=None, **kw):
     e = dict(os.environ, PATH=PATH_EXTRA + ":" + os.environ.get("PATH", ""))
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=e, **kw)
+
+
+_MACHINE = []
+
+
+def machine():
+    """(id, label) of this Mac. The id matches the Lab's (m1, m4, ...) and the bench's machine_id; the label is for people."""
+    if not _MACHINE:
+        import bench
+        mid = bench.machine_id(ENV)
+        chip = sh(["sysctl", "-n", "machdep.cpu.brand_string"]).stdout.strip().replace("Apple ", "")
+        gib = round(int(sh(["sysctl", "-n", "hw.memsize"]).stdout.strip() or 0) / 2 ** 30)
+        name = (sh(["scutil", "--get", "ComputerName"]).stdout.strip() or os.uname().nodename.split(".")[0])
+        _MACHINE.extend([mid, f"{name} · {chip} {gib} GB"])
+    return _MACHINE[0], _MACHINE[1]
 
 
 def notify(title, text):
@@ -502,7 +517,7 @@ def activity(force=False, **kw):
         return
     _last_post[0] = time.time()
     try:
-        api("/api/activity", "POST", {"kind": "run", **ACT})
+        api("/api/activity", "POST", {"kind": "run", "machine": machine()[0], "machine_label": machine()[1], **ACT})
     except Exception:
         pass  # the status bar is nice-to-have; never let it break a run
 
@@ -1470,7 +1485,8 @@ def main():
             except Exception as e:
                 bar_check = {"ok": None, "failed": [], "error": f"{type(e).__name__}: {e}"[:200]}
         attached = present or a1_attached()
-        resp = api("/api/activity", "POST", {"kind": "presence", "present": present, "attached": attached, "busy": busy, "logrun": logrun,
+        resp = api("/api/activity", "POST", {"kind": "presence", "machine": machine()[0], "machine_label": machine()[1],
+                                             "present": present, "attached": attached, "busy": busy, "logrun": logrun,
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
                                              "needs_license": sorted(needs_license()), "bar_check": bar_check,
                                              "licenses": licenses(), "hf_user": hf_user()})
