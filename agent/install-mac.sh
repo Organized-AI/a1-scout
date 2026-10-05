@@ -11,7 +11,7 @@ PY="$(ls /opt/homebrew/bin/python3 /usr/local/bin/python3 2>/dev/null | head -1 
 mkdir -p "$STATE/venvs" "$STATE/tmp" "$HOME/Library/LaunchAgents"
 if [ ! -x "$STATE/venvs/hf/bin/hf" ]; then
   "$PY" -m venv "$STATE/venvs/hf"
-  "$STATE/venvs/hf/bin/pip" install -q --upgrade "huggingface_hub[cli,hf_xet]"
+  "$STATE/venvs/hf/bin/pip" install -q --upgrade "huggingface_hub[hf_xet]"
 fi
 PATHS="$STATE/venvs/hf/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 for name in heartbeat mount weekly; do
