@@ -131,6 +131,24 @@ async function kvSet(env, k, v) {
     .bind(k, JSON.stringify(v), now()).run();
 }
 
+// Every device on the Tailnet for Bench's device menu: the Tailnet list an agent reported, joined to the agents
+// (by Tailnet name) for hardware id and label. Devices without the agent are listed too, marked so.
+async function tailnetDevices(env, benchMachines = []) {
+  const tn = (await kvGet(env, "tailnet"))?.devices || [];
+  const index = (await kvGet(env, "machines")) || {};
+  const agents = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
+  const runs = Object.fromEntries(benchMachines.map(m => [m.machine, m.n]));
+  const byTs = Object.fromEntries(agents.filter(a => a.ts_name).map(a => [a.ts_name, a]));
+  const out = tn.map(d => { const a = byTs[d.name];
+    return { name: d.name, label: a ? String(a.machine_label || d.label).split(" · ")[0] : d.label, os: d.os, online: d.online || isFresh(a),
+             agent: !!a, hw: a?.hw || null, hw_label: a ? String(a.machine_label || "").split(" · ")[1] || null : null, runs: a?.hw ? runs[a.hw] || 0 : 0 }; });
+  for (const a of agents) if (!a.ts_name || !tn.some(d => d.name === a.ts_name))
+    out.push({ name: a.ts_name || a.machine, label: String(a.machine_label || a.machine).split(" · ")[0], os: "", online: isFresh(a), agent: true,
+               hw: a.hw || null, hw_label: String(a.machine_label || "").split(" · ")[1] || null, runs: a.hw ? runs[a.hw] || 0 : 0 });
+  const rank = d => (d.runs ? 4 : 0) + (d.agent ? 2 : 0) + (d.online ? 1 : 0);
+  return out.sort((x, y) => rank(y) - rank(x) || x.label.localeCompare(y.label));
+}
+
 // Several Macs can run the agent; the A1 is on at most one of them at a time.
 const isFresh = x => !!x?.at && Date.now() - Date.parse(x.at) < 4 * 60e3;
 export function activePresence(all) {
@@ -553,7 +571,9 @@ async function benchApi(req, env, url, p) {
     for (const s of [...new Set(rows.map(r => r.suite))]) elos[s] = env.BENCH ? await eloTable(env, s) : {};
     const machines = (await env.DB.prepare("SELECT machine, COUNT(*) n, MAX(created) last FROM bench_runs GROUP BY machine ORDER BY n DESC").all()).results;
     const suites = (await env.DB.prepare("SELECT suite, COUNT(DISTINCT model) models, MAX(created) last FROM bench_runs GROUP BY suite").all()).results;
+    const devices = await tailnetDevices(env, machines);
     return json({
+      devices,
       best: (await kvGet(env, "bench_best")) || {},
       suite, machine, machines, suites: BENCH_SUITES.map(s => ({ id: s, ...(suites.find(x => x.suite === s) || { models: 0, last: null }) })),
       rows: rows.map(r => { const e = elos[r.suite]?.[r.model]; return { ...r, elo: e ? Math.round(e.elo) : null, battles: e?.n || 0 }; }),
@@ -785,6 +805,12 @@ async function api(req, env, url) {
         const ok = v => typeof v === "string" && /^[\w-]{1,40}$/.test(v);
         const m = ok(body.host) ? body.host : ok(body.machine) ? body.machine : "mac";
         const mine = { ...body, host: m, hw: ok(body.machine) ? body.machine : null, machine: m, at: now() };
+        delete mine.tailnet;
+        if (Array.isArray(body.tailnet) && body.tailnet.length) {
+          const clean = body.tailnet.slice(0, 64).filter(d => ok(d?.name)).map(d => ({ name: d.name, label: String(d.label || d.name).slice(0, 60),
+            os: String(d.os || "").slice(0, 20), online: !!d.online, last_seen: typeof d.last_seen === "string" ? d.last_seen.slice(0, 40) : null }));
+          await kvSet(env, "tailnet", { at: now(), from: m, devices: clean });
+        }
         await kvSet(env, `presence:${m}`, mine);
         const index = (await kvGet(env, "machines")) || {};
         index[m] = { label: String(body.machine_label || m).slice(0, 80), at: mine.at };

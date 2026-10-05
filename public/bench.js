@@ -62,7 +62,7 @@
   const best = (s, mach) => data?.best?.[s]?.[mach] || null;
 
   function bestHtml() {
-    const picks = Object.entries(data?.best?.[suite] || {}).filter(([m]) => !machine || m === machine);
+    const picks = Object.entries(data?.best?.[suite] || {}).filter(([m]) => !machine || m === hwOf(machine));
     if (!picks.length) return "";
     return `<div class="bn-best-list">${picks.map(([m, b]) => `<article class="bn-best">
       <span class="bn-crown" aria-hidden="true">★</span>
@@ -73,14 +73,37 @@
     </article>`).join("")}</div>`;
   }
 
+  // The device menu: every device on the Tailnet. A device's runs are its hardware class's runs (two M4 minis share them);
+  // devices without the agent, or that can't run the bench (phones, Linux), are listed but can't be picked.
+  const hwOf = v => String(v || "").split("|")[0];
+  // "Claw’s Mac mini" + "M4 16 GB" -> "M4 Mac mini (Claw’s)"; "MacBook Pro (6)" + "M1 Pro 16 GB" -> "M1 Pro MacBook Pro"
+  function shortName(d) {
+    const chip = String(d.hw_label || "").replace(/\s*\d+\s*GB$/i, "").trim();
+    const m = String(d.label || d.name).match(/^(.+?)[’']s (.+)$/);
+    const model = (m ? m[2] : String(d.label || d.name)).replace(/\s*\(\d+\)$/, "");
+    return `${chip ? chip + " " : ""}${model}${m ? ` (${m[1]}’s)` : ""}`;
+  }
+  function deviceOptions(machines) {
+    // the devices running the agent (your Macs, and a Pi once it's set up); phones and the like only view the dashboard
+    const devs = (data?.devices || []).filter(d => d.agent);
+    const opt = (value, text, dis) => `<option value="${esc(value)}"${value === machine ? " selected" : ""}${dis ? " disabled" : ""}>${esc(text)}</option>`;
+    const covered = new Set(devs.map(d => d.hw).filter(Boolean));
+    const mac = d => /^(m\d|m5p)/.test(d.hw || "");
+    const twin = d => devs.filter(x => x !== d && x.hw && x.hw === d.hw).map(shortName)[0];
+    return opt("", "All devices")
+      + devs.map(d => opt(`${d.hw || "none"}|${d.name}`, `${shortName(d)} — ${!mac(d) && !d.runs ? "can't run the bench (needs Apple Silicon)"
+          : d.runs ? `${d.runs} run${d.runs > 1 ? "s" : ""}` : "no runs yet"}${twin(d) && d.runs ? ` · shared with ${twin(d)} (same chip)` : ""}${d.online ? "" : " · offline"}`, !mac(d) && !d.runs)).join("")
+      + machines.filter(m => !covered.has(m.machine)).map(m => opt(m.machine, `${machLabel(m.machine)} — ${m.n} run${m.n > 1 ? "s" : ""}`)).join("");
+  }
+
   // ---------- rendering ----------
-  const rowsFor = () => (data?.rows || []).filter(r => r.suite === suite && (!machine || r.machine === machine));
+  const rowsFor = () => (data?.rows || []).filter(r => r.suite === suite && (!machine || r.machine === hwOf(machine)));
 
   function boardHtml() {
     const rows = rowsFor();
     const maxTps = Math.max(1, ...rows.map(r => r.tok_s || 0));
     if (!data) return `<div class="bn-empty">${err ? `Couldn't load the bench: ${esc(err)}` : "Loading measured runs…"}</div>`;
-    if (!rows.length) return `<div class="bn-empty"><b>No ${esc(SUITES[suite].label)} runs${machine ? ` on ${esc(machLabel(machine))}` : ""} yet.</b>
+    if (!rows.length) return `<div class="bn-empty"><b>No ${esc(SUITES[suite].label)} runs${machine ? ` on ${esc(machLabel(hwOf(machine)))}` : ""} yet.</b>
       Plug in the A1, then on the Mac: <code>python3 agent/agent.py bench ${esc(suite)}</code>. It tries every model on the A1 that fits that Mac and picks the best one for you (<code>bench all</code> does every suite).</div>`;
     return `${bestHtml()}<div class="bn-table" role="table" aria-label="${esc(SUITES[suite].label)} leaderboard">
       <div class="bn-tr bn-th" role="row"><span role="columnheader">#</span><span role="columnheader">Model</span><span role="columnheader">Score</span><span role="columnheader">Speed</span>
@@ -134,7 +157,7 @@
         <button type="button" class="bn-suite" data-suite="${id}" aria-pressed="${id === suite}"><b>${esc(s.label)}</b><small>${counts[id] ? `${counts[id]} model${counts[id] > 1 ? "s" : ""}` : "no runs"}</small></button>`).join("")}</div>`}
       <section class="bn-panel">
         <div class="bn-h"><p class="bn-mut">${esc(SUITES[suite].blurb)}</p>
-          ${tab === "board" ? `<label class="bn-mach">Mac <select data-mach><option value="">All Macs</option>${machines.map(m => `<option value="${esc(m.machine)}"${m.machine === machine ? " selected" : ""}>${esc(machLabel(m.machine))}</option>`).join("")}</select></label>` : ""}</div>
+          ${tab === "board" ? `<label class="bn-mach">Device <select data-mach>${deviceOptions(machines)}</select></label>` : ""}</div>
         ${tab === "board" ? boardHtml() : battleHtml()}
       </section></div>`;
   }

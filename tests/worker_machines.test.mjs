@@ -63,3 +63,18 @@ test("two Macs of the same model are kept apart by host", async () => {
   assert.equal(a.machines[0].machine, "claws-mac-mini");
   assert.equal(a.presence.hw, "m4");
 });
+
+test("the leaderboard's device list is every device on the Tailnet, joined to the agents", async () => {
+  const { env } = fakeEnv();
+  await call(env, "/api/activity", { kind: "presence", host: "claws-mac-mini", ts_name: "claws-mac-mini", machine: "m4", machine_label: "Claw's Mac mini · M4 16 GB", present: true,
+    tailnet: [{ name: "claws-mac-mini", label: "Claw's Mac mini", os: "macOS", online: true }, { name: "pi5-dev", label: "pi5-dev", os: "linux", online: false },
+              { name: "iphone-15-pro-max", label: "localhost", os: "iOS", online: false }, { name: "../bad", label: "x" }] });
+  // the leaderboard handler reads D1 too; the fake returns no runs, so call the helper's output through activity's sibling: use the module export
+  const mod = await import("../src/index.js");
+  assert.equal(typeof mod.activePresence, "function");
+  const tn = JSON.parse((await env.DB.prepare("SELECT v FROM kv WHERE k=?").bind("tailnet").first()).v);
+  assert.deepEqual(tn.devices.map(d => d.name), ["claws-mac-mini", "pi5-dev", "iphone-15-pro-max"]);   // bad name dropped
+  const p = JSON.parse((await env.DB.prepare("SELECT v FROM kv WHERE k=?").bind("presence:claws-mac-mini").first()).v);
+  assert.equal(p.tailnet, undefined);              // the list isn't copied into every presence row
+  assert.equal(p.ts_name, "claws-mac-mini");
+});

@@ -131,6 +131,30 @@ def machine():
     return _MACHINE[0], _MACHINE[1]
 
 
+def tailnet():
+    """This Tailnet's devices from `tailscale status --json`: (this device's Tailnet name, [{name, label, os, online,
+    last_seen}]). Devices shared in from other tailnets are left out. ("", []) without Tailscale."""
+    exe = shutil.which("tailscale") or next((p for p in ("/usr/local/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale") if os.path.exists(p)), None)
+    if not exe:
+        return "", []
+    try:
+        d = json.loads(sh([exe, "status", "--json"], timeout=15).stdout or "{}")
+    except Exception:
+        return "", []
+    me = d.get("Self") or {}
+    first = lambda n: (n or "").split(".")[0]
+    suffix = (me.get("DNSName") or "").split(".", 1)[-1]
+    out = []
+    for x in [me, *(d.get("Peer") or {}).values()]:
+        dns = x.get("DNSName") or ""
+        if not dns or dns.split(".", 1)[-1] != suffix:
+            continue
+        seen = x.get("LastSeen") or ""
+        out.append({"name": first(dns), "label": x.get("HostName") or first(dns), "os": x.get("OS") or "",
+                    "online": bool(x.get("Online")) or x is me, "last_seen": None if seen.startswith("0001") else seen})
+    return first(me.get("DNSName")), out
+
+
 def host_id():
     """This Mac, uniquely (two Macs of the same model share a machine id but not a host id)."""
     machine()
@@ -1595,7 +1619,13 @@ def main():
             except Exception as e:
                 bar_check = {"ok": None, "failed": [], "error": f"{type(e).__name__}: {e}"[:200]}
         attached = present or a1_attached()
-        resp = api("/api/activity", "POST", {"kind": "presence", "host": host_id(), "machine": machine()[0], "machine_label": machine()[1],
+        # The Tailnet's device list rides along every 10 minutes (Bench's device menu); this device's Tailnet name every time.
+        st_t = load_state()
+        ts_name, peers = st_t.get("ts_name", ""), None
+        if time.time() - st_t.get("tailnet_at", 0) > 600:
+            ts_name, peers = tailnet()
+            st_t.update(ts_name=ts_name, tailnet_at=time.time()); save_state(st_t)
+        resp = api("/api/activity", "POST", {"kind": "presence", "host": host_id(), "ts_name": ts_name, **({"tailnet": peers} if peers else {}), "machine": machine()[0], "machine_label": machine()[1],
                                              "present": present, "attached": attached, "busy": busy, "logrun": logrun,
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
                                              "needs_license": sorted(needs_license()), "bar_check": bar_check,

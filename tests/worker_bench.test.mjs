@@ -196,3 +196,18 @@ test("gtm-gate runs are accepted like any other suite", async () => {
   assert.ok(lb.suites.some(s => s.id === "gtm-gate"));
   assert.equal((await call(env, "/api/bench/runs", "POST", run("clef-flash-4bit", { suite: "skill-select", uid: "s1" }))).ok, true);
 });
+
+test("leaderboard devices: Tailnet devices joined to agents and their hardware's runs", async () => {
+  const env = mkEnv();
+  env.DB._db.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, updated TEXT)");
+  await call(env, "/api/bench/runs", "POST", run("Qwen3-0.6B-4bit", { machine: "m4", uid: "d1" }));
+  await call(env, "/api/activity", "POST", { kind: "presence", host: "claws-mac-mini", ts_name: "claws-mac-mini", machine: "m4",
+    machine_label: "Claw's Mac mini · M4 16 GB", present: true,
+    tailnet: [{ name: "claws-mac-mini", label: "Claw's Mac mini", os: "macOS", online: true }, { name: "pi5-dev", label: "pi5-dev", os: "linux", online: false }] });
+  const lb = await call(env, "/api/bench/leaderboard");
+  const by = Object.fromEntries(lb.devices.map(d => [d.name, d]));
+  assert.equal(by["claws-mac-mini"].hw, "m4");
+  assert.equal(by["claws-mac-mini"].runs, 1);
+  assert.equal(by["pi5-dev"].agent, false);
+  assert.equal(lb.devices[0].name, "claws-mac-mini");
+});
