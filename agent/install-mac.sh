@@ -9,9 +9,21 @@ PY="$(ls /opt/homebrew/bin/python3 /usr/local/bin/python3 2>/dev/null | head -1 
 [ -n "$PY" ] || PY=/usr/bin/python3
 [ -f "$STATE/scout.env" ] || { echo "missing $STATE/scout.env (SCOUT_URL, SCOUT_TOKEN, A1_UUID)"; exit 1; }
 mkdir -p "$STATE/venvs" "$STATE/tmp" "$HOME/Library/LaunchAgents"
+# The hf CLI gets its own venv. Some Homebrew Pythons can't build one (pyexpat linked to an older system libexpat breaks
+# pip), so try each Python on the Mac until one gives a working pip; the agent itself only needs the standard library.
 if [ ! -x "$STATE/venvs/hf/bin/hf" ]; then
-  "$PY" -m venv "$STATE/venvs/hf"
-  "$STATE/venvs/hf/bin/pip" install -q --upgrade "huggingface_hub[hf_xet]"
+  ok=""
+  for cand in "$PY" /opt/homebrew/bin/python3.1[0-9] /usr/local/bin/python3 /usr/bin/python3; do
+    [ -x "$cand" ] || continue
+    "$cand" -c "import pyexpat, venv" 2>/dev/null || { echo "skipping $cand (broken pyexpat)"; continue; }
+    rm -rf "$STATE/venvs/hf"
+    if "$cand" -m venv "$STATE/venvs/hf" >/dev/null 2>&1 && "$STATE/venvs/hf/bin/python" -m pip install -q --upgrade "huggingface_hub[hf_xet]"; then
+      ok="$cand"; break
+    fi
+    echo "venv with $cand failed, trying the next Python"
+  done
+  [ -n "$ok" ] || { echo "no Python on this Mac could build the hf venv"; exit 1; }
+  echo "hf CLI installed with $ok"
 fi
 PATHS="$STATE/venvs/hf/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 for name in heartbeat mount weekly; do
