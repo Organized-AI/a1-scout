@@ -781,11 +781,16 @@ async function api(req, env, url) {
       if (body.kind === "presence") {
         // Each Mac posts its own presence. "presence" is the active one: the Mac that has the A1 mounted, else the one it's
         // attached to, else the most recent. Requests from the dashboard go only to the active Mac.
-        const m = typeof body.machine === "string" && /^[\w-]{1,40}$/.test(body.machine) ? body.machine : "mac";
-        const mine = { ...body, machine: m, at: now() };
+        // Keyed by host: two Macs of the same model share a machine id (the bench's hardware class) but not a host.
+        const ok = v => typeof v === "string" && /^[\w-]{1,40}$/.test(v);
+        const m = ok(body.host) ? body.host : ok(body.machine) ? body.machine : "mac";
+        const mine = { ...body, host: m, hw: ok(body.machine) ? body.machine : null, machine: m, at: now() };
         await kvSet(env, `presence:${m}`, mine);
         const index = (await kvGet(env, "machines")) || {};
         index[m] = { label: String(body.machine_label || m).slice(0, 80), at: mine.at };
+        // Migration: before host ids, this Mac was keyed by its hardware id; drop that entry. Forget Macs silent for 30 days.
+        for (const [k, v] of Object.entries(index))
+          if ((k !== m && k === mine.hw && v.label === index[m].label) || Date.now() - Date.parse(v.at) > 30 * 864e5) delete index[k];
         await kvSet(env, "machines", index);
         const all = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
         const active = activePresence(all);

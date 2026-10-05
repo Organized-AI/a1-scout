@@ -53,3 +53,13 @@ test("a stale Mac never outranks a fresh one", () => {
   const old = new Date(Date.now() - 10 * 60e3).toISOString(), now = new Date().toISOString();
   assert.equal(activePresence([{ machine: "m1", present: true, at: old }, { machine: "m4", present: false, at: now }]).machine, "m4");
 });
+
+test("two Macs of the same model are kept apart by host", async () => {
+  const { env } = fakeEnv();
+  await call(env, "/api/activity", { kind: "presence", host: "jordans-mac-mini", machine: "m4", machine_label: "Jordan's Mac mini · M4 16 GB", present: false });
+  await call(env, "/api/activity", { kind: "presence", host: "claws-mac-mini", machine: "m4", machine_label: "Claw's Mac mini · M4 16 GB", present: true, attached: true });
+  const a = await call(env, "/api/activity");
+  assert.equal(a.machines.length, 2);
+  assert.equal(a.machines[0].machine, "claws-mac-mini");
+  assert.equal(a.presence.hw, "m4");
+});
