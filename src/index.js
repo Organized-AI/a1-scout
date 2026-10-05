@@ -138,12 +138,14 @@ async function tailnetDevices(env, benchMachines = []) {
   const index = (await kvGet(env, "machines")) || {};
   const agents = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
   const runs = Object.fromEntries(benchMachines.map(m => [m.machine, m.n]));
-  const byTs = Object.fromEntries(agents.filter(a => a.ts_name).map(a => [a.ts_name, a]));
+  // join on the Tailnet name; an agent that couldn't read Tailscale (App Store build, no CLI) joins on its host id
+  const tsOf = a => a.ts_name || a.machine;
+  const byTs = Object.fromEntries(agents.map(a => [tsOf(a), a]));
   const out = tn.map(d => { const a = byTs[d.name];
     return { name: d.name, label: a ? String(a.machine_label || d.label).split(" · ")[0] : d.label, os: d.os, online: d.online || isFresh(a),
              agent: !!a, hw: a?.hw || null, hw_label: a ? String(a.machine_label || "").split(" · ")[1] || null : null, runs: a?.hw ? runs[a.hw] || 0 : 0 }; });
-  for (const a of agents) if (!a.ts_name || !tn.some(d => d.name === a.ts_name))
-    out.push({ name: a.ts_name || a.machine, label: String(a.machine_label || a.machine).split(" · ")[0], os: "", online: isFresh(a), agent: true,
+  for (const a of agents) if (!tn.some(d => d.name === tsOf(a)))
+    out.push({ name: tsOf(a), label: String(a.machine_label || a.machine).split(" · ")[0], os: "", online: isFresh(a), agent: true,
                hw: a.hw || null, hw_label: String(a.machine_label || "").split(" · ")[1] || null, runs: a.hw ? runs[a.hw] || 0 : 0 });
   const rank = d => (d.runs ? 4 : 0) + (d.agent ? 2 : 0) + (d.online ? 1 : 0);
   return out.sort((x, y) => rank(y) - rank(x) || x.label.localeCompare(y.label));
