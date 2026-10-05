@@ -444,7 +444,7 @@
       <section class="lab-panel">
         <div class="lab-h"><span class="lab-kick">Papers behind this stack</span></div>
         ${P.length ? `<ul class="lab-papers">${P.map(p => `<li><a href="https://arxiv.org/abs/${esc(p.repo)}" target="_blank" rel="noopener">${esc(p.title || p.repo)}</a><small>${esc(p.repo)} · ${p.status === "stashed" ? "on the A1" : p.status}</small></li>`).join("")}</ul>`
-          : `<p class="lab-mut">No scouted papers match this job yet. Adding arXiv papers by ID is Phase 1 of the Lab plan.</p>`}
+          : `<p class="lab-mut">No scouted papers match this job yet. Adding arXiv papers by ID is on the plan.</p>`}
       </section>
     </div>`;
   }

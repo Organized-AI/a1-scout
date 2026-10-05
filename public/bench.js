@@ -95,7 +95,7 @@
         <span class="bn-cell" role="cell" data-label="Load"><em>${r.load_s != null ? r.load_s.toFixed(1) + " s" : "—"}</em></span>
         <span class="bn-cell" role="cell" data-label="Elo"><em>${r.elo ?? "—"}</em><small>${r.battles ? `${r.battles} battle${r.battles > 1 ? "s" : ""}` : "no battles"}</small></span>
       </div>`).join("")}</div>
-      <p class="bn-note">${SUITES[suite]?.speed === "q/s" ? "Latest run per model. Score is the mean probability on the right answers; speed is questions per second and the per-change time is the median for one change with all its questions. Peak memory is the runner process's high-water mark." : "Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark."}</p>`;
+      <p class="bn-note">${SUITES[suite]?.speed === "q/s" ? "Latest run per model. Score is the mean probability on the right answers; speed is questions per second, and the time per change or task is the median for one request with all its questions. Peak memory is the runner process's high-water mark." : "Latest run per model. Score is the mean task score; speed and first token are medians over the suite's tasks, greedy decoding, thinking off. Peak memory is the runner process's high-water mark."}</p>`;
   }
 
   function battleHtml() {
