@@ -404,6 +404,12 @@ def machine_id(env=None, chip=None, mem=None):
     env = env or {}
     if env.get("BENCH_MACHINE"):
         return env["BENCH_MACHINE"]
+    if chip is None and sys.platform.startswith("linux"):
+        try:
+            chip = Path("/proc/device-tree/model").read_text().strip("\x00").strip()
+        except Exception:
+            chip = os.uname().machine
+        mem = int(re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text()).group(1)) * 1024
     if chip is None:
         chip = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
         mem = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout.strip() or 0)

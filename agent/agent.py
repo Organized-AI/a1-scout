@@ -36,6 +36,7 @@ def load_env():
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
             env[k.strip()] = v.strip().strip('"')
+    env["_explicit"] = ",".join(env)
     env.setdefault("A1_MOUNT", "/Volumes/A1")
     env.setdefault("RUN_CAP_GB", "60")
     env.setdefault("FREE_FLOOR_GB", "150")
@@ -48,8 +49,51 @@ def load_env():
 
 
 ENV = load_env()
+# macOS finds the A1 at A1_MOUNT by its volume UUID (diskutil). Linux (a Raspberry Pi, say) has no diskutil and
+# names the same exFAT volume by a short serial, so it finds the A1 by label (A1_LABEL, default A1) or by
+# A1_UUID_LINUX through lsblk, wherever udisks mounted it (/media/<user>/A1).
+LINUX = sys.platform.startswith("linux")
+
+
+def lsblk_a1():
+    """The A1's block device on Linux: {path, uuid, label, mount} or None."""
+    try:
+        r = subprocess.run(["lsblk", "-J", "-o", "PATH,LABEL,UUID,FSTYPE,MOUNTPOINT"], capture_output=True, text=True, timeout=20)
+        devs, out = json.loads(r.stdout or "{}").get("blockdevices", []), []
+        def walk(ds):
+            for d in ds:
+                out.append(d); walk(d.get("children") or [])
+        walk(devs)
+    except Exception:
+        return None
+    want_uuid, want_label = ENV.get("A1_UUID_LINUX"), ENV.get("A1_LABEL", "A1")
+    for d in out:
+        if (want_uuid and d.get("uuid") == want_uuid) or (not want_uuid and d.get("label") == want_label):
+            return {"path": d.get("path"), "uuid": d.get("uuid"), "label": d.get("label"), "mount": d.get("mountpoint")}
+    return None
+
+
+if LINUX and ("A1_MOUNT" not in ENV.get("_explicit", "").split(",") or ENV["A1_MOUNT"].startswith("/Volumes/")):   # a Mac path copied over
+    _dev = lsblk_a1()
+    ENV["A1_MOUNT"] = (_dev or {}).get("mount") or ENV.get("A1_MOUNT_LINUX") or f"/media/{os.environ.get('USER', 'pi')}/A1"
 MOUNT = Path(ENV["A1_MOUNT"])
 STASH = MOUNT / "stash"
+
+
+def keep_awake(args):
+    """Wrap a long command so the machine doesn't sleep under it."""
+    if LINUX:
+        return (["systemd-inhibit", "--what=sleep:idle", "--why=A1 Scout download", *args] if shutil.which("systemd-inhibit") else list(args))
+    return ["caffeinate", "-i", *args]
+
+
+def ram_bytes():
+    if LINUX:
+        try:
+            return int(re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text()).group(1)) * 1024
+        except Exception:
+            return 0
+    return int((sh(["sysctl", "-n", "hw.memsize"]).stdout or "0").strip() or 0)
 
 
 def log(msg):
@@ -72,10 +116,17 @@ def machine():
     if not _MACHINE:
         import bench
         mid = bench.machine_id(ENV)
-        chip = sh(["sysctl", "-n", "machdep.cpu.brand_string"]).stdout.strip().replace("Apple ", "")
-        gib = round(int(sh(["sysctl", "-n", "hw.memsize"]).stdout.strip() or 0) / 2 ** 30)
-        name = (sh(["scutil", "--get", "ComputerName"]).stdout.strip() or os.uname().nodename.split(".")[0])
-        local = sh(["scutil", "--get", "LocalHostName"]).stdout.strip() or os.uname().nodename.split(".")[0]
+        gib = round(ram_bytes() / 2 ** 30)
+        if LINUX:
+            try:
+                chip = Path("/proc/device-tree/model").read_text().strip("\x00").strip()
+            except Exception:
+                chip = os.uname().machine
+            name = local = os.uname().nodename.split(".")[0]
+        else:
+            chip = sh(["sysctl", "-n", "machdep.cpu.brand_string"]).stdout.strip().replace("Apple ", "")
+            name = (sh(["scutil", "--get", "ComputerName"]).stdout.strip() or os.uname().nodename.split(".")[0])
+            local = sh(["scutil", "--get", "LocalHostName"]).stdout.strip() or os.uname().nodename.split(".")[0]
         _MACHINE.extend([mid, f"{name} · {chip} {gib} GB", re.sub(r"[^a-z0-9-]+", "-", local.lower()).strip("-")[:40] or mid])
     return _MACHINE[0], _MACHINE[1]
 
@@ -88,6 +139,10 @@ def host_id():
 
 def notify(title, text):
     t = text.replace('"', "'")[:240]
+    if LINUX:
+        if shutil.which("notify-send"):
+            sh(["notify-send", title, t])
+        return
     sh(["osascript", "-e", f'display notification "{t}" with title "{title}" sound name "Glass"'])
 
 
@@ -150,8 +205,48 @@ def save_state(s):
     STATE.write_text(json.dumps(s, indent=2))
 
 
+def linux_plug_watch(present):
+    """Linux has no StartOnMount: the heartbeat mounts the A1 when it's connected (unless it was ejected from the
+    dashboard) and starts a run when it goes from absent to present. Returns whether it is present now."""
+    global MOUNT, STASH
+    st = load_state()
+    dev = lsblk_a1()
+    if not dev:
+        st.pop("user_ejected", None)                     # unplugged: the next plug-in mounts again
+    elif not present and not dev.get("mount") and not st.get("user_ejected") and shutil.which("udisksctl"):
+        r = sh(["udisksctl", "mount", "-b", dev["path"]], timeout=60)
+        log(f"A1 connected: {'mounted' if r.returncode == 0 else 'mount failed ' + (r.stderr or r.stdout or '')[-160:]}")
+        dev = lsblk_a1()
+    if dev and dev.get("mount"):
+        MOUNT, STASH = Path(dev["mount"]), Path(dev["mount"]) / "stash"
+        present = a1_present()
+    if present and not st.get("was_present"):
+        log(f"A1 present (plug-in); stash at {STASH}")
+        st["next_trigger"] = "mount"; st["was_present"] = True; save_state(st)
+        start_mount_run()
+        return present
+    st["was_present"] = bool(present); save_state(st)
+    return present
+
+
+def start_mount_run():
+    """Start the same run a plug-in starts. macOS: kick the mount LaunchAgent. Linux: a detached agent.py mount."""
+    if LINUX:
+        try:
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "mount"], start_new_session=True,
+                             stdout=open(STATE_DIR / "scout-launchd.log", "a"), stderr=subprocess.STDOUT)
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+    r = sh(["launchctl", "kickstart", f"gui/{os.getuid()}/com.organizedai.a1-scout.mount"], timeout=30)
+    return r.returncode == 0, (r.stderr or "")
+
+
 def a1_attached():
     """Connected but not mounted (ejected from the dashboard): diskutil still finds the volume by its UUID."""
+    if LINUX:
+        d = lsblk_a1()
+        return bool(d and not d.get("mount"))
     out = sh(["diskutil", "info", ENV["A1_UUID"]]).stdout
     return bool(re.search(r"Mounted:\s+No\b", out))
 
@@ -165,7 +260,9 @@ def drive_request(dr, present, busy):
             return ack("absent", "A1 wasn't mounted")
         if busy:
             return ack("busy", "a run is going")
-        r = sh(["diskutil", "unmount", str(MOUNT)], timeout=60)
+        r = sh(["udisksctl", "unmount", "-b", (lsblk_a1() or {}).get("path") or ""] if LINUX else ["diskutil", "unmount", str(MOUNT)], timeout=60)
+        if LINUX and r.returncode == 0:
+            st = load_state(); st["user_ejected"] = True; save_state(st)       # don't auto-mount it straight back
         ok = r.returncode == 0 and not a1_present()
         log(f"eject requested from the dashboard: {'unmounted' if ok else 'failed ' + (r.stderr or r.stdout or '')[-200:]}")
         return ack("done" if ok else "failed", None if ok else (r.stderr or r.stdout or "")[-200:].strip())
@@ -174,7 +271,9 @@ def drive_request(dr, present, busy):
             return ack("done", "already mounted")
         if not a1_attached():
             return ack("absent", "A1 not connected")
-        r = sh(["diskutil", "mount", ENV["A1_UUID"]], timeout=60)
+        if LINUX:
+            st = load_state(); st.pop("user_ejected", None); save_state(st)
+        r = sh(["udisksctl", "mount", "-b", (lsblk_a1() or {}).get("path") or ""] if LINUX else ["diskutil", "mount", ENV["A1_UUID"]], timeout=60)
         ok = r.returncode == 0 and a1_present()
         log(f"mount requested from the dashboard: {'mounted' if ok else 'failed ' + (r.stderr or r.stdout or '')[-200:]}")
         return ack("done" if ok else "failed", None if ok else (r.stderr or r.stdout or "")[-200:].strip())
@@ -185,6 +284,9 @@ def a1_present():
     """True only for the real A1: mounted at the expected path with the expected volume UUID."""
     if not MOUNT.is_dir():
         return False
+    if LINUX:
+        d = lsblk_a1()
+        return bool(d and d.get("mount") and os.path.realpath(d["mount"]) == os.path.realpath(MOUNT) and STASH.is_dir())
     out = sh(["diskutil", "info", str(MOUNT)]).stdout
     m = re.search(r"Volume UUID:\s+([0-9A-F-]+)", out)
     return bool(m and m.group(1) == ENV["A1_UUID"] and STASH.is_dir())
@@ -451,7 +553,7 @@ def build_catalog():
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "machine": os.uname().nodename,
         "drive": {"total": usage.total, "free": usage.free, "stash": stash_bytes, "outside_stash": max(0, usage.used - stash_bytes)},
         "mount": str(MOUNT), "stash_root": str(STASH), "venvs": venvs, "categories": cats,
-        "ram_bytes": int((sh(["sysctl", "-n", "hw.memsize"]).stdout or "0").strip() or 0),
+        "ram_bytes": ram_bytes(),
     }
 
 
@@ -534,7 +636,7 @@ def disk_size(p: Path):
     if not p.exists():
         return 0
     try:
-        r = subprocess.run(["du", "-skA", str(p)], capture_output=True, text=True, timeout=300)
+        r = subprocess.run(["du", "-sk", "--apparent-size", str(p)] if LINUX else ["du", "-skA", str(p)], capture_output=True, text=True, timeout=300)
         if r.returncode == 0 and r.stdout:
             return int(r.stdout.split()[0]) * 1024
     except Exception:
@@ -980,7 +1082,7 @@ def fetch_approved(spent=0):
                 if tmp.exists() and inside_stash(tmp):
                     tmp.unlink()  # our own partial file only
         else:
-            args = ["caffeinate", "-i", "hf", "download", p["repo"], "--repo-type", p["kind"], "--local-dir", str(dest)]
+            args = keep_awake(["hf", "download", p["repo"], "--repo-type", p["kind"], "--local-dir", str(dest)])
             if p.get("sha"):
                 args += ["--revision", p["sha"]]
             for g in include_of(p):
@@ -1254,7 +1356,7 @@ def apply_update(pl, report, spent, cap, floor):
     ACT.setdefault("dl_started_at", datetime.now(timezone.utc).isoformat(timespec="seconds"))
     activity(force=True, phase="Updating stashed items", current={"repo": pl["repo"], "kind": pl["kind"], "action": "Updating",
              "total_bytes": pl["total_bytes"], "done_bytes": walk_size(tmp)[0], "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
-    r = hf_download(["caffeinate", "-i", "hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)]
+    r = hf_download(keep_awake(["hf", "download", pl["repo"], "--repo-type", pl["kind"], "--revision", pl["new"], "--local-dir", str(tmp)])
                     + [a for g in pl.get("include") or [] for a in ("--include", g)], tmp, pl["total_bytes"])
     if r.returncode != 0:
         log(f"  hf download failed: {(r.stderr or r.stdout)[-300:]}")
@@ -1444,8 +1546,7 @@ def license_heartbeat(resp, present, busy):
         log(f"license granted: {', '.join(newly)}")
         if present and not busy:
             s2 = load_state(); s2.pop("last_mount_run", None); s2["next_trigger"] = "license"; save_state(s2)
-            r = sh(["launchctl", "kickstart", f"gui/{os.getuid()}/com.organizedai.a1-scout.mount"], timeout=30)
-            started = r.returncode == 0
+            started = start_mount_run()[0]
         notify("A1 Scout", f"Access granted: {', '.join(x.split('/')[-1] for x in newly)} · "
                + ("downloading now" if started else "downloads on the next plug-in"))
     if asked:
@@ -1468,8 +1569,10 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "now"
     STATE_DIR.mkdir(exist_ok=True)
     if mode == "heartbeat":
-        # Every 2 minutes from launchd: tell the site whether the A1 is plugged in and whether a run is busy.
+        # Every minute (launchd on macOS, cron on Linux): tell the site whether the A1 is plugged in and whether a run is busy.
         present = a1_present()
+        if LINUX:
+            present = linux_plug_watch(present)
         busy = False
         with open(LOCK, "a") as probe:
             try:
@@ -1510,10 +1613,9 @@ def main():
                 api("/api/run-request/ack", "POST", {"state": "busy", "note": "a run was already going"})
             else:
                 st = load_state(); st.pop("last_mount_run", None); st["next_trigger"] = "dashboard"; save_state(st)
-                r = sh(["launchctl", "kickstart", f"gui/{os.getuid()}/com.organizedai.a1-scout.mount"], timeout=30)
-                log(f"run requested from the dashboard: kickstart {'ok' if r.returncode == 0 else 'failed ' + (r.stderr or '')[-160:]}")
-                api("/api/run-request/ack", "POST", {"state": "started" if r.returncode == 0 else "failed",
-                                                     "note": None if r.returncode == 0 else (r.stderr or "")[-200:]})
+                ok, err = start_mount_run()
+                log(f"run requested from the dashboard: {'started' if ok else 'failed ' + err[-160:]}")
+                api("/api/run-request/ack", "POST", {"state": "started" if ok else "failed", "note": None if ok else err[-200:]})
         license_heartbeat(resp, present, busy)
         return
     lock = open(LOCK, "w")

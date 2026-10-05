@@ -31,14 +31,14 @@ def age_s(iso, now=None):
 def hf_downloads(ps_text=None):
     """Running `hf download` processes: [{pid, repo, dest}]. caffeinate wrappers are skipped."""
     if ps_text is None:
-        ps_text = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+        ps_text = subprocess.run(["ps", "-eo", "pid=,args="] if sys.platform.startswith("linux") else ["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
     out = []
     for line in ps_text.splitlines():
         parts = line.strip().split(None, 1)
         if len(parts) < 2 or not parts[0].isdigit():
             continue
         cmd = parts[1]
-        if cmd.startswith("caffeinate") or not re.search(r"(?:^|/)hf download ", cmd):
+        if cmd.startswith(("caffeinate", "systemd-inhibit")) or not re.search(r"(?:^|/)hf download ", cmd):
             continue
         m = re.search(r"\bhf download (\S+)", cmd)
         d = re.search(r"--local-dir (\S+)", cmd)
@@ -49,7 +49,7 @@ def hf_downloads(ps_text=None):
 def disk_bytes(path):
     # Apparent size (-A), the same measure the agent reports: exFAT's 128 KB clusters make allocated size
     # run ~20% higher on folders of small files, which would look like a wrong bar when it isn't.
-    r = subprocess.run(["du", "-skA", path], capture_output=True, text=True)
+    r = subprocess.run(["du", "-sk", "--apparent-size", path] if sys.platform.startswith("linux") else ["du", "-skA", path], capture_output=True, text=True)
     return int(r.stdout.split()[0]) * 1024 if r.returncode == 0 and r.stdout else None
 
 
