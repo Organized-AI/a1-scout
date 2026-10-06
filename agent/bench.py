@@ -418,6 +418,9 @@ def machine_id(env=None, chip=None, mem=None):
         # the Lab's "m1" is the M1 Pro 16 GB
         if gib == g and (name == c or (c == "M1" and name.startswith("M1"))):
             return mid
+    pi = re.match(r"Raspberry Pi (\d+)", name)
+    if pi:  # "Raspberry Pi 5 Model B Rev 1.1" -> pi5-16gb
+        return f"pi{pi.group(1)}-{gib}gb"
     return re.sub(r"[^a-z0-9]+", "-", f"{name}-{gib}gb".lower()).strip("-")
 
 

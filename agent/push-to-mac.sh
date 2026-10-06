@@ -7,7 +7,7 @@ set -eu
 TARGET="${1:?usage: push-to-mac.sh user@host}"
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 ssh -o BatchMode=yes "$TARGET" 'mkdir -p ~/nvme-stash/a1-scout ~/.nvme-stash && chmod 700 ~/.nvme-stash'
-COPYFILE_DISABLE=1 tar -C "$REPO" --exclude node_modules --exclude __pycache__ --exclude .wrangler -cf - . | ssh -o BatchMode=yes "$TARGET" 'tar -C ~/nvme-stash/a1-scout -xf -'
+COPYFILE_DISABLE=1 tar -C "$REPO" --no-xattrs --exclude node_modules --exclude __pycache__ --exclude .wrangler -cf - . | ssh -o BatchMode=yes "$TARGET" 'tar -C ~/nvme-stash/a1-scout -xf -'
 if ssh -o BatchMode=yes "$TARGET" 'test -f ~/.nvme-stash/scout.env'; then
   echo "scout.env already on $TARGET, kept"
 else

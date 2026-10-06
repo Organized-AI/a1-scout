@@ -203,6 +203,7 @@ class Machine(unittest.TestCase):
         self.assertEqual(B.machine_id({}, "Apple M1 Pro", 16 * 2 ** 30), "m1")
         self.assertEqual(B.machine_id({}, "Apple M4", 16 * 2 ** 30), "m4")
         self.assertEqual(B.machine_id({}, "Apple M5 Pro", 64 * 2 ** 30), "m5p")
+        self.assertEqual(B.machine_id({}, "Raspberry Pi 5 Model B Rev 1.1", 16 * 2 ** 30), "pi5-16gb")
         self.assertEqual(B.machine_id({}, "Apple M3 Max", 36 * 2 ** 30), "m3-max-36gb")
         self.assertEqual(B.machine_id({"BENCH_MACHINE": "studio"}, "Apple M1 Pro", 16 * 2 ** 30), "studio")
 
