@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BANKS = ROOT / "tests" / "bench"
 RUNNER = Path(__file__).resolve().parent / "bench_runner.py"
 DECISION_RUNNER = Path(__file__).resolve().parent / "decision_runner.py"
-SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select"]
-DECISION_SUITES = {"gtm-gate", "skill-select"}           # typed questions to decision models (decision_runner.py), not chat prompts
+SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select", "stape-select"]
+DECISION_SUITES = {"gtm-gate", "skill-select", "stape-select"}           # typed questions to decision models (decision_runner.py), not chat prompts
 TYPES = {"exact", "sql_result", "json_schema", "click_in_box", "decision"}
 MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32, "decision": 0}
 # Chat models only: embedders, rerankers, routers, decision heads, OCR and speech models answer other questions.

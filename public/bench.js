@@ -21,6 +21,8 @@
   };
   SUITES["skill-select"] = { label: "Skill selection", speed: "q/s", first: "Per task",
     blurb: "Skill Loop's router: a task plus 30 installed skills (name and description only), one yes/no per skill. Scored with the jev-gateway rule: pick at 0.75 or more, shortlist three at 0.40, never pick when nothing fits. A shortlist earns half; a wrong or unneeded pick earns nothing." };
+  SUITES["stape-select"] = { label: "Stape template selection", speed: "q/s", first: "Per job",
+    blurb: "A GTM job plus about 10 candidate Stape templates from a code shortlist (194 in the catalog), one yes/no per template. Same jev-gateway rule as skill selection. Today's keyword picker scores 0.29 (4 of 29 right) on this bank." };
   const unit = s => SUITES[s]?.speed || "tok/s", firstLabel = s => SUITES[s]?.first || "First token";
   // Lab machine ids; anything else shows as reported.
   const MACH = { m1: "M1 Pro 16GB", m4: "M4 16GB", m6: "M6 32GB", m5p: "M5 Pro 64GB" };

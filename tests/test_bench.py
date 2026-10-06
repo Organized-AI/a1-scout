@@ -90,7 +90,7 @@ class Banks(unittest.TestCase):
 
 class Sanitized(unittest.TestCase):
     """Synthetic data only: example domains, TEST tag IDs, 555-01xx phones, example.com email."""
-    PUBLIC_INFRA = {"www.googletagmanager.com", "schema.org"}
+    PUBLIC_INFRA = {"www.googletagmanager.com", "schema.org", "customer.io"}  # customer.io: a Stape template name
 
     def text(self):
         return "\n".join(p.read_text() for p in BANK_FILES)
@@ -542,6 +542,31 @@ class DecisionBench(unittest.TestCase):
         self.assertEqual(set(found), {"clef-flash-4bit", "kev-0.8b", "kev-4b-mlx-8bit"})   # kev-9b has no base on the drive
         self.assertNotIn(orphan.name, found)
         self.assertEqual(B.model_kind(kev, "gtm-gate"), "kev")
+
+
+class StapeSelectBench(unittest.TestCase):
+    """stape-select: Stape template picks, same rule and scoring as skill-select."""
+
+    def test_bank(self):
+        tasks = B.load_bank("stape-select")
+        self.assertGreaterEqual(len(tasks), 25)
+        self.assertGreaterEqual([t["select_gold"] for t in tasks].count(None), 3)
+        for t in tasks:
+            self.assertLessEqual(len(t["questions"]), 10)
+            if t["select_gold"]:
+                self.assertIn(t["select_gold"], t["questions"])
+
+    def test_perfect_and_keyword_answers(self):
+        for t in B.load_bank("stape-select"):
+            perfect = {k: {"noul": 0.95 if k == t["select_gold"] else 0.02} for k in t["questions"]}
+            self.assertEqual(B.score(t, json.dumps(perfect))[:2], (True, 1.0), t["id"])
+
+    def test_bank_is_rebuilt_from_the_generator(self):
+        import subprocess
+        here = Path(__file__).resolve().parent / "bench"
+        before = (here / "stape-select.jsonl").read_text()
+        subprocess.run([sys.executable, str(here / "make_stape_select.py")], check=True, capture_output=True)
+        self.assertEqual((here / "stape-select.jsonl").read_text(), before)
 
 
 class SkillSelectBench(unittest.TestCase):
