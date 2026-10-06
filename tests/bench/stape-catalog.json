@@ -1,0 +1,3235 @@
+[
+  {
+    "name": "activecampaign-tag",
+    "job": "ActiveCampaign Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/activecampaign-tag",
+    "keywords": [
+      "activecampaign",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "adform-tag",
+    "job": "Adform tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/adform-tag",
+    "keywords": [
+      "adform",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "admitad-tag",
+    "job": "Admitad tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/admitad-tag",
+    "keywords": [
+      "admitad",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "adroll-tag",
+    "job": "AdRoll tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/adroll-tag",
+    "keywords": [
+      "adroll",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "adtraction-tag",
+    "job": "Adtraction tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/adtraction-tag",
+    "keywords": [
+      "adtraction",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "affiliate-conversion-tag",
+    "job": "Affiliate Conversion Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/affiliate-conversion-tag",
+    "keywords": [
+      "affiliate",
+      "conversion",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "affiliate-future-server-tag",
+    "job": "Affiliate Future Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/affiliate-future-server-tag",
+    "keywords": [
+      "affiliate",
+      "for",
+      "future",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "amazon-tag",
+    "job": "Amazon Ads Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/amazon-tag",
+    "keywords": [
+      "ads",
+      "amazon",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "attentive-tag",
+    "job": "Attentive Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/attentive-tag",
+    "keywords": [
+      "attentive",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "awin-conversion-api-tag",
+    "job": "Awin Conversion API Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/awin-conversion-api-tag",
+    "keywords": [
+      "api",
+      "awin",
+      "conversion",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "awin-tag",
+    "job": "Awin Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/awin-tag",
+    "keywords": [
+      "awin",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "axon-tag",
+    "job": "Axon Tag for Server Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/axon-tag",
+    "keywords": [
+      "axon",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "braze-server-tag",
+    "job": "Braze tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/braze-server-tag",
+    "keywords": [
+      "braze",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "brevo-tag",
+    "job": "Brevo Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/brevo-tag",
+    "keywords": [
+      "brevo",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "channel-flow-tag",
+    "job": "Stores customer journey across multiple channels inside cookies and gives the ability to easily access first/last channel source.",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/channel-flow-tag",
+    "keywords": [
+      "ability",
+      "access",
+      "across",
+      "and",
+      "channel",
+      "channels",
+      "cookies",
+      "customer",
+      "easily",
+      "first",
+      "flow",
+      "gives",
+      "inside",
+      "journey",
+      "last",
+      "multiple",
+      "source",
+      "stores",
+      "tag",
+      "the",
+      "to"
+    ]
+  },
+  {
+    "name": "cj-tag",
+    "job": "CJ Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/cj-tag",
+    "keywords": [
+      "cj",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "cookie-extender-tag",
+    "job": "Cookie Extender Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/cookie-extender-tag",
+    "keywords": [
+      "cookie",
+      "extender",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "cookie-monster",
+    "job": "Cookie Monster - Custom Tag Template (Server) for Google Tag Manager.",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/cookie-monster",
+    "keywords": [
+      "cookie",
+      "custom",
+      "for",
+      "google",
+      "manager",
+      "monster",
+      "server",
+      "tag",
+      "template"
+    ]
+  },
+  {
+    "name": "cookie-restore-tag",
+    "job": "Cookie ReStore Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/cookie-restore-tag",
+    "keywords": [
+      "cookie",
+      "for",
+      "google",
+      "manager",
+      "restore",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "cordial-tag",
+    "job": "Cordial Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/cordial-tag",
+    "keywords": [
+      "cordial",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "customer-tag",
+    "job": "Customer.io Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/customer-tag",
+    "keywords": [
+      "customer",
+      "for",
+      "google",
+      "io",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "effinity-tag",
+    "job": "Effinity Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/effinity-tag",
+    "keywords": [
+      "effinity",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "event-generator-tag",
+    "job": "Event Generator Tag for Google Tag Manager Server container",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/event-generator-tag",
+    "keywords": [
+      "container",
+      "event",
+      "for",
+      "generator",
+      "google",
+      "manager",
+      "server",
+      "tag"
+    ]
+  },
+  {
+    "name": "everflow-tag",
+    "job": "Everflow Tag for Server Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/everflow-tag",
+    "keywords": [
+      "everflow",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "exoclick-tag",
+    "job": "ExoClick Tag for Server Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/exoclick-tag",
+    "keywords": [
+      "exoclick",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "facebook-leads-tag",
+    "job": "Facebook Leads API Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/facebook-leads-tag",
+    "keywords": [
+      "api",
+      "facebook",
+      "for",
+      "google",
+      "leads",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "facebook-offline-conversion-tag",
+    "job": "Facebook Offline Conversion tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/facebook-offline-conversion-tag",
+    "keywords": [
+      "conversion",
+      "facebook",
+      "for",
+      "google",
+      "manager",
+      "offline",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "facebook-tag",
+    "job": "Facebook tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/facebook-tag",
+    "keywords": [
+      "facebook",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "firestore-request-delay-tag",
+    "job": "Firestore Request Delay Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/firestore-request-delay-tag",
+    "keywords": [
+      "delay",
+      "firestore",
+      "for",
+      "google",
+      "manager",
+      "request",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "firestore-writer-tag",
+    "job": "Firestore Writer tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/firestore-writer-tag",
+    "keywords": [
+      "firestore",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "writer"
+    ]
+  },
+  {
+    "name": "ga4-advanced-tag",
+    "job": "GA4 Advanced tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/ga4-advanced-tag",
+    "keywords": [
+      "advanced",
+      "for",
+      "ga4",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "gads-conversion-adjustments-tag",
+    "job": "Google Ads Conversion Adjustments tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/gads-conversion-adjustments-tag",
+    "keywords": [
+      "adjustments",
+      "ads",
+      "conversion",
+      "for",
+      "gads",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "gads-conversion-improver-tag",
+    "job": "Google Ads Conversion Improver tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/gads-conversion-improver-tag",
+    "keywords": [
+      "ads",
+      "conversion",
+      "for",
+      "gads",
+      "google",
+      "improver",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "gads-offline-conversion-tag",
+    "job": "Google Ads Offline Conversion tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/gads-offline-conversion-tag",
+    "keywords": [
+      "ads",
+      "conversion",
+      "for",
+      "gads",
+      "google",
+      "manager",
+      "offline",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "gohighlevel-tag",
+    "job": "Go HighLevel tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/gohighlevel-tag",
+    "keywords": [
+      "for",
+      "go",
+      "gohighlevel",
+      "google",
+      "highlevel",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "google-conversion-events-tag",
+    "job": "Google Data Manager API Conversion Events Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/google-conversion-events-tag",
+    "keywords": [
+      "api",
+      "conversion",
+      "data",
+      "events",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "google-customer-match-tag",
+    "job": "Google Data Manager API Customer Match Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/google-customer-match-tag",
+    "keywords": [
+      "api",
+      "customer",
+      "data",
+      "for",
+      "google",
+      "manager",
+      "match",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "hubspot-tag",
+    "job": "HubSpot Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/hubspot-tag",
+    "keywords": [
+      "for",
+      "google",
+      "hubspot",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "impact-tag",
+    "job": "Impact Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/impact-tag",
+    "keywords": [
+      "for",
+      "google",
+      "impact",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "json-http-request-tag",
+    "job": "JSON HTTP Request Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/json-http-request-tag",
+    "keywords": [
+      "for",
+      "google",
+      "http",
+      "json",
+      "manager",
+      "request",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "json-response-tag",
+    "job": "JSON Response tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/json-response-tag",
+    "keywords": [
+      "for",
+      "google",
+      "json",
+      "manager",
+      "response",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "kit-tag",
+    "job": "Kit tag for Google Tag Manager Server Side - orders to Kit Data API, contacts via Kit Email API",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/kit-tag",
+    "keywords": [
+      "api",
+      "contacts",
+      "data",
+      "email",
+      "for",
+      "google",
+      "kit",
+      "manager",
+      "orders",
+      "server",
+      "side",
+      "tag",
+      "to",
+      "via"
+    ]
+  },
+  {
+    "name": "klaviyo-identify-tag",
+    "job": "Klaviyo Identify tag for Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/klaviyo-identify-tag",
+    "keywords": [
+      "for",
+      "google",
+      "identify",
+      "klaviyo",
+      "manager",
+      "tag"
+    ]
+  },
+  {
+    "name": "klaviyo-tag",
+    "job": "Klaviyo Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/klaviyo-tag",
+    "keywords": [
+      "for",
+      "google",
+      "klaviyo",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "line-yahoo-search-ads-tag",
+    "job": "Line Yahoo Conversion API Tag (Search Ads) for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/line-yahoo-search-ads-tag",
+    "keywords": [
+      "ads",
+      "api",
+      "conversion",
+      "for",
+      "google",
+      "line",
+      "manager",
+      "search",
+      "server",
+      "side",
+      "tag",
+      "yahoo"
+    ]
+  },
+  {
+    "name": "line-yahoo-tag",
+    "job": "Line Yahoo Conversion API Tag (Display Ads) for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/line-yahoo-tag",
+    "keywords": [
+      "ads",
+      "api",
+      "conversion",
+      "display",
+      "for",
+      "google",
+      "line",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "yahoo"
+    ]
+  },
+  {
+    "name": "linkedin-tag",
+    "job": "LinkedIn Conversion API Tag for Google Tag Manager Server Container",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/linkedin-tag",
+    "keywords": [
+      "api",
+      "container",
+      "conversion",
+      "for",
+      "google",
+      "linkedin",
+      "manager",
+      "server",
+      "tag"
+    ]
+  },
+  {
+    "name": "listrak-tag",
+    "job": "Listrak Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/listrak-tag",
+    "keywords": [
+      "for",
+      "google",
+      "listrak",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "logger-tag",
+    "job": "Logger tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/logger-tag",
+    "keywords": [
+      "for",
+      "google",
+      "logger",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "mailchimp-tag",
+    "job": "Mailchimp Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/mailchimp-tag",
+    "keywords": [
+      "for",
+      "google",
+      "mailchimp",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "mailgun-tag",
+    "job": "Mailgun Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/mailgun-tag",
+    "keywords": [
+      "for",
+      "google",
+      "mailgun",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "matomo-advanced-tag",
+    "job": "Matomo Advanced tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/matomo-advanced-tag",
+    "keywords": [
+      "advanced",
+      "for",
+      "google",
+      "manager",
+      "matomo",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "meta-custom-audiences-tag",
+    "job": "Meta/Facebook Custom Audiences Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/meta-custom-audiences-tag",
+    "keywords": [
+      "audiences",
+      "custom",
+      "facebook",
+      "for",
+      "google",
+      "manager",
+      "meta",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "mgid-tag",
+    "job": "MGID tag for Google Tag Manager Server Container",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/mgid-tag",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "manager",
+      "mgid",
+      "server",
+      "tag"
+    ]
+  },
+  {
+    "name": "microsoft-ads-offline-conversion-tag",
+    "job": "Microsoft Advertising Offline Conversion tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/microsoft-ads-offline-conversion-tag",
+    "keywords": [
+      "ads",
+      "advertising",
+      "conversion",
+      "for",
+      "google",
+      "manager",
+      "microsoft",
+      "offline",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "microsoft-capi-tag",
+    "job": "Microsoft UET Conversion API Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/microsoft-capi-tag",
+    "keywords": [
+      "api",
+      "capi",
+      "conversion",
+      "for",
+      "google",
+      "manager",
+      "microsoft",
+      "server",
+      "side",
+      "tag",
+      "uet"
+    ]
+  },
+  {
+    "name": "mixpanel-tag",
+    "job": "Mixpanel tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/mixpanel-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "mixpanel",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "nextdoor-tag",
+    "job": "Nextdoor tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/nextdoor-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "nextdoor",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "omnisend-tag",
+    "job": "Omnisend Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/omnisend-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "omnisend",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "openai-capi-tag",
+    "job": "OpenAI (ChatGPT) Conversions API Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/openai-capi-tag",
+    "keywords": [
+      "api",
+      "capi",
+      "chatgpt",
+      "conversions",
+      "for",
+      "google",
+      "manager",
+      "openai",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "outbrain-tag",
+    "job": "Outbrain tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/outbrain-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "outbrain",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "piano-tag",
+    "job": "Piano Analytics Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/piano-tag",
+    "keywords": [
+      "analytics",
+      "for",
+      "google",
+      "manager",
+      "piano",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "pinterest-capi-tag",
+    "job": "Pinterest tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/pinterest-capi-tag",
+    "keywords": [
+      "capi",
+      "for",
+      "google",
+      "manager",
+      "pinterest",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "pipedrive-tag",
+    "job": "Pipedrive tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/pipedrive-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "pipedrive",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "pirsch-tag-server",
+    "job": "Pirsch Analytics - Custom Tag Template for Server-Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/pirsch-tag-server",
+    "keywords": [
+      "analytics",
+      "custom",
+      "for",
+      "google",
+      "manager",
+      "pirsch",
+      "server",
+      "side",
+      "tag",
+      "template"
+    ]
+  },
+  {
+    "name": "piwik-pro-tag",
+    "job": "Piwik Pro tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/piwik-pro-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "piwik",
+      "pro",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "plausible-analytics-tag-server",
+    "job": "Plausible Analytics - Custom Tag Template for Server-Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/plausible-analytics-tag-server",
+    "keywords": [
+      "analytics",
+      "custom",
+      "for",
+      "google",
+      "manager",
+      "plausible",
+      "server",
+      "side",
+      "tag",
+      "template"
+    ]
+  },
+  {
+    "name": "postscript-tag",
+    "job": "Postscript Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/postscript-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "postscript",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "pub-sub-publish-tag",
+    "job": "Pub/Sub Publish tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/pub-sub-publish-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "pub",
+      "publish",
+      "server",
+      "side",
+      "sub",
+      "tag"
+    ]
+  },
+  {
+    "name": "quora-tag",
+    "job": "Quora tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/quora-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "quora",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "rakuten-tag",
+    "job": "Rakuten tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/rakuten-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "rakuten",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "reddit-tag",
+    "job": "Reddit tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/reddit-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "reddit",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "refersion-tag",
+    "job": "Refersion tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/refersion-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "refersion",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "revcontent-tag",
+    "job": "RevContent Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/revcontent-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "revcontent",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "roq-ad-tag",
+    "job": "Roq.ad tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/roq-ad-tag",
+    "keywords": [
+      "ad",
+      "for",
+      "google",
+      "manager",
+      "roq",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "rtb-house-tag",
+    "job": "RTB House Conversions API for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/rtb-house-tag",
+    "keywords": [
+      "api",
+      "conversions",
+      "for",
+      "google",
+      "house",
+      "manager",
+      "rtb",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "salesforce-tag",
+    "job": "Salesforce tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/salesforce-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "salesforce",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "sendgrid-tag",
+    "job": "Sendgrid Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/sendgrid-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "sendgrid",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "sendlane-tag",
+    "job": "Sendlane tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/sendlane-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "sendlane",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "server-side-template-for-gtm-v2",
+    "job": "Server side tag template for Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/server-side-template-for-gtm-v2",
+    "keywords": [
+      "for",
+      "google",
+      "gtm",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "template",
+      "v2"
+    ]
+  },
+  {
+    "name": "shareasale-tag",
+    "job": "ShareASale tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/shareasale-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "shareasale",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "slack-notification-tag",
+    "job": "Slack Notification Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/slack-notification-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "notification",
+      "server",
+      "side",
+      "slack",
+      "tag"
+    ]
+  },
+  {
+    "name": "snapchat-tag",
+    "job": "Snapchat tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/snapchat-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "snapchat",
+      "tag"
+    ]
+  },
+  {
+    "name": "snowplow-gtm-server-side-tag",
+    "job": "A Google Tag Manager Server-side Tag template for sending events to a Snowplow Collector",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/snowplow-gtm-server-side-tag",
+    "keywords": [
+      "a",
+      "collector",
+      "events",
+      "for",
+      "google",
+      "gtm",
+      "manager",
+      "sending",
+      "server",
+      "side",
+      "snowplow",
+      "tag",
+      "template",
+      "to"
+    ]
+  },
+  {
+    "name": "spectacle-tag",
+    "job": "Spectacle Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/spectacle-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "spectacle",
+      "tag"
+    ]
+  },
+  {
+    "name": "spotify-tag",
+    "job": "Spotify Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/spotify-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "spotify",
+      "tag"
+    ]
+  },
+  {
+    "name": "spreadsheet-tag",
+    "job": "Google Sheets tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/spreadsheet-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "sheets",
+      "side",
+      "spreadsheet",
+      "tag"
+    ]
+  },
+  {
+    "name": "stape-store-writer-tag",
+    "job": "Stape Store Writer tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/stape-store-writer-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "stape",
+      "store",
+      "tag",
+      "writer"
+    ]
+  },
+  {
+    "name": "supabase-writer-tag",
+    "job": "Supabase Writer tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/supabase-writer-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "supabase",
+      "tag",
+      "writer"
+    ]
+  },
+  {
+    "name": "taboola-tag",
+    "job": "Taboola Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/taboola-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "taboola",
+      "tag"
+    ]
+  },
+  {
+    "name": "tapfiliate-tag",
+    "job": "Tapfiliate Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/tapfiliate-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "tapfiliate"
+    ]
+  },
+  {
+    "name": "telegram-notification-tag",
+    "job": "Telegram Notification Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/telegram-notification-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "notification",
+      "server",
+      "side",
+      "tag",
+      "telegram"
+    ]
+  },
+  {
+    "name": "tiktok-tag",
+    "job": "TikTok Events API Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/tiktok-tag",
+    "keywords": [
+      "api",
+      "events",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "tiktok"
+    ]
+  },
+  {
+    "name": "tradedoubler-tag",
+    "job": "Tradedoubler Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/tradedoubler-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "tradedoubler"
+    ]
+  },
+  {
+    "name": "trafficstars-tag",
+    "job": "Trafficstars tag for Server Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/trafficstars-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "trafficstars"
+    ]
+  },
+  {
+    "name": "twilio-tag",
+    "job": "Twilio Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/twilio-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "twilio"
+    ]
+  },
+  {
+    "name": "twitter-tag",
+    "job": "Twitter Conversion API Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/twitter-tag",
+    "keywords": [
+      "api",
+      "conversion",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "twitter"
+    ]
+  },
+  {
+    "name": "umami-tag-server",
+    "job": "Umami Analytics - Custom Tag Template for Server-Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/umami-tag-server",
+    "keywords": [
+      "analytics",
+      "custom",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "template",
+      "umami"
+    ]
+  },
+  {
+    "name": "viant-tag",
+    "job": "Viant Tag for Google Tag Manager Server-Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/viant-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "viant"
+    ]
+  },
+  {
+    "name": "voluum-tag",
+    "job": "Voluum Tag for Server Side Google Tag Manager",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/voluum-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "voluum"
+    ]
+  },
+  {
+    "name": "voyado-tag",
+    "job": "Voyado tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/voyado-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "voyado"
+    ]
+  },
+  {
+    "name": "webgains-tag",
+    "job": "Webgains tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/webgains-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "webgains"
+    ]
+  },
+  {
+    "name": "xandr-tag",
+    "job": "Xandr Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/xandr-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "xandr"
+    ]
+  },
+  {
+    "name": "yelp-tag",
+    "job": "Yelp tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/yelp-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "yelp"
+    ]
+  },
+  {
+    "name": "yotpo-tag",
+    "job": "Yotpo Tag for Google Tag Manager Server Side",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/yotpo-tag",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "yotpo"
+    ]
+  },
+  {
+    "name": "zoho-tag",
+    "job": "Zoho tag for Google Tag Manager Server Side (repo created, code pending)",
+    "category": "tag",
+    "repo": "https://github.com/stape-io/zoho-tag",
+    "keywords": [
+      "code",
+      "created",
+      "for",
+      "google",
+      "manager",
+      "pending",
+      "repo",
+      "server",
+      "side",
+      "tag",
+      "zoho"
+    ]
+  },
+  {
+    "name": "advanced-lookup-table-variable",
+    "job": "Advanced Lookup Table Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/advanced-lookup-table-variable",
+    "keywords": [
+      "advanced",
+      "container",
+      "for",
+      "google",
+      "lookup",
+      "manager",
+      "server",
+      "table",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "array-builder-variable",
+    "job": "Array Builder Variable for Google Tag Manager Server Container - construct array data structures inside sGTM",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/array-builder-variable",
+    "keywords": [
+      "array",
+      "builder",
+      "construct",
+      "container",
+      "data",
+      "for",
+      "google",
+      "inside",
+      "manager",
+      "server",
+      "sgtm",
+      "structures",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "consent-parser-variable",
+    "job": "Consent Parser Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/consent-parser-variable",
+    "keywords": [
+      "consent",
+      "container",
+      "for",
+      "google",
+      "manager",
+      "parser",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "contactout-lookup-server",
+    "job": "Contactout Lookup Variable",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/contactout-lookup-server",
+    "keywords": [
+      "contactout",
+      "lookup",
+      "server",
+      "variable"
+    ]
+  },
+  {
+    "name": "data-variable",
+    "job": "Use this variable for retrieving data from the Data tag store.",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/data-variable",
+    "keywords": [
+      "data",
+      "for",
+      "from",
+      "retrieving",
+      "store",
+      "tag",
+      "the",
+      "this",
+      "use",
+      "variable"
+    ]
+  },
+  {
+    "name": "days-in-seconds-variable",
+    "job": "Days In Seconds Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/days-in-seconds-variable",
+    "keywords": [
+      "days",
+      "for",
+      "google",
+      "in",
+      "manager",
+      "seconds",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "duplicate-transaction-checker-variable",
+    "job": "Duplicate Transaction Checker Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/duplicate-transaction-checker-variable",
+    "keywords": [
+      "checker",
+      "container",
+      "duplicate",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "tag",
+      "transaction",
+      "variable"
+    ]
+  },
+  {
+    "name": "facebook-parameter-generator-variable",
+    "job": "Facebook Parameter Generator Variable for the GTM Web container (archived)",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/facebook-parameter-generator-variable",
+    "keywords": [
+      "archived",
+      "container",
+      "facebook",
+      "for",
+      "generator",
+      "gtm",
+      "parameter",
+      "the",
+      "variable",
+      "web"
+    ]
+  },
+  {
+    "name": "firestore-restore-variable",
+    "job": "Firestore ReStore Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/firestore-restore-variable",
+    "keywords": [
+      "firestore",
+      "for",
+      "google",
+      "manager",
+      "restore",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "http-lookup-variable",
+    "job": "HTTP Lookup Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/http-lookup-variable",
+    "keywords": [
+      "for",
+      "google",
+      "http",
+      "lookup",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "hubspot-lookup-variable",
+    "job": "Hubspot Lookup Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/hubspot-lookup-variable",
+    "keywords": [
+      "for",
+      "google",
+      "hubspot",
+      "lookup",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "infobip-lookup-server-variable",
+    "job": "Infobip Lookup Variable for Server Side Google Tag Manager",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/infobip-lookup-server-variable",
+    "keywords": [
+      "for",
+      "google",
+      "infobip",
+      "lookup",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "json-converter-variable",
+    "job": "JSON Converter Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/json-converter-variable",
+    "keywords": [
+      "container",
+      "converter",
+      "for",
+      "google",
+      "json",
+      "manager",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "klaviyo-lookup-variable",
+    "job": "Klaviyo Lookup Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/klaviyo-lookup-variable",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "klaviyo",
+      "lookup",
+      "manager",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "leadfeeder-variable",
+    "job": "Leadfeeder IP-Enrich Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/leadfeeder-variable",
+    "keywords": [
+      "enrich",
+      "for",
+      "google",
+      "ip",
+      "leadfeeder",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "leadinfo-variable",
+    "job": "Leadinfo variable for Google Tag Manager (repo created, code pending)",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/leadinfo-variable",
+    "keywords": [
+      "code",
+      "created",
+      "for",
+      "google",
+      "leadinfo",
+      "manager",
+      "pending",
+      "repo",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "math-variable",
+    "job": "Math Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/math-variable",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "manager",
+      "math",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "md5-hash-variable",
+    "job": "MD5 Hash Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/md5-hash-variable",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "hash",
+      "manager",
+      "md5",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "merchant-center-variable",
+    "job": "Merchant Center Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/merchant-center-variable",
+    "keywords": [
+      "center",
+      "for",
+      "google",
+      "manager",
+      "merchant",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "object-builder-variable",
+    "job": "Object builder variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/object-builder-variable",
+    "keywords": [
+      "builder",
+      "for",
+      "google",
+      "manager",
+      "object",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "object-property-extractor-variable",
+    "job": "Object Property Extractor Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/object-property-extractor-variable",
+    "keywords": [
+      "extractor",
+      "for",
+      "google",
+      "manager",
+      "object",
+      "property",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "phone-number-formatter-variable",
+    "job": "Phone Number Formatter Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/phone-number-formatter-variable",
+    "keywords": [
+      "container",
+      "for",
+      "formatter",
+      "google",
+      "manager",
+      "number",
+      "phone",
+      "server",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "phone-number-formatter-web-variable",
+    "job": "Phone Number Formatter Variable for Google Tag Manager Web Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/phone-number-formatter-web-variable",
+    "keywords": [
+      "container",
+      "for",
+      "formatter",
+      "google",
+      "manager",
+      "number",
+      "phone",
+      "tag",
+      "variable",
+      "web"
+    ]
+  },
+  {
+    "name": "query-replacer-variable",
+    "job": "Custom variable for GTM Server-Side that allows replacing the URL query parameters in the `page_location` parameter",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/query-replacer-variable",
+    "keywords": [
+      "allows",
+      "custom",
+      "for",
+      "gtm",
+      "in",
+      "location",
+      "page",
+      "parameter",
+      "parameters",
+      "query",
+      "replacer",
+      "replacing",
+      "server",
+      "side",
+      "that",
+      "the",
+      "url",
+      "variable"
+    ]
+  },
+  {
+    "name": "real-boolean",
+    "job": "Real Boolean Variable for Google Tag Manager Server Side.",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/real-boolean",
+    "keywords": [
+      "boolean",
+      "for",
+      "google",
+      "manager",
+      "real",
+      "server",
+      "side",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "spreadsheet-variable",
+    "job": "Google Sheets variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/spreadsheet-variable",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "sheets",
+      "side",
+      "spreadsheet",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "stape-store-lookup-variable",
+    "job": "Stape Store Lookup Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/stape-store-lookup-variable",
+    "keywords": [
+      "for",
+      "google",
+      "lookup",
+      "manager",
+      "server",
+      "side",
+      "stape",
+      "store",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "stape-store-margin-lookup-variable",
+    "job": "Stape Store Margin Lookup Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/stape-store-margin-lookup-variable",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "lookup",
+      "manager",
+      "margin",
+      "server",
+      "stape",
+      "store",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "stape-store-restore-variable",
+    "job": "Stape Store ReStore Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/stape-store-restore-variable",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "restore",
+      "server",
+      "side",
+      "stape",
+      "store",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "supabase-lookup-variable",
+    "job": "Supabase Lookup Variable for Google Tag Manager",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/supabase-lookup-variable",
+    "keywords": [
+      "for",
+      "google",
+      "lookup",
+      "manager",
+      "supabase",
+      "tag",
+      "variable"
+    ]
+  },
+  {
+    "name": "timestamp-converter-variable",
+    "job": "Timestamp Converter Variable for Google Tag Manager Server Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/timestamp-converter-variable",
+    "keywords": [
+      "container",
+      "converter",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "tag",
+      "timestamp",
+      "variable"
+    ]
+  },
+  {
+    "name": "type-convertor-variable",
+    "job": "Convert value or other variable into the desired type.",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/type-convertor-variable",
+    "keywords": [
+      "convert",
+      "convertor",
+      "desired",
+      "into",
+      "or",
+      "other",
+      "the",
+      "type",
+      "value",
+      "variable"
+    ]
+  },
+  {
+    "name": "unique-event-id-variable",
+    "job": "Unique Event ID Variable for Google Tag Manager WEB Container",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/unique-event-id-variable",
+    "keywords": [
+      "container",
+      "event",
+      "for",
+      "google",
+      "id",
+      "manager",
+      "tag",
+      "unique",
+      "variable",
+      "web"
+    ]
+  },
+  {
+    "name": "universal-conversions-server-variable",
+    "job": "Universal Conversion Variable for Server Google Tag Manager",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/universal-conversions-server-variable",
+    "keywords": [
+      "conversion",
+      "conversions",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "tag",
+      "universal",
+      "variable"
+    ]
+  },
+  {
+    "name": "universal-conversions-variable",
+    "job": "Universal Conversion Variable for Google Tag Manager Web",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/universal-conversions-variable",
+    "keywords": [
+      "conversion",
+      "conversions",
+      "for",
+      "google",
+      "manager",
+      "tag",
+      "universal",
+      "variable",
+      "web"
+    ]
+  },
+  {
+    "name": "url-builder-variable",
+    "job": "Provides an interface for building URLs.",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/url-builder-variable",
+    "keywords": [
+      "an",
+      "builder",
+      "building",
+      "for",
+      "interface",
+      "provides",
+      "url",
+      "urls",
+      "variable"
+    ]
+  },
+  {
+    "name": "url-parser",
+    "job": "URL Parser - Custom Variable Template (Server) for Google Tag Manager.",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/url-parser",
+    "keywords": [
+      "custom",
+      "for",
+      "google",
+      "manager",
+      "parser",
+      "server",
+      "tag",
+      "template",
+      "url",
+      "variable"
+    ]
+  },
+  {
+    "name": "user-data-extractor-variable",
+    "job": "User Data Extractor Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/user-data-extractor-variable",
+    "keywords": [
+      "data",
+      "extractor",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "user",
+      "variable"
+    ]
+  },
+  {
+    "name": "weather-variable",
+    "job": "Weather Variable for Google Tag Manager Server Side",
+    "category": "variable",
+    "repo": "https://github.com/stape-io/weather-variable",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag",
+      "variable",
+      "weather"
+    ]
+  },
+  {
+    "name": "adform-cookie-retrieval-script-web-tag",
+    "job": "Adform Cookie Retrieval Script tag for Google Tag Manager Web",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/adform-cookie-retrieval-script-web-tag",
+    "keywords": [
+      "adform",
+      "cookie",
+      "for",
+      "google",
+      "manager",
+      "retrieval",
+      "script",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "consent-listener-web-tag",
+    "job": "Google Consent Mode Listener Tag for Google Tag Manager",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/consent-listener-web-tag",
+    "keywords": [
+      "consent",
+      "for",
+      "google",
+      "listener",
+      "manager",
+      "mode",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "data-tag",
+    "job": "Data Tag for Google Tag Manager WEB Container",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/data-tag",
+    "keywords": [
+      "container",
+      "data",
+      "for",
+      "google",
+      "manager",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "exponea-web-tag",
+    "job": "Bloomreach Engagement (Exponea) tag for the GTM Web container",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/exponea-web-tag",
+    "keywords": [
+      "bloomreach",
+      "container",
+      "engagement",
+      "exponea",
+      "for",
+      "gtm",
+      "tag",
+      "the",
+      "web"
+    ]
+  },
+  {
+    "name": "fb-tag",
+    "job": "Facebook Tag for Google Tag Manager WEB Container",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/fb-tag",
+    "keywords": [
+      "container",
+      "facebook",
+      "fb",
+      "for",
+      "google",
+      "manager",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "google-customer-reviews-tag",
+    "job": "The Google Customer Reviews Tag is a tag template for Google Tag Manager (GTM) Web Container that facilitates the display of Google's opt-in survey banner for customers after they complete a purchase.",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/google-customer-reviews-tag",
+    "keywords": [
+      "a",
+      "after",
+      "banner",
+      "complete",
+      "container",
+      "customer",
+      "customers",
+      "display",
+      "facilitates",
+      "for",
+      "google",
+      "gtm",
+      "in",
+      "is",
+      "manager",
+      "of",
+      "opt",
+      "purchase",
+      "reviews",
+      "s",
+      "survey",
+      "tag",
+      "template",
+      "that",
+      "the",
+      "they",
+      "web"
+    ]
+  },
+  {
+    "name": "openai-pixel-tag",
+    "job": "OpenAI (ChatGPT) Pixel Tag for Google Tag Manager Web",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/openai-pixel-tag",
+    "keywords": [
+      "chatgpt",
+      "for",
+      "google",
+      "manager",
+      "openai",
+      "pixel",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "shopify-customer-privacy-tag",
+    "job": "Shopify Customer Privacy API Tag for Google Tag Manager Web",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/shopify-customer-privacy-tag",
+    "keywords": [
+      "api",
+      "customer",
+      "for",
+      "google",
+      "manager",
+      "privacy",
+      "shopify",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "signals-gateway-tag",
+    "job": "Signals Gateway Pixel by Stape for Google Tag Manager Web",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/signals-gateway-tag",
+    "keywords": [
+      "by",
+      "for",
+      "gateway",
+      "google",
+      "manager",
+      "pixel",
+      "signals",
+      "stape",
+      "tag",
+      "web"
+    ]
+  },
+  {
+    "name": "tiktok-web-tag",
+    "job": "TikTok Pixel Tag for Google Tag Manager WEB Container",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/tiktok-web-tag",
+    "keywords": [
+      "container",
+      "for",
+      "google",
+      "manager",
+      "pixel",
+      "tag",
+      "tiktok",
+      "web"
+    ]
+  },
+  {
+    "name": "user-data-extractor-web-tag",
+    "job": "User Data Extractor Tag for Google Tag Manager Web",
+    "category": "web-tag",
+    "repo": "https://github.com/stape-io/user-data-extractor-web-tag",
+    "keywords": [
+      "data",
+      "extractor",
+      "for",
+      "google",
+      "manager",
+      "tag",
+      "user",
+      "web"
+    ]
+  },
+  {
+    "name": "data-client",
+    "job": "Data Client for Google Tag Manager Server Side",
+    "category": "client",
+    "repo": "https://github.com/stape-io/data-client",
+    "keywords": [
+      "client",
+      "data",
+      "for",
+      "google",
+      "manager",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "exponea-client",
+    "job": "sGTM Client + templates for use with the Bloomreach Engagement platform",
+    "category": "client",
+    "repo": "https://github.com/stape-io/exponea-client",
+    "keywords": [
+      "bloomreach",
+      "client",
+      "engagement",
+      "exponea",
+      "for",
+      "platform",
+      "sgtm",
+      "templates",
+      "the",
+      "use",
+      "with"
+    ]
+  },
+  {
+    "name": "file-proxy-client",
+    "job": "File Proxy Client for sGTM - serve file downloads through your own subdomain",
+    "category": "client",
+    "repo": "https://github.com/stape-io/file-proxy-client",
+    "keywords": [
+      "client",
+      "downloads",
+      "file",
+      "for",
+      "own",
+      "proxy",
+      "serve",
+      "sgtm",
+      "subdomain",
+      "through",
+      "your"
+    ]
+  },
+  {
+    "name": "gtm-loader",
+    "job": "GTM Loader - Custom Client Template (Server) for Google Tag Manager.",
+    "category": "client",
+    "repo": "https://github.com/stape-io/gtm-loader",
+    "keywords": [
+      "client",
+      "custom",
+      "for",
+      "google",
+      "gtm",
+      "loader",
+      "manager",
+      "server",
+      "tag",
+      "template"
+    ]
+  },
+  {
+    "name": "piano-client",
+    "job": "Piano Analytics Client for Google Tag Manager Server Side",
+    "category": "client",
+    "repo": "https://github.com/stape-io/piano-client",
+    "keywords": [
+      "analytics",
+      "client",
+      "for",
+      "google",
+      "manager",
+      "piano",
+      "server",
+      "side",
+      "tag"
+    ]
+  },
+  {
+    "name": "bigcommerce-gtm-container-templates",
+    "job": "GTM container templates for BigCommerce",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/bigcommerce-gtm-container-templates",
+    "keywords": [
+      "bigcommerce",
+      "container",
+      "for",
+      "gtm",
+      "templates"
+    ]
+  },
+  {
+    "name": "capi-bigcommerce",
+    "job": "Facebook Conversion API for Bigcommerce",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/capi-bigcommerce",
+    "keywords": [
+      "api",
+      "bigcommerce",
+      "capi",
+      "conversion",
+      "facebook",
+      "for"
+    ]
+  },
+  {
+    "name": "capi-for-crm-gtm-container-templates",
+    "job": "Server GTM container templates for CRMs - works with Stape CRM apps",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/capi-for-crm-gtm-container-templates",
+    "keywords": [
+      "apps",
+      "capi",
+      "container",
+      "crm",
+      "crms",
+      "for",
+      "gtm",
+      "server",
+      "stape",
+      "templates",
+      "with",
+      "works"
+    ]
+  },
+  {
+    "name": "capi-unbounce",
+    "job": "Facebook Conversion API for Unbounce",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/capi-unbounce",
+    "keywords": [
+      "api",
+      "capi",
+      "conversion",
+      "facebook",
+      "for",
+      "unbounce"
+    ]
+  },
+  {
+    "name": "custom-gtm-container-templates",
+    "job": "[Deprecated] GTM templates for custom websites - superseded by Stape Setup Assistant",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/custom-gtm-container-templates",
+    "keywords": [
+      "assistant",
+      "by",
+      "container",
+      "custom",
+      "deprecated",
+      "for",
+      "gtm",
+      "setup",
+      "stape",
+      "superseded",
+      "templates",
+      "websites"
+    ]
+  },
+  {
+    "name": "magento-gtm-container-templates",
+    "job": "GTM container templates for Magento 2",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/magento-gtm-container-templates",
+    "keywords": [
+      "2",
+      "container",
+      "for",
+      "gtm",
+      "magento",
+      "templates"
+    ]
+  },
+  {
+    "name": "prestashop-gtm-container-templates",
+    "job": "[Deprecated] GTM templates for PrestaShop - superseded by Stape Setup Assistant",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/prestashop-gtm-container-templates",
+    "keywords": [
+      "assistant",
+      "by",
+      "container",
+      "deprecated",
+      "for",
+      "gtm",
+      "prestashop",
+      "setup",
+      "stape",
+      "superseded",
+      "templates"
+    ]
+  },
+  {
+    "name": "salla-gtm-container-templates",
+    "job": "[Deprecated] GTM templates for Salla - superseded by Stape Setup Assistant",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/salla-gtm-container-templates",
+    "keywords": [
+      "assistant",
+      "by",
+      "container",
+      "deprecated",
+      "for",
+      "gtm",
+      "salla",
+      "setup",
+      "stape",
+      "superseded",
+      "templates"
+    ]
+  },
+  {
+    "name": "shopify-gtm-container-templates",
+    "job": "GTM container templates for Shopify",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/shopify-gtm-container-templates",
+    "keywords": [
+      "container",
+      "for",
+      "gtm",
+      "shopify",
+      "templates"
+    ]
+  },
+  {
+    "name": "shopware-gtm-container-templates",
+    "job": "GTM container templates for Shopware",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/shopware-gtm-container-templates",
+    "keywords": [
+      "container",
+      "for",
+      "gtm",
+      "shopware",
+      "templates"
+    ]
+  },
+  {
+    "name": "wix-gtm-container-templates",
+    "job": "GTM container templates for Wix",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/wix-gtm-container-templates",
+    "keywords": [
+      "container",
+      "for",
+      "gtm",
+      "templates",
+      "wix"
+    ]
+  },
+  {
+    "name": "woocommerce-gtm-container-templates",
+    "job": "GTM container templates for WordPress WooCommerce",
+    "category": "bundle",
+    "repo": "https://github.com/stape-io/woocommerce-gtm-container-templates",
+    "keywords": [
+      "container",
+      "for",
+      "gtm",
+      "templates",
+      "woocommerce",
+      "wordpress"
+    ]
+  },
+  {
+    "name": "google-ads-mcp",
+    "job": "MCP server for the Google Ads API, with Google OAuth built in",
+    "category": "mcp",
+    "repo": "https://github.com/stape-io/google-ads-mcp",
+    "keywords": [
+      "ads",
+      "api",
+      "built",
+      "for",
+      "google",
+      "in",
+      "mcp",
+      "oauth",
+      "server",
+      "the",
+      "with"
+    ]
+  },
+  {
+    "name": "google-analytics-mcp",
+    "job": "MCP server for Google Analytics by Stape",
+    "category": "mcp",
+    "repo": "https://github.com/stape-io/google-analytics-mcp",
+    "keywords": [
+      "analytics",
+      "by",
+      "for",
+      "google",
+      "mcp",
+      "server",
+      "stape"
+    ]
+  },
+  {
+    "name": "google-tag-manager-mcp-server",
+    "job": "MCP server for Google Tag Manager",
+    "category": "mcp",
+    "repo": "https://github.com/stape-io/google-tag-manager-mcp-server",
+    "keywords": [
+      "for",
+      "google",
+      "manager",
+      "mcp",
+      "server",
+      "tag"
+    ]
+  },
+  {
+    "name": "stape-mcp-server",
+    "job": "Interact with the Stape API using AI assistants like Claude, or in AI-powered IDEs like Cursor.",
+    "category": "mcp",
+    "repo": "https://github.com/stape-io/stape-mcp-server",
+    "keywords": [
+      "ai",
+      "api",
+      "assistants",
+      "claude",
+      "cursor",
+      "ides",
+      "in",
+      "interact",
+      "like",
+      "mcp",
+      "or",
+      "powered",
+      "server",
+      "stape",
+      "the",
+      "using",
+      "with"
+    ]
+  },
+  {
+    "name": "stape-sgtm-android",
+    "job": "Stape sGTM Android SDK",
+    "category": "sdk",
+    "repo": "https://github.com/stape-io/stape-sgtm-android",
+    "keywords": [
+      "android",
+      "sdk",
+      "sgtm",
+      "stape"
+    ]
+  },
+  {
+    "name": "stape-sgtm-flutter",
+    "job": "Stape sGTM Flutter SDK",
+    "category": "sdk",
+    "repo": "https://github.com/stape-io/stape-sgtm-flutter",
+    "keywords": [
+      "flutter",
+      "sdk",
+      "sgtm",
+      "stape"
+    ]
+  },
+  {
+    "name": "stape-sgtm-ios",
+    "job": "Stape sGTM iOS SDK",
+    "category": "sdk",
+    "repo": "https://github.com/stape-io/stape-sgtm-ios",
+    "keywords": [
+      "ios",
+      "sdk",
+      "sgtm",
+      "stape"
+    ]
+  },
+  {
+    "name": "stape-sgtm-nodejs",
+    "job": "Stape sGTM NodeJS SDK",
+    "category": "sdk",
+    "repo": "https://github.com/stape-io/stape-sgtm-nodejs",
+    "keywords": [
+      "nodejs",
+      "sdk",
+      "sgtm",
+      "stape"
+    ]
+  },
+  {
+    "name": "stape-sgtm-php",
+    "job": "Stape sGTM PHP SDK",
+    "category": "sdk",
+    "repo": "https://github.com/stape-io/stape-sgtm-php",
+    "keywords": [
+      "php",
+      "sdk",
+      "sgtm",
+      "stape"
+    ]
+  },
+  {
+    "name": "gtm-server-side-magento-module",
+    "job": "Stape GTM Server Side Magento Module",
+    "category": "plugin",
+    "repo": "https://github.com/stape-io/gtm-server-side-magento-module",
+    "keywords": [
+      "gtm",
+      "magento",
+      "module",
+      "server",
+      "side",
+      "stape"
+    ]
+  },
+  {
+    "name": "gtm-server-side-wordpress-plugin",
+    "job": "Google Tag Manager Server-Side plugin for WordPress",
+    "category": "plugin",
+    "repo": "https://github.com/stape-io/gtm-server-side-wordpress-plugin",
+    "keywords": [
+      "for",
+      "google",
+      "gtm",
+      "manager",
+      "plugin",
+      "server",
+      "side",
+      "tag",
+      "wordpress"
+    ]
+  },
+  {
+    "name": "botd-gtm",
+    "job": "Open-source bot detection (BOTD) packaged for Google Tag Manager",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/botd-gtm",
+    "keywords": [
+      "bot",
+      "botd",
+      "detection",
+      "for",
+      "google",
+      "gtm",
+      "manager",
+      "open",
+      "packaged",
+      "source",
+      "tag"
+    ]
+  },
+  {
+    "name": "cap",
+    "job": "Cap is a lightweight, modern open-source CAPTCHA alternative using SHA-256 proof-of-work",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/cap",
+    "keywords": [
+      "256",
+      "a",
+      "alternative",
+      "cap",
+      "captcha",
+      "is",
+      "lightweight",
+      "modern",
+      "of",
+      "open",
+      "proof",
+      "sha",
+      "source",
+      "using",
+      "work"
+    ]
+  },
+  {
+    "name": "cert-manager",
+    "job": "Automatically provision and manage TLS certificates in Kubernetes",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/cert-manager",
+    "keywords": [
+      "and",
+      "automatically",
+      "cert",
+      "certificates",
+      "in",
+      "kubernetes",
+      "manage",
+      "manager",
+      "provision",
+      "tls"
+    ]
+  },
+  {
+    "name": "google-tag-manager-apis-intellisense",
+    "job": "Definitions for Google Tag Manager Sandboxed JS APIs Intellisense",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/google-tag-manager-apis-intellisense",
+    "keywords": [
+      "apis",
+      "definitions",
+      "for",
+      "google",
+      "intellisense",
+      "js",
+      "manager",
+      "sandboxed",
+      "tag"
+    ]
+  },
+  {
+    "name": "gtm-standards",
+    "job": "This repository contains the Stape standards for the Google Tag Manager.",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/gtm-standards",
+    "keywords": [
+      "contains",
+      "for",
+      "google",
+      "gtm",
+      "manager",
+      "repository",
+      "standards",
+      "stape",
+      "tag",
+      "the",
+      "this"
+    ]
+  },
+  {
+    "name": "request-to-gcs-function",
+    "job": "Google Cloud Function that saves everything that came in request to Google Cloud Storage",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/request-to-gcs-function",
+    "keywords": [
+      "came",
+      "cloud",
+      "everything",
+      "function",
+      "gcs",
+      "google",
+      "in",
+      "request",
+      "saves",
+      "storage",
+      "that",
+      "to"
+    ]
+  },
+  {
+    "name": "template-changes-shared-workflows",
+    "job": "Shared GitHub Actions workflows Stape uses across its template repos",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/template-changes-shared-workflows",
+    "keywords": [
+      "across",
+      "actions",
+      "changes",
+      "github",
+      "its",
+      "repos",
+      "shared",
+      "stape",
+      "template",
+      "uses",
+      "workflows"
+    ]
+  },
+  {
+    "name": "traefik-crawler-user-agents",
+    "job": "Syntactic patterns of HTTP user-agents used by bots / robots / crawlers / scrapers / spiders. pull-request welcome :star:",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/traefik-crawler-user-agents",
+    "keywords": [
+      "agents",
+      "bots",
+      "by",
+      "crawler",
+      "crawlers",
+      "http",
+      "of",
+      "patterns",
+      "pull",
+      "request",
+      "robots",
+      "scrapers",
+      "spiders",
+      "star",
+      "syntactic",
+      "traefik",
+      "used",
+      "user",
+      "welcome"
+    ]
+  },
+  {
+    "name": "traefik-geoip2",
+    "job": "GeoIP2 Reader for Go",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/traefik-geoip2",
+    "keywords": [
+      "for",
+      "geoip2",
+      "go",
+      "reader",
+      "traefik"
+    ]
+  },
+  {
+    "name": "traefik-msgpack",
+    "job": "msgpack.org[Go] MessagePack encoding for Golang",
+    "category": "tooling",
+    "repo": "https://github.com/stape-io/traefik-msgpack",
+    "keywords": [
+      "encoding",
+      "for",
+      "go",
+      "golang",
+      "messagepack",
+      "msgpack",
+      "org",
+      "traefik"
+    ]
+  }
+]
