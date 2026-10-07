@@ -69,3 +69,9 @@ CREATE TABLE IF NOT EXISTS waitlist (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, token TEXT NOT NULL,
   source TEXT, referrer TEXT, ip_hash TEXT, country TEXT, survey TEXT, survey_at TEXT, created TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS waitlist_ip ON waitlist(ip_hash, created);
+
+-- Company enrichment for waitlist sign-ups (Context.dev brand + homepage, Apify crawl).
+CREATE TABLE IF NOT EXISTS companies (
+  domain TEXT PRIMARY KEY, status TEXT NOT NULL, brand TEXT, homepage TEXT, pages TEXT,
+  apify_run TEXT, apify_status TEXT, errors TEXT, requested TEXT NOT NULL, updated TEXT NOT NULL);
+-- waitlist also gets company_domain and domain_source (added at runtime with ALTER TABLE).

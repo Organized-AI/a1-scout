@@ -1,6 +1,8 @@
 // Public waitlist and follow-up survey for the docs at /docs.
 // Everything else on scout.organizedai.vip stays behind sign-in.
 
+import { normalizeDomain, isFreeMail, enrichDomain, enrichTables, apifyHook, companyRow } from "./enrich.js";
+
 const EMAIL = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}\.[a-z]{2,24}$/i;
 const PER_IP_PER_HOUR = 6;
 const SURVEY_MAX = 8000;
@@ -34,18 +36,26 @@ export function waitlistConfig(env) {
 }
 
 // Returns a Response for public waitlist routes, or null to fall through.
-export async function waitlistApi(req, env, url) {
+export async function waitlistApi(req, env, url, ctx) {
   const p = url.pathname;
+  if (p === "/api/waitlist/apify-hook" && req.method === "POST") return apifyHook(req, env, url);
+  if (p === "/api/waitlist/typeform-hook" && req.method === "POST") return typeformHook(req, env, url);
   if (p === "/api/waitlist/config" && req.method === "GET") return out(waitlistConfig(env));
 
   if (p === "/api/waitlist" && req.method === "POST") {
     await tables(env);
+    await enrichTables(env);
     const b = await req.json().catch(() => ({}));
     if (clean(b.website, 200)) return out({ ok: true, id: "ok", token: "ok" }); // honeypot: pretend success
     const name = clean(b.name, 120);
     const email = clean(b.email, 254).toLowerCase();
     if (!name) return out({ error: "Add your name." }, 400);
     if (!EMAIL.test(email)) return out({ error: "That email address doesn't look right." }, 400);
+    const typed = clean(b.company, 300);
+    let domain = typed ? normalizeDomain(typed) : null;
+    if (typed && !domain) return out({ error: "That company website doesn't look right. Try something like acme.com." }, 400);
+    let domainSource = domain ? "form" : null;
+    if (!domain) { const d = normalizeDomain(email); if (d && !isFreeMail(d)) { domain = d; domainSource = "email"; } }
 
     const ip = req.headers.get("cf-connecting-ip") || "unknown";
     const ipHash = await sha(`${env.WAITLIST_SALT || "a1-scout"}:${ip}`);
@@ -54,14 +64,20 @@ export async function waitlistApi(req, env, url) {
     if (recent >= PER_IP_PER_HOUR) return out({ error: "Too many sign-ups from this network. Try again in an hour." }, 429);
 
     const existing = await env.DB.prepare("SELECT id, token, survey_at FROM waitlist WHERE email=?").bind(email).first();
-    if (existing) return out({ ok: true, id: existing.id, token: existing.token, already: true, surveyed: !!existing.survey_at, ...waitlistConfig(env) });
+    const kick = () => { if (domain && ctx) ctx.waitUntil(enrichDomain(env, domain, url.origin).catch(() => {})); };
+    if (existing) {
+      if (domain) await env.DB.prepare("UPDATE waitlist SET company_domain=COALESCE(company_domain,?), domain_source=COALESCE(domain_source,?) WHERE id=?").bind(domain, domainSource, existing.id).run();
+      kick();
+      return out({ ok: true, id: existing.id, token: existing.token, already: true, surveyed: !!existing.survey_at, company: domain, ...waitlistConfig(env) });
+    }
 
     const id = crypto.randomUUID();
     const token = crypto.randomUUID().replace(/-/g, "");
-    await env.DB.prepare(`INSERT INTO waitlist (id,name,email,token,source,referrer,ip_hash,country,created) VALUES (?,?,?,?,?,?,?,?,?)`)
+    await env.DB.prepare(`INSERT INTO waitlist (id,name,email,token,source,referrer,ip_hash,country,company_domain,domain_source,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
       .bind(id, name, email, token, clean(b.source, 80) || "docs", clean(req.headers.get("referer"), 300), ipHash,
-        req.cf?.country || null, new Date().toISOString()).run();
-    return out({ ok: true, id, token, ...waitlistConfig(env) });
+        req.cf?.country || null, domain, domainSource, new Date().toISOString()).run();
+    kick();
+    return out({ ok: true, id, token, company: domain, ...waitlistConfig(env) });
   }
 
   if (p === "/api/waitlist/survey" && req.method === "POST") {
@@ -81,7 +97,45 @@ export async function waitlistApi(req, env, url) {
 // Owner-only (called after sign-in check).
 export async function waitlistList(env) {
   await tables(env);
-  const rows = (await env.DB.prepare("SELECT id,name,email,source,country,survey,survey_at,created FROM waitlist ORDER BY created DESC LIMIT 2000").all()).results;
+  await enrichTables(env);
+  const rows = (await env.DB.prepare(`SELECT w.id,w.name,w.email,w.source,w.country,w.company_domain,w.domain_source,w.survey,w.survey_at,w.created,
+      c.status AS company_status, c.apify_status, json_array_length(COALESCE(c.pages,'[]')) AS pages
+    FROM waitlist w LEFT JOIN companies c ON c.domain=w.company_domain ORDER BY w.created DESC LIMIT 2000`).all()).results;
   return out({ count: rows.length, surveyed: rows.filter((r) => r.survey_at).length,
     rows: rows.map((r) => ({ ...r, survey: r.survey ? JSON.parse(r.survey) : null })) });
+}
+
+// Owner-only: one company's full enrichment, or re-run it.
+export async function waitlistOwner(req, env, url, ctx) {
+  const p = url.pathname;
+  const domain = normalizeDomain(url.searchParams.get("domain") || "");
+  if (p === "/api/waitlist/company" && req.method === "GET") {
+    if (!domain) return out({ error: "domain required" }, 400);
+    return out((await companyRow(env, domain)) || { error: "not enriched yet" }, 200);
+  }
+  if (p === "/api/waitlist/enrich" && req.method === "POST") {
+    if (!domain) return out({ error: "domain required" }, 400);
+    ctx?.waitUntil(enrichDomain(env, domain, url.origin, { force: true }).catch(() => {}));
+    return out({ ok: true, domain, started: true });
+  }
+  return null;
+}
+
+// Typeform webhook (automation step): store the Typeform answers on the sign-up via hidden waitlist_id.
+async function typeformHook(req, env, url) {
+  if (!env.WAITLIST_HOOK_SECRET || url.searchParams.get("key") !== env.WAITLIST_HOOK_SECRET) return new Response("forbidden", { status: 403 });
+  await tables(env);
+  const b = await req.json().catch(() => ({}));
+  const fr = b.form_response || b;
+  const id = fr.hidden?.waitlist_id;
+  if (!id) return out({ ok: true, ignored: "no waitlist_id" });
+  const fields = Object.fromEntries((fr.definition?.fields || []).map((f) => [f.id, f.ref || f.title]));
+  const answers = {};
+  for (const a of fr.answers || []) {
+    const k = a.field?.ref || fields[a.field?.id] || a.field?.id;
+    answers[k] = a.choice?.label ?? a.choices?.labels ?? a.text ?? a.email ?? a.url ?? a.number ?? a.boolean ?? a[a.type] ?? null;
+  }
+  const r = await env.DB.prepare("UPDATE waitlist SET survey=?, survey_at=? WHERE id=?")
+    .bind(JSON.stringify({ via: "typeform", response_id: fr.token || null, ...answers }).slice(0, SURVEY_MAX), new Date().toISOString(), id).run();
+  return out({ ok: true, matched: r.meta.changes });
 }

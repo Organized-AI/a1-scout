@@ -279,7 +279,7 @@ ${tbl(["Piece","Runs on","Job"],[
 <h1>Quickstart</h1>
 <p class="lede">A1 Scout is opening to new workspaces in small groups. Join the waitlist, and when your workspace opens you'll be scanning within one plug-in.</p>
 <h2 id="join">1. Join the waitlist</h2>
-<p>Leave your name and email, then answer six quick questions about how you'd use it. The answers decide who gets in first and which storage option we open first.</p>
+<p>Leave your name, work email and company website, then answer a short onboarding survey about your business, your goals and the workflows you want an agent to take on. The answers decide who gets in first and shape the workspace we set up for you.</p>
 <p><button type="button" class="wl-open cta" data-src="quickstart">Join the waitlist</button></p>
 <h2 id="workspace">2. Open your workspace</h2>
 <p>Your invite email links to your workspace dashboard and a one-line installer. The installer writes the agent's settings for you, including the workspace key, so you never copy credentials by hand.</p>
@@ -685,12 +685,20 @@ $("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("open"));
 window.dataLayer=window.dataLayer||[];
 const track=(event,extra={})=>{try{dataLayer.push({event,...extra})}catch{}};
 const QUESTIONS=[
- {k:"role",q:"Which best describes you?",type:"one",o:["Founder or operator","Engineer","Analyst or marketer","Consultant or agency","Researcher or student","Something else"]},
- {k:"use",q:"What would you use A1 Scout for?",sub:"Pick all that apply.",type:"many",o:["Tracking and GTM audits","Coding agents","Client work that has to stay offline","Fine-tuning small decision models","Learning the local AI stack","Research and interpretability"]},
- {k:"storage",q:"Where would your stash live?",type:"one",o:["My own drive","Hosted stash","Both: drive plus hosted backup","Not sure yet"]},
- {k:"machines",q:"What would run the agent?",sub:"Pick all that apply.",type:"many",o:["Apple Silicon Mac","Linux box","Raspberry Pi","Windows PC","Cloud GPU"]},
- {k:"finetune",q:"Would you fine-tune a model on your own data?",sub:"For example a yes/no gate trained on your GTM containers.",type:"one",o:["Yes, right away","Later, once I trust the stash","Probably not"]},
- {k:"pain",q:"What's the most annoying part of running models locally today?",sub:"Optional. A sentence is plenty.",type:"text"},
+ {k:"business",q:"What does your business do?",sub:"One line is fine, e.g. \"Shopify skincare brand, 12 people\".",type:"short"},
+ {k:"team_size",q:"Who would use this?",type:"one",o:["Just me","Me and a small team (2–10)","A team of 11–50","More than 50 people"]},
+ {k:"revenue",q:"Roughly what is your annual revenue?",sub:"Optional. Helps us match you with the right setup.",type:"one",opt:true,o:["Under $1M","$1M–$5M","$5M–$50M","Over $50M","Prefer not to say"]},
+ {k:"ai_tools",q:"Which AI tools does your team use today?",sub:"Pick all that apply.",type:"many",o:["Claude","Claude Code","ChatGPT","Codex","Cursor","Gemini","None yet"]},
+ {k:"skills_level",q:"How far have you gone with customizing them?",type:"one",o:["Just chatting, nothing saved","A few saved prompts or projects","Skills, custom instructions or AGENTS.md files in use","We've built our own plugins or MCP servers"]},
+ {k:"terminal",q:"How comfortable is your team in a terminal?",sub:"1 is never opened one, 5 is lives in it.",type:"one",o:["1","2","3","4","5"]},
+ {k:"goals",q:"What do you most want AI to do for the business?",sub:"Pick up to three.",type:"many",max:3,o:["Save hours on repetitive work","Trust our reporting and tracking","Ship internal tools faster","Keep client or customer data off third-party APIs","Cut what we spend on AI","Get the team using AI consistently"]},
+ {k:"workflows",q:"Which workflows take the most time each week?",sub:"Pick all that apply.",type:"many",o:["Reporting and dashboards","Ads and marketing ops","Tracking, GTM and analytics fixes","Customer support","Sales follow-up and CRM updates","Content and creative","Bookkeeping and finance ops","Building or fixing internal tools"]},
+ {k:"workflow_detail",q:"Walk us through one workflow you'd hand to an agent tomorrow.",sub:"What starts it, the steps someone takes, and what \"done\" looks like.",type:"text"},
+ {k:"data_sources",q:"Where does that workflow's data live?",sub:"Pick all that apply.",type:"many",o:["Google Workspace","Microsoft 365","Shopify","HubSpot or Salesforce","Slack","Notion","Spreadsheets or Airtable","GTM, GA4 or ad platforms","Our own database"]},
+ {k:"offline_data",q:"Is there data that must stay on your own hardware?",sub:"Client records, health or financial data, anything a contract keeps off hosted APIs.",type:"one",o:["Yes","No"]},
+ {k:"storage",q:"Where would your model library live?",type:"one",o:["A drive we plug into our own machines","Hosted by you","Both","Not sure yet"]},
+ {k:"decisions",q:"Which yes/no or pick-one calls would you trust a small model to make?",sub:"Optional. E.g. \"Is this GTM change safe to publish?\"",type:"text",opt:true},
+ {k:"win",q:"What result would make this an obvious win for you?",sub:"Optional.",type:"text",opt:true},
 ];
 let WL={step:-1,id:null,token:null,src:"",answers:{},cfg:null};
 const wl=$("#wl"),body=$("#wlBody");
@@ -713,23 +721,24 @@ function renderForm(msg=""){
   body.innerHTML=`<form class="wl-step" id="wlForm" novalidate>
     <h2 class="wl-q" id="wlTitle">Get early access to A1 Scout<small>We open workspaces in small groups. A short survey follows so we know what you'll build.</small></h2>
     <label class="f" for="wlName">Name<input id="wlName" type="text" autocomplete="name" required maxlength="120" placeholder="Your name"></label>
-    <label class="f" for="wlEmail">Email<input id="wlEmail" type="email" autocomplete="email" required maxlength="254" placeholder="you@company.com"></label>
+    <label class="f" for="wlEmail">Work email<input id="wlEmail" type="email" autocomplete="email" required maxlength="254" placeholder="you@company.com"></label>
+    <label class="f" for="wlCompany">Company website<input id="wlCompany" type="text" inputmode="url" autocomplete="url" maxlength="300" placeholder="acme.com"></label>
     <label class="hp" aria-hidden="true">Website<input id="wlWeb" type="text" tabindex="-1" autocomplete="off"></label>
     <p class="wl-err" id="wlErr" role="alert">${esc(msg)}</p>
-    <div class="wl-foot"><span class="hint">We only email about your access.</span><button class="cta" type="submit" id="wlGo">Join the waitlist</button></div>
+    <div class="wl-foot"><span class="hint">We read your company's public website to tailor your workspace, and only email about your access.</span><button class="cta" type="submit" id="wlGo">Join the waitlist</button></div>
   </form>`;
   anim(); setTimeout(()=>$("#wlName").focus(),50);
   $("#wlForm").addEventListener("submit",async e=>{
     e.preventDefault();
-    const name=$("#wlName").value.trim(),email=$("#wlEmail").value.trim();
+    const name=$("#wlName").value.trim(),email=$("#wlEmail").value.trim(),company=$("#wlCompany").value.trim();
     if(!name)return $("#wlErr").textContent="Add your name.";
     if(!/^\S+@\S+\.\S+$/.test(email))return $("#wlErr").textContent="That email address doesn't look right.";
     const go=$("#wlGo");go.disabled=true;go.textContent="Joining";
     try{
-      const r=await fetch("/api/waitlist",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,email,website:$("#wlWeb").value,source:WL.src})});
+      const r=await fetch("/api/waitlist",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,email,company,website:$("#wlWeb").value,source:WL.src})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||"We couldn't save that. Try again.");
-      Object.assign(WL,{id:d.id,token:d.token,name,email});
+      Object.assign(WL,{id:d.id,token:d.token,name,email,company:d.company||""});
       if(d.typeform_form_id)WL.cfg={...(WL.cfg||{}),typeform_form_id:d.typeform_form_id};
       track("waitlist_signup",{source:WL.src,already:!!d.already});
       if(d.surveyed){WL.step=QUESTIONS.length;return renderDone(true)}
@@ -741,7 +750,8 @@ function renderForm(msg=""){
 function renderQ(){
   const i=WL.step,Q=QUESTIONS[i];setBar();
   const cur=WL.answers[Q.k];
-  const opts=Q.type==="text"?`<label class="f" for="wlText"><span class="hp">Answer</span><textarea id="wlText" maxlength="1200" placeholder="Type your answer">${esc(cur||"")}</textarea></label>`
+  const opts=Q.type==="text"?`<label class="f" for="wlText"><span class="hp">Answer</span><textarea id="wlText" maxlength="2000" placeholder="Type your answer">${esc(cur||"")}</textarea></label>`
+   :Q.type==="short"?`<label class="f" for="wlText"><span class="hp">Answer</span><input type="text" id="wlText" maxlength="200" placeholder="Type your answer" value="${esc(cur||"")}"></label>`
    :`<div class="opts" role="group" aria-label="${esc(Q.q)}">${Q.o.map((o,j)=>{const on=Q.type==="many"?(cur||[]).includes(o):cur===o;return`<button type="button" class="opt" aria-pressed="${on}" data-v="${esc(o)}"><kbd>${String.fromCharCode(65+j)}</kbd>${esc(o)}</button>`}).join("")}</div>`;
   body.innerHTML=`<div class="wl-step"><span class="wl-n">${i+1} / ${QUESTIONS.length}</span><h2 class="wl-q" id="wlTitle">${esc(Q.q)}${Q.sub?`<small>${esc(Q.sub)}</small>`:""}</h2>${opts}
     <p class="wl-err" id="wlErr" role="alert"></p>
@@ -749,7 +759,7 @@ function renderQ(){
   anim();
   body.querySelectorAll(".opt").forEach(b=>b.addEventListener("click",()=>{
     const v=b.dataset.v;
-    if(Q.type==="many"){const a=new Set(WL.answers[Q.k]||[]);a.has(v)?a.delete(v):a.add(v);WL.answers[Q.k]=[...a];b.setAttribute("aria-pressed",a.has(v))}
+    if(Q.type==="many"){const a=new Set(WL.answers[Q.k]||[]);if(!a.has(v)&&Q.max&&a.size>=Q.max){$("#wlErr").textContent=`Pick up to ${Q.max}.`;return}$("#wlErr").textContent="";a.has(v)?a.delete(v):a.add(v);WL.answers[Q.k]=[...a];b.setAttribute("aria-pressed",a.has(v))}
     else{WL.answers[Q.k]=v;body.querySelectorAll(".opt").forEach(x=>x.setAttribute("aria-pressed",x===b));setTimeout(next,220)}
   }));
   $("#wlBack")?.addEventListener("click",()=>{saveText();WL.step--;renderQ()});
@@ -760,7 +770,7 @@ const saveText=()=>{const t=$("#wlText");if(t)WL.answers[QUESTIONS[WL.step].k]=t
 async function next(){
   const Q=QUESTIONS[WL.step];saveText();
   const v=WL.answers[Q.k];
-  if(Q.type!=="text"&&(!v||(Array.isArray(v)&&!v.length)))return $("#wlErr").textContent=Q.type==="many"?"Pick at least one.":"Pick one to continue.";
+  if(!Q.opt&&(!v||(Array.isArray(v)&&!v.length)))return $("#wlErr").textContent=Q.type==="many"?"Pick at least one.":Q.type==="one"?"Pick one to continue.":"Add a short answer to continue.";
   track("survey_step",{step:WL.step+1,question:Q.k});
   if(WL.step<QUESTIONS.length-1){WL.step++;return renderQ()}
   const btn=$("#wlNext");btn.disabled=true;btn.textContent="Sending";
@@ -772,6 +782,7 @@ async function next(){
   }catch(err){btn.disabled=false;btn.textContent="Submit";$("#wlErr").textContent=err.message}
 }
 wl.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&e.target.id==="wlText"&&e.target.tagName==="INPUT"){e.preventDefault();return next()}
   if(WL.step<0||WL.step>=QUESTIONS.length||/textarea|input/i.test(e.target.tagName))return;
   const Q=QUESTIONS[WL.step];if(!Q.o)return;
   const j=e.key.toUpperCase().charCodeAt(0)-65;
@@ -781,7 +792,7 @@ wl.addEventListener("keydown",e=>{
 function renderTypeform(){
   setBar();
   const id=WL.cfg.typeform_form_id;
-  body.innerHTML=`<div class="wl-step"><h2 class="wl-q" id="wlTitle">You're on the list.<small>A few questions so we know what you'll build.</small></h2><div class="tf-wrap" data-tf-widget="${esc(id)}" data-tf-opacity="0" data-tf-inline-on-mobile data-tf-hidden="waitlist_id=${encodeURIComponent(WL.id)},email=${encodeURIComponent(WL.email)},name=${encodeURIComponent(WL.name)}" data-tf-on-submit="tfDone"></div></div>`;
+  body.innerHTML=`<div class="wl-step"><h2 class="wl-q" id="wlTitle">You're on the list.<small>A few questions about your business, goals and workflows so we can set up your workspace.</small></h2><div class="tf-wrap" data-tf-widget="${esc(id)}" data-tf-opacity="0" data-tf-inline-on-mobile data-tf-hidden="waitlist_id=${encodeURIComponent(WL.id)},email=${encodeURIComponent(WL.email)},name=${encodeURIComponent(WL.name)},company=${encodeURIComponent(WL.company||"")}" data-tf-on-submit="tfDone"></div></div>`;
   window.tfDone=()=>{WL.step=QUESTIONS.length;track("survey_complete",{source:WL.src,via:"typeform"});setTimeout(()=>renderDone(false),900)};
   const sc=document.createElement("script");sc.src="https://embed.typeform.com/next/embed.js";document.body.appendChild(sc);
 }

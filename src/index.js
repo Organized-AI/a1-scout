@@ -1,4 +1,4 @@
-import { waitlistApi, waitlistList } from "./waitlist.js";
+import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
 // actually building, stores picks in D1, serves them to the Mac agent that fills the
@@ -714,13 +714,14 @@ async function benchApi(req, env, url, p) {
   return json({ error: "not found" }, 404);
 }
 
-async function api(req, env, url) {
+async function api(req, env, url, ctx) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
-  const pub = await waitlistApi(req, env, url); // public: docs waitlist + survey
+  const pub = await waitlistApi(req, env, url, ctx); // public: docs waitlist + survey
   if (pub) return pub;
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
   if (p === "/api/waitlist" && req.method === "GET") return waitlistList(env);
+  if (p.startsWith("/api/waitlist/")) { const o = await waitlistOwner(req, env, url, ctx); if (o) return o; }
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
 
   if (p === "/api/state" && req.method === "GET") {
@@ -1000,10 +1001,10 @@ async function api(req, env, url) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) {
-      try { return withPrivate(await api(req, env, url)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
+      try { return withPrivate(await api(req, env, url, ctx)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
     }
     if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /docs\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
     // Public product docs. Everything else below stays behind sign-in.
