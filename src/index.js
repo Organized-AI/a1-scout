@@ -268,6 +268,8 @@ function scoreCandidate(c, weight) {
   if (c.kind === "model" && c.mlx) { s += 10; reasons.push("runs on MLX"); }
   if (c.kind === "space" && c.sdk === "static") { s += 5; reasons.push("static app, runs offline in a browser"); }
   if (c.kind === "collection") reasons.push(`${c.extra.items.length} items to learn from`);
+  // A watched author's uploads are new and rarely liked yet; the watch is the signal, so they don't sink below the fold.
+  if (c.extra?.watched) { s += 20; reasons.push(`from watched author ${c.extra.watched}`); }
   if (fresh >= 10) reasons.push("updated recently");
   if (trend >= 8) reasons.push("trending on the Hub");
   if (pop >= 14) reasons.push(`${c.likes} ${c.kind === "paper" || c.kind === "collection" ? "upvotes" : "likes"}`);
@@ -285,11 +287,19 @@ function scoreCandidate(c, weight) {
   return { score: Math.round(Math.max(0, Math.min(100, s)) * 10) / 10, reasons, flags };
 }
 
+// Hugging Face accounts whose every model, dataset and Space is a candidate on each scan, whatever is trending.
+// Added on request; each carries the theme its uploads belong to. KV `watch_authors` (same shape) adds more without a deploy.
+export const WATCHED_AUTHORS = [
+  { author: "chaoliangUNSW", theme: "decisions", note: "Jev-style decision models (MLX, GGUF), decision datasets and demos" },
+];
+
 async function collect(env, weights) {
   const out = new Map();
   const add = (c, themeId) => {
     const prev = out.get(c.id);
-    if (!prev || (weights[themeId] ?? 0) > (weights[prev.theme] ?? 0)) out.set(c.id, { ...c, theme: themeId });
+    const watched = c.extra?.watched || prev?.extra?.watched;  // a watched author's item keeps its tag whichever search found it
+    if (!prev || (weights[themeId] ?? 0) > (weights[prev.theme] ?? 0)) out.set(c.id, { ...c, theme: themeId, extra: { ...(c.extra || {}), ...(watched ? { watched } : {}) } });
+    else if (watched) prev.extra = { ...(prev.extra || {}), watched };
   };
   const jobs = [];
   const run = (p, fn) => jobs.push(p.then(fn).catch(e => ({ error: e.message })));
@@ -328,6 +338,37 @@ async function collect(env, weights) {
         gated: "false", license: s.cardData?.license || null,
       }, t.id)));
     }
+  }
+
+  // Watched authors: newest uploads first, across models, datasets and Spaces.
+  const extra = await kvGet(env, "watch_authors").catch(() => null);
+  const watched = [...WATCHED_AUTHORS, ...(Array.isArray(extra) ? extra : [])]
+    .filter((w, i, a) => w && /^[\w.-]+$/.test(w.author || "") && a.findIndex(x => x.author === w.author) === i);
+  for (const w of watched) {
+    const theme = THEMES.some(t => t.id === w.theme) ? w.theme : "agents";
+    const tag = { watched: w.author };
+    run(hf(`/models?${qs({ author: w.author, sort: "lastModified", limit: "50" }, ["safetensors", "likes", "sha", "gated", "pipeline_tag", "cardData", "trendingScore", "lastModified", "library_name", "tags"])}`, env),
+      list => list.forEach(m => add({
+        id: `model:${m.id}`, kind: "model", repo: m.id, sha: m.sha, title: null,
+        summary: m.pipeline_tag || null, extra: { pipeline: m.pipeline_tag, library: m.library_name, ...tag },
+        size_bytes: modelBytes(m), likes: m.likes, trending: m.trendingScore, lastModified: m.lastModified,
+        gated: String(m.gated), license: m.cardData?.license || null,
+        mlx: m.library_name === "mlx" || (m.tags || []).includes("mlx") || /mlx/i.test(m.id),
+      }, theme)));
+    run(hf(`/datasets?${qs({ author: w.author, sort: "lastModified", limit: "30" }, ["mainSize", "likes", "sha", "gated", "cardData", "trendingScore", "lastModified", "description"])}`, env),
+      list => list.forEach(d => add({
+        id: `dataset:${d.id}`, kind: "dataset", repo: d.id, sha: d.sha, title: null,
+        summary: (d.description || "").replace(/\s+/g, " ").trim().slice(0, 280) || null, extra: { ...tag },
+        size_bytes: d.mainSize ?? null, likes: d.likes, trending: d.trendingScore, lastModified: d.lastModified,
+        gated: String(d.gated), license: d.cardData?.license ? [].concat(d.cardData.license).join(",") : null,
+      }, theme)));
+    run(hf(`/spaces?${qs({ author: w.author, sort: "lastModified", limit: "30" }, ["sdk", "likes", "sha", "trendingScore", "lastModified", "cardData"])}`, env),
+      list => list.forEach(s => add({
+        id: `space:${s.id}`, kind: "space", repo: s.id, sha: s.sha, title: s.cardData?.title || null,
+        summary: s.cardData?.short_description || null, extra: { sdk: s.sdk, emoji: s.cardData?.emoji, ...tag },
+        sdk: s.sdk, size_bytes: null, likes: s.likes, trending: s.trendingScore, lastModified: s.lastModified,
+        gated: "false", license: s.cardData?.license || null,
+      }, theme)));
   }
 
   // Daily papers: score each against every theme's keywords and keep the best theme.
@@ -395,7 +436,7 @@ async function scan(env, trigger) {
     if (c.size_bytes && c.size_bytes > maxBytes) continue;
     if (c.kind === "dataset" && c.size_bytes !== null && c.size_bytes < 50_000) continue; // empty stubs
     const { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
-    if (score < 35) continue;
+    if (score < 35 && !c.extra?.watched) continue;  // a watched author's uploads always count
     scored.push({ c, score, reasons, flags });
   }
   // Keep the best few of each kind per theme so every theme gets models and datasets, not just papers,
@@ -405,6 +446,7 @@ async function scan(env, trigger) {
   for (const s of scored) {
     const v = `${s.c.kind}:${baseName(s.c.repo)}`;
     if (variants.has(v)) continue;
+    if (s.c.extra?.watched) { variants.add(v); keep.push(s); continue; }  // outside the per-theme quota
     const k = `${s.c.theme}:${s.c.kind}`;
     if ((taken[k] = (taken[k] || 0) + 1) > (QUOTA[s.c.kind] || 3)) continue;
     variants.add(v); keep.push(s);
