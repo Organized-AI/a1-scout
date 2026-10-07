@@ -63,3 +63,9 @@ CREATE TABLE IF NOT EXISTS bench_votes (
   id INTEGER PRIMARY KEY AUTOINCREMENT, suite TEXT NOT NULL, task_id TEXT,
   model_a TEXT NOT NULL, model_b TEXT NOT NULL, vote TEXT NOT NULL, created TEXT NOT NULL
 );
+
+-- Public docs waitlist (scout.organizedai.vip/docs). Survey answers are JSON.
+CREATE TABLE IF NOT EXISTS waitlist (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, token TEXT NOT NULL,
+  source TEXT, referrer TEXT, ip_hash TEXT, country TEXT, survey TEXT, survey_at TEXT, created TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS waitlist_ip ON waitlist(ip_hash, created);
