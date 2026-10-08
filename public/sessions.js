@@ -24,8 +24,12 @@ const SessionsView = (() => {
 
 
   /* ---------- stat cards: each picks its own time frame; "i" explains it ---------- */
-  const TF = { day: "Today", week: "This week", month: "This month", quarter: "This quarter", lastq: "Last quarter", ytd: "Year to date", all: "All time" };
-  const PREV = { day: "yesterday", week: "last week", month: "last month", quarter: "last quarter", lastq: "the quarter before", ytd: "last year" };
+  const TF = { day: "Today", lastday: "Yesterday", week: "This week", lastweek: "Last week", month: "This month", lastmonth: "Last month",
+    quarter: "This quarter", lastq: "Last quarter", ytd: "Year to date", all: "All time" };
+  // Complete past periods, each compared with the one before it.
+  const CLOSED = { lastday: "day", lastweek: "week", lastmonth: "month", lastq: "quarter" };
+  const PREV = { day: "yesterday", week: "last week", month: "last month", quarter: "last quarter", ytd: "last year",
+    lastday: "the day before", lastweek: "the week before", lastmonth: "the month before", lastq: "the quarter before" };
   const CARDS = {
     sessions: { label: "Sessions", tf: "week", value: a => a.n, fmt: v => Math.round(v).toLocaleString(),
       info: "Coding sessions you started in Claude Code, Claude Desktop, Codex Desktop, the Codex CLI or an IDE, counted on the day each one began. Scripted runs (codex exec, claude -p, the Agent SDK, Paperclip and other orchestrators) aren't counted here; they're under Agents below." },
@@ -61,7 +65,7 @@ const SessionsView = (() => {
   // The span a time frame covers, and the one it's compared with. "Last quarter" is a closed quarter against the one before;
   // the others run to now and compare with the same point in the previous period.
   function periodRange(tf, now = Date.now()) {
-    if (tf === "lastq") { const q = periodStart("quarter", now), st = shiftBack("quarter", q); return { start: st, end: q, prevStart: shiftBack("quarter", st), prevEnd: st, closed: true }; }
+    if (CLOSED[tf]) { const u = CLOSED[tf], cur = periodStart(u, now), st = shiftBack(u, cur); return { start: st, end: cur, prevStart: shiftBack(u, st), prevEnd: st, closed: true }; }
     const start = periodStart(tf, now);
     return tf === "all" ? { start, end: now + 1 } : { start, end: now + 1, prevStart: shiftBack(tf, start), prevEnd: shiftBack(tf, now) + 1 };
   }
@@ -187,7 +191,7 @@ const SessionsView = (() => {
 
 
   /* ---------- chart + tool grid follow the cards' time frame ---------- */
-  const GRAIN = { day: "hour", week: "day", month: "day", quarter: "week", lastq: "week", ytd: "week", all: "month" };
+  const GRAIN = { day: "hour", lastday: "hour", week: "day", lastweek: "day", month: "day", lastmonth: "day", quarter: "week", lastq: "week", ytd: "week", all: "month" };
   function floorTo(g, t) {
     const d = new Date(t); d.setMinutes(0, 0, 0);
     if (g !== "hour") d.setHours(0);
@@ -200,7 +204,7 @@ const SessionsView = (() => {
   function bucketLabel(g, t, tf) {
     const d = new Date(t);
     if (g === "hour") { const h = d.getHours(); return { label: `${h % 12 || 12}${h < 12 ? "a" : "p"}`, title: d.toLocaleString([], { weekday: "short", hour: "numeric" }) }; }
-    if (g === "day") return { label: tf === "week" ? d.toLocaleDateString([], { weekday: "short" }) : String(d.getDate()), title: d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) };
+    if (g === "day") return { label: tf === "week" || tf === "lastweek" ? d.toLocaleDateString([], { weekday: "short" }) : String(d.getDate()), title: d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) };
     if (g === "week") return { label: d.toLocaleDateString([], { month: "short", day: "numeric" }), title: "Week of " + d.toLocaleDateString([], { month: "short", day: "numeric" }) };
     return { label: d.toLocaleDateString([], { month: "short" }) + (d.getMonth() === 0 ? ` '${String(d.getFullYear()).slice(2)}` : ""), title: d.toLocaleDateString([], { month: "long", year: "numeric" }) };
   }
@@ -210,13 +214,13 @@ const SessionsView = (() => {
     const from = floorTo(g, tf === "all" ? (rows[0]?.[0] ?? now) : rg.start);
     // Today, this week, month and quarter show the whole period (later slots stay empty); YTD and all time stop at now;
     // last quarter is the closed quarter.
-    const end = tf === "lastq" ? rg.end : tf === "all" || tf === "ytd" ? now + 1 : periodEnd(tf, rg.start);
+    const end = CLOSED[tf] ? rg.end : tf === "all" || tf === "ytd" ? now + 1 : periodEnd(tf, rg.start);
     const out = [];
     for (let t = from; t < end && out.length < 400; t = stepOn(g, t)) out.push({ start: t, ...bucketLabel(g, t, tf), sessions: 0, turns: 0, edits: 0, errors: 0,
       active_minutes: 0, tokens_in: 0, tokens_out: 0, tokens_cache_read: 0, tokens_cache_write: 0, tool_calls: 0, toolMap: {} });
     let i = 0;
     for (const r of rows) {
-      if (r[0] < from || r[0] >= end || (tf === "lastq" && r[0] < rg.start)) continue;
+      if (r[0] < from || r[0] >= end || (CLOSED[tf] && r[0] < rg.start)) continue;
       while (i + 1 < out.length && out[i + 1].start <= r[0]) i++;
       const b = out[i];
       b.sessions++; b.turns += r[3]; b.edits += r[4]; b.errors += r[5]; b.active_minutes += r[6];
@@ -404,7 +408,7 @@ const SessionsView = (() => {
     const pr = profileFor();
     const html = list("Languages", pr.languages) + list("Libraries", pr.libraries) + list("Packages", pr.packages) + list("Hugging Face models", pr.models)
       + list("Tools", pr.tools) + list("LLMs", pr.llms) + list("Apps", pr.apps);
-    return html || `<div class="empty">No sessions ${tfAll === "day" ? "today" : "in this period"} yet.</div>`;
+    return html || `<div class="empty">No sessions ${tfAll === "day" ? "today yet" : tfAll === "lastday" ? "yesterday" : "in this period"}.</div>`;
   }
   function animateLists(el) { el.querySelectorAll(".st-row u").forEach(u => gsap.fromTo(u, { width: 0 }, { width: (u.dataset.w * 100) + "%", duration: RM() ? 0 : .7, ease: "power3.out" })); }
 
