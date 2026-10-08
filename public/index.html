@@ -109,6 +109,13 @@ button.chip:hover{border-color:var(--accent)}
 .st-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.st-lt{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
 .st-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px;margin:4px 0}.st-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.st-row b{font:500 12px "IBM Plex Mono",monospace;color:var(--mute)}
 .st-row i{grid-column:1/-1;height:3px;background:var(--chip);border-radius:2px;overflow:hidden}.st-row u{display:block;height:100%;width:0;background:var(--brand)}
+.st-alerts{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0 0 12px}.st-at{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font:500 11px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.st-acards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.st-ac{position:relative;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg);overflow:hidden}.st-ac b{display:block;font:600 18px "IBM Plex Mono",monospace}.st-ac span{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.st-ac small{display:block;font:11px "IBM Plex Mono",monospace;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-ac.flag{border-color:var(--brand)}.st-ac.flag.good{border-color:var(--c-papers)}.st-ac.flag.bad{border-color:var(--bad)}
+.st-ac.flag::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}.st-ac.good::before{background:var(--c-papers)}.st-ac.bad::before{background:var(--bad)}
+.st-ac em{font-style:normal}.st-ac.good em{color:var(--c-papers)}.st-ac.bad em{color:var(--bad)}
 .st-log{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:13px;overflow-x:auto}
 .st-lr{display:grid;grid-template-columns:90px 130px 1fr 130px 60px;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);min-width:560px}.st-lr:last-child{border-bottom:0}
 .st-lh{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase}.st-lr.bad span:nth-child(3){color:var(--bad)}

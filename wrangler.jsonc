@@ -17,16 +17,19 @@
     { "binding": "BENCH", "id": "de9d7f9c94b842bf90d32a93aaf40db9" }
   ],
   // Coding sessions (src/sessions.js): every accepted bundle, kept past Workers Logs' 7 days.
+  // Lifecycle (not deployed from here): rule "sessions-ia-180" moves sessions/ to Infrequent Access after 180 days.
+  //   npx wrangler r2 bucket lifecycle add a1-scout-sessions sessions-ia-180 sessions/ --ia-transition-days 180
   "r2_buckets": [
     { "binding": "SESSION_LOGS", "bucket_name": "a1-scout-sessions" }
   ],
-  // One data point per changed session per sync (blobs: host, source, app, model, project, day;
+  // One data point per changed session per sync (blobs: host, source, app, model, project, day, session digest;
   // doubles: turns, edits, errors, active min, tokens in/out/cache read/cache write, events, subagents).
   "analytics_engine_datasets": [
     { "binding": "SESSION_METRICS", "dataset": "a1_scout_sessions" }
   ],
-  // Weekly scan: Mondays 13:00 UTC (8am Austin). The Mac agent can also ask for a scan on mount.
-  "triggers": { "crons": ["0 13 * * 1"] },
+  // Weekly scan + session alerts: Mondays 13:00 UTC (8am Austin). The Mac agent can also ask for a scan on mount.
+  // Tuesdays 13:00 UTC: session alerts only, re-run for Macs that synced late.
+  "triggers": { "crons": ["0 13 * * 1", "0 13 * * 2"] },
   "vars": {
     "ORG": "Organized-AI",
     "AUTO_APPROVE": "on",

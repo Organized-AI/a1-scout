@@ -86,3 +86,95 @@ test("picks get a reason from your work", async () => {
   assert.equal(workBoost({ kind: "model", repo: "org/unrelated-model" }, work), null);
   assert.ok(!tokensOfName("mlx-community/Llama-3-8B-Instruct-4bit").includes("mlx"));
 });
+
+// ---------- weekly alerts and long series ----------
+const day = (week, n = 2) => new Date(Date.parse(week + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+const trailing = ["2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21"], latest = "2026-09-28";
+const steady = { turns: 10, errors: 1, tools: { Bash: 20 }, llms: { "claude-opus-5-5": 3 }, tokens: { input: 1000, output: 1000, cache_read: 8000, cache_write: 0 } };
+const busy = { turns: 10, errors: 5, tools: { Bash: 10, WebFetch: 10 }, llms: { "claude-opus-5-5": 1, "gpt-5.5-codex": 2 }, tokens: { input: 10000, output: 10000, cache_read: 5000, cache_write: 5000 } };
+async function seedWeeks(e) {
+  await call(e, "/api/sessions/upload", { host: "m", run_id: "run-000010", bundle: bundle([
+    ...trailing.map((w, i) => session(`a${i}`, day(w), steady)), session("cc", day(latest), busy)]) });
+}
+
+test("weekly alerts: last week against the 4-week average", async () => {
+  const e = env();
+  await seedWeeks(e);
+  const r = (await call(e, `/api/sessions/alerts/run?week=${latest}`, {})).j;
+  assert.equal(r.week, latest); assert.equal(r.baseline_weeks, 4);
+  const by = Object.fromEntries(r.alerts.map(a => [a.metric, a]));
+  assert.deepEqual(Object.keys(by), ["tokens", "cache_hit", "error_rate", "tokens_per_prompt", "new_tools", "new_llms"]);
+  assert.equal(by.tokens.value, 30000); assert.equal(by.tokens.baseline, 10000); assert.equal(by.tokens.change, 2); assert.equal(by.tokens.flag, true);
+  assert.equal(by.cache_hit.value, 0.25); assert.equal(by.cache_hit.baseline, 0.889); assert.equal(by.cache_hit.tone, "bad");
+  assert.equal(by.error_rate.value, 0.25); assert.equal(by.error_rate.baseline, 0.05); assert.equal(by.error_rate.tone, "bad");
+  assert.equal(by.tokens_per_prompt.value, 3000); assert.equal(by.tokens_per_prompt.baseline, 1000); assert.equal(by.tokens_per_prompt.tone, "bad");
+  assert.deepEqual(by.new_tools.detail, ["WebFetch"]); assert.equal(by.new_tools.value, 1);
+  assert.deepEqual(by.new_llms.detail, ["gpt-5.5-codex"]);
+  // re-run replaces, and the overview carries the latest week
+  await call(e, `/api/sessions/alerts/run?week=${day(latest, 5)}`, {});
+  const o = (await call(e, "/api/sessions")).j;
+  assert.equal(o.alerts.week, latest); assert.equal(o.alerts.rows.length, 6);
+  assert.equal(o.alerts.rows.find(x => x.metric === "new_tools").detail[0], "WebFetch");
+  assert.equal(o.alerts.rows.find(x => x.metric === "cache_hit").flag, true);
+});
+
+test("weekly alerts: steady week flags nothing, empty week stores nothing", async () => {
+  const e = env();
+  await call(e, "/api/sessions/upload", { host: "m", run_id: "run-000011", bundle: bundle([...trailing, latest].map((w, i) => session(`b${i}`, day(w), steady))) });
+  const r = (await call(e, `/api/sessions/alerts/run?week=${latest}`, {})).j;
+  assert.deepEqual(r.alerts.filter(a => a.flag), []);
+  const none = (await call(e, "/api/sessions/alerts/run?week=2026-08-17", {})).j;
+  assert.deepEqual(none.alerts, []);
+  assert.equal((await call(e, "/api/sessions")).j.alerts.week, latest);
+  // first week of data: no baseline, nothing called new
+  const f = env();
+  await call(f, "/api/sessions/upload", { host: "m", run_id: "run-000012", bundle: bundle([session("dd", day(latest), busy)]) });
+  const fr = (await call(f, `/api/sessions/alerts/run?week=${latest}`, {})).j;
+  assert.equal(fr.baseline_weeks, 0); assert.ok(fr.alerts.every(a => !a.flag && a.baseline == null));
+  // the current (incomplete) week and bad dates are refused
+  assert.equal((await call(f, `/api/sessions/alerts/run?week=${today}`, {})).status, 400);
+  assert.equal((await call(f, "/api/sessions/alerts/run?week=2026-13-45", {})).status, 400);
+});
+
+test("alert flags: a 0 baseline is real for rates", async () => {
+  const { alertFlag } = await import("../src/sessions.js");
+  assert.deepEqual(alertFlag("error_rate", 0.4, 0, null), { flag: true, tone: "bad" });
+  assert.deepEqual(alertFlag("cache_hit", 0, 0.8, -1), { flag: true, tone: "bad" });
+  assert.deepEqual(alertFlag("error_rate", 0.06, 0.05, 0.2), { flag: false, tone: "info" });
+  assert.deepEqual(alertFlag("tokens", 100, 0, null), { flag: false, tone: "info" });
+  // a week with tokens but no cache reads reports 0%, not nothing
+  const e = env(), noCache = { ...steady, tokens: { input: 5000, output: 1000, cache_read: 0, cache_write: 0 } };
+  await call(e, "/api/sessions/upload", { host: "m", run_id: "run-000015", bundle: bundle([...trailing.map((w, i) => session(`c${i}`, day(w), steady)), session("cf", day(latest), noCache)]) });
+  const ch = (await call(e, `/api/sessions/alerts/run?week=${latest}`, {})).j.alerts.find(a => a.metric === "cache_hit");
+  assert.equal(ch.value, 0); assert.equal(ch.flag, true); assert.equal(ch.tone, "bad");
+});
+
+test("series: AE for its window (deduped per session), D1 before it, D1 when AE fails", async () => {
+  const { sessionSeries } = await import("../src/sessions.js");
+  const e = { ...env(), CF_ACCOUNT_ID: "acct", CF_AE_TOKEN: "tok" };
+  const old = new Date(Date.now() - 200 * 864e5).toISOString().slice(0, 10);
+  await call(e, "/api/sessions/upload", { host: "m", run_id: "run-000013", bundle: bundle([session("e1", old, steady), session("e2", old, steady), session("f1", today, steady)]) });
+  assert.equal(e.points[0].blobs[6], h("e1").slice(0, 16)); // AE points carry the session digest
+  const real = globalThis.fetch, sent = [];
+  try {
+    globalThis.fetch = async (u, init) => { sent.push({ u, init }); return new Response(JSON.stringify({ data: [{ day: today, sessions: "1", turns: 10, tokens_in: "1000" }] })); };
+    const s = await sessionSeries(e, 365, { aeSince: "2000-01-01" });
+    assert.match(sent[0].u, /accounts\/acct\/analytics_engine\/sql$/); assert.equal(sent[0].init.headers.authorization, "Bearer tok");
+    assert.match(sent[0].init.body, /max\(double1\) AS turns/); assert.match(sent[0].init.body, /GROUP BY day, sid/); assert.match(sent[0].init.body, /blob7 != ''/);
+    assert.deepEqual(s.series.map(x => [x.day, x.source, x.sessions]), [[old, "d1", 2], [today, "ae", 1]]);
+    assert.equal(s.series[1].tokens_in, 1000); assert.equal(s.series[0].turns, 20);
+    // AE short of D1 for a day (write limit, pre-blob7 sessions): D1 wins that day
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ day: today, sessions: "0", turns: 0 }] }));
+    const short = await sessionSeries(e, 365, { aeSince: "2000-01-01" });
+    assert.equal(short.series.at(-1).source, "d1"); assert.equal(short.sources.ae.replaced_by_d1, 1);
+    globalThis.fetch = async () => new Response("no", { status: 403 });
+    const f = await sessionSeries(e, 365, { aeSince: "2000-01-01" });
+    assert.match(f.sources.ae.error, /403/);
+    assert.deepEqual(f.series.map(x => [x.day, x.source]), [[old, "d1"], [today, "d1"]]);
+  } finally { globalThis.fetch = real; }
+  // no secrets: D1 only, over HTTP too
+  const plain = env();
+  await call(plain, "/api/sessions/upload", { host: "m", run_id: "run-000014", bundle: bundle([session("f2", today, steady)]) });
+  const r = (await call(plain, "/api/sessions/series?days=30")).j;
+  assert.equal(r.days, 30); assert.match(r.sources.ae.off, /not set/); assert.equal(r.series[0].source, "d1");
+});

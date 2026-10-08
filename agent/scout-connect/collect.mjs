@@ -1,14 +1,14 @@
 // Read Claude Code and Codex session logs on this computer and turn each session into a small,
 // privacy-safe summary. Raw prompts, replies, file contents, paths and command arguments never leave this module.
-// Vendored from a1-scout-docs/connect/core/collect.mjs, plus token usage, models used and active minutes
-// (numbers and model names only) for the A1 dashboard's history and trends.
+// Vendored from a1-scout-docs/connect/core/collect.mjs (keep in sync): it also reports token counts, models used and
+// active minutes (numbers and model names only) for the A1 dashboard's history and trends.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir, platform, arch } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { findPrivacyProblem, validateBundle, BUNDLE_SCHEMA_VERSION } from "./rules.mjs";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 const HOME = homedir();
 export const STATE_DIR = process.env.SCOUT_HOME || join(HOME, ".scout");
 const sha256 = v => createHash("sha256").update(String(v ?? "")).digest("hex");

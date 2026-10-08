@@ -1,5 +1,5 @@
 import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
-import { sessionsApi, sessionOrders, workIndex, workBoost } from "./sessions.js";
+import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
 // actually building, stores picks in D1, serves them to the Mac agent that fills the
@@ -1033,5 +1033,10 @@ export default {
     }
     return withPrivate(await env.ASSETS.fetch(req));
   },
-  async scheduled(_evt, env, ctx) { ctx.waitUntil(scan(env, "cron")); },
+  // Monday: the weekly scan, and last week's coding-session alerts against the 4 weeks before it.
+  // Tuesday: alerts again (same week, replaced), so Macs that were off at the weekend still count.
+  async scheduled(evt, env, ctx) {
+    if (evt.cron !== "0 13 * * 2") ctx.waitUntil(scan(env, "cron"));
+    ctx.waitUntil(sessionAlerts(env).catch(e => console.log(JSON.stringify({ event: "sessions.alerts_failed", error: e.message }))));
+  },
 };

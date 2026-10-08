@@ -75,3 +75,8 @@ CREATE TABLE IF NOT EXISTS companies (
   domain TEXT PRIMARY KEY, status TEXT NOT NULL, brand TEXT, homepage TEXT, pages TEXT,
   apify_run TEXT, apify_status TEXT, errors TEXT, requested TEXT NOT NULL, updated TEXT NOT NULL);
 -- waitlist also gets company_domain and domain_source (added at runtime with ALTER TABLE).
+
+-- Coding-session alerts (also created on first use by the Worker): Monday cron compares the last complete week with the
+-- 4 before it. One row per (week, metric); detail is a JSON list of names for new_tools / new_llms.
+CREATE TABLE IF NOT EXISTS session_alerts (week TEXT NOT NULL, metric TEXT NOT NULL, value REAL, baseline REAL, change REAL,
+  baseline_weeks INTEGER NOT NULL, flag INTEGER NOT NULL, tone TEXT NOT NULL, detail TEXT, created TEXT NOT NULL, PRIMARY KEY (week, metric));

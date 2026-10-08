@@ -1,6 +1,7 @@
 /* Sessions tab: "Connect coding sessions" turns on a 15-minute sync on every Mac running the agent.
-   Shows what Scout learned (languages, libraries, packages, models), how behavior, tool use and tokens change week
-   to week, each Mac's last sync, and the sync log. Data: GET /api/sessions (D1); bundles archived in R2. */
+   Opens with last week's alerts against the 4-week average (Monday cron, D1 session_alerts). Shows what Scout learned
+   (languages, libraries, packages, models), how behavior, tool use and tokens change week to week, each Mac's last
+   sync, and the sync log. Data: GET /api/sessions (D1); bundles archived in R2. */
 const SessionsView = (() => {
   let data = null, busy = false, timer = null, metric = "tokens";
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -65,6 +66,34 @@ const SessionsView = (() => {
     return `<div class="st-list"><div class="st-lt">${esc(title)}</div>${rows.map(r => `<div class="st-row"><span title="${esc(r.name)}">${esc(r.name)}</span><b>${big(r.count)}</b><i><u data-w="${(r.count / max).toFixed(3)}"></u></i></div>`).join("")}</div>`;
   }
 
+  // Weekly alerts (Monday cron): last week against the 4 before it. Flagged cards first.
+  const ALERTS = {
+    tokens: { label: "Tokens", fmt: big },
+    cache_hit: { label: "Cache hit", fmt: pct, pts: true },
+    error_rate: { label: "Error rate", fmt: pct, pts: true },
+    tokens_per_prompt: { label: "Tokens / prompt", fmt: big },
+    new_tools: { label: "New tools", fmt: v => String(v), names: true },
+    new_llms: { label: "New LLMs", fmt: v => String(v), names: true },
+  };
+  function alertsHtml(a) {
+    if (!a?.rows?.length) return "";
+    const rows = a.rows.filter(r => ALERTS[r.metric] && r.value != null).sort((x, y) => y.flag - x.flag);
+    if (!rows.length) return "";
+    const wk = new Date(a.week + "T00:00:00Z").toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" });
+    const card = r => {
+      const m = ALERTS[r.metric];
+      let vs = "";
+      if (m.names) vs = r.detail?.length ? esc(r.detail.join(", ")) : "nothing new";
+      else if (r.baseline != null) {
+        const d = m.pts ? `${r.value >= r.baseline ? "+" : "−"}${Math.abs(Math.round((r.value - r.baseline) * 100))} pts` : r.change != null ? `${r.change >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(r.change * 100))}%` : "";
+        vs = `<em>${d}</em> vs ${esc(m.fmt(r.baseline))} avg`;
+      } else vs = "no earlier weeks yet";
+      return `<div class="st-ac${r.flag ? ` flag ${esc(r.tone)}` : ""}" title="${m.names ? esc((r.detail || []).join(", ")) : ""}"><span>${esc(m.label)}</span><b data-av="${esc(r.value)}" data-af="${esc(r.metric)}">${esc(m.fmt(r.value))}</b><small>${vs}</small></div>`;
+    };
+    const n = rows.filter(r => r.flag).length;
+    return `<div class="st-alerts"><div class="st-at"><span>Week of ${esc(wk)} ${a.baseline_weeks ? `vs the ${a.baseline_weeks}-week average` : "· first week of data"}</span><span>${n ? `${n} to look at` : "steady week"}</span></div><div class="st-acards">${rows.map(card).join("")}</div></div>`;
+  }
+
   function html() {
     if (!data) return `<div class="empty">Loading sessions…</div>`;
     const d = data, on = d.connect?.on, t = d.totals, hist = d.history || [], pr = d.profile || {};
@@ -75,7 +104,7 @@ const SessionsView = (() => {
       ? `<button class="a1-run-btn" data-sx="now"${busy ? " disabled" : ""}><span class="a1-run-ic" aria-hidden="true"><i></i></span><span class="a1-run-t">Sync now</span><small>Connected · every ${d.every_min} min</small></button>
          <button class="btn" data-sx="off"${busy ? " disabled" : ""}>Disconnect</button>`
       : `<button class="a1-run-btn st-connect" data-sx="on"${busy ? " disabled" : ""}><span class="a1-run-ic" aria-hidden="true"><i></i></span><span class="a1-run-t">Connect coding sessions</span><small>Claude + Codex · every Mac with the agent</small></button>`;
-    return `<div class="sub">Claude and Codex sessions from every Mac running the A1 agent, synced every ${d.every_min} minutes once connected. Only counts and names leave each Mac (tools, commands, languages, packages, models, tokens), checked by the same privacy filter as the Scout connector. No prompts, code, paths or file names. Scout ranks Hugging Face picks against this.</div>
+    return `${alertsHtml(d.alerts)}<div class="sub">Claude and Codex sessions from every Mac running the A1 agent, synced every ${d.every_min} minutes once connected. Only counts and names leave each Mac (tools, commands, languages, packages, models, tokens), checked by the same privacy filter as the Scout connector. No prompts, code, paths or file names. Scout ranks Hugging Face picks against this.</div>
     <div class="a1-cta st-cta">${connectBtn}<span class="a1-cta-note" data-sxnote>${on ? `Connected ${esc(ago(d.connect.at))}. Each Mac checks in every minute and syncs what changed.` : "One click. Each Mac picks it up within a minute; no install, no pairing."}</span></div>
     ${hosts.length ? `<div class="a1-macs">${hosts.map(h => { const s = h.last_sync; const cls = !s ? "" : s.state === "failed" ? "stale" : "on";
       return `<span class="a1-mac ${cls}" title="${esc(s?.note || h.label)}"><i></i>${esc(String(h.label).split(" · ")[0])} · ${s ? `${s.state === "failed" ? "failed" : "synced"} ${esc(ago(s.finished))}${s.sessions ? ` · ${s.sessions} sessions` : ""}` : "waiting for first sync"}</span>`; }).join("")}</div>` : ""}
@@ -126,8 +155,23 @@ const SessionsView = (() => {
     grow(document, first ? .9 : .4);
     document.querySelectorAll(".st-row u").forEach(u => gsap.fromTo(u, { width: 0 }, { width: (u.dataset.w * 100) + "%", duration: RM() ? 0 : .8, ease: "power3.out", delay: RM() ? 0 : .1 }));
     document.querySelectorAll(".stat [data-n]").forEach(el => { const o = { v: 0 }; gsap.to(o, { v: +el.dataset.n, duration: first && !RM() ? .9 : 0, onUpdate: () => el.textContent = Math.round(o.v).toLocaleString() }); });
+    animateAlerts(first);
     if (first && !RM()) gsap.fromTo(".st-list, .st-cell, .st-lr", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .3, stagger: { amount: .6 }, ease: "power2.out", clearProps: "all" });
     if (data?.connect?.on && !timer) poll(call, rerender, 60000);
+  }
+  function animateAlerts(first) {
+    const cards = document.querySelectorAll(".st-ac");
+    if (!cards.length || !first || RM()) return;
+    gsap.fromTo(cards, { opacity: 0, y: 10, scale: .97 }, { opacity: 1, y: 0, scale: 1, duration: .45, stagger: .07, ease: "back.out(1.6)", clearProps: "all" });
+    document.querySelectorAll(".st-ac [data-av]").forEach(el => {
+      const m = ALERTS[el.dataset.af], o = { v: 0 }, to = +el.dataset.av;
+      gsap.to(o, { v: to, duration: .9, ease: "power2.out", onUpdate: () => el.textContent = m.fmt(m.pts ? o.v : Math.round(o.v)), onComplete: () => el.textContent = m.fmt(to) });
+    });
+    // GSAP can't tween var() or color-mix(), so pulse from the card's resolved border colour.
+    document.querySelectorAll(".st-ac.flag").forEach((c, i) => {
+      const rgb = (getComputedStyle(c).borderLeftColor.match(/\d+(\.\d+)?/g) || [251, 224, 77]).slice(0, 3).join(",");
+      gsap.fromTo(c, { boxShadow: `0 0 0 0 rgba(${rgb},.55)` }, { boxShadow: `0 0 0 7px rgba(${rgb},0)`, duration: 1.1, delay: .5 + i * .07, repeat: 1, ease: "power1.out", clearProps: "boxShadow" });
+    });
   }
   function grow(root, d) {
     if (RM()) return;
