@@ -1,6 +1,6 @@
 // Read Claude Code and Codex session logs on this computer and turn each session into a small,
 // privacy-safe summary. Raw prompts, replies, file contents, paths and command arguments never leave this module.
-// Vendored from a1-scout-docs/connect/core/collect.mjs (keep in sync): it also reports token counts, models used and
+// Shared by a1-scout (agent/scout-connect) and a1-scout-docs (connect/core); keep the two identical. It also reports token counts, models used and
 // active minutes (numbers and model names only) for the A1 dashboard's history and trends.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { homedir, platform, arch } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { findPrivacyProblem, validateBundle, BUNDLE_SCHEMA_VERSION } from "./rules.mjs";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
 const HOME = homedir();
 export const STATE_DIR = process.env.SCOUT_HOME || join(HOME, ".scout");
 const sha256 = v => createHash("sha256").update(String(v ?? "")).digest("hex");
@@ -275,6 +275,8 @@ export function loadSettings() {
     sources: [envBool("SCOUT_CLAUDE", s.claude !== false) && "claude", envBool("SCOUT_CODEX", s.codex !== false) && "codex"].filter(Boolean),
     exclude: (process.env.SCOUT_EXCLUDE ?? (s.exclude || []).join(",")).split(",").map(x => x.trim()).filter(Boolean),
     autoSync: envBool("SCOUT_AUTOSYNC", Boolean(s.autoSync)),
+    // Full transcripts are opt-in and off unless the person turns them on (settings or SCOUT_TRANSCRIPTS).
+    transcripts: envBool("SCOUT_TRANSCRIPTS", s.transcripts === true),
     lookbackDays: Number(process.env.SCOUT_LOOKBACK_DAYS || s.lookbackDays || 180),
   };
 }
@@ -290,9 +292,10 @@ export function isExcluded(cwd, exclude) {
 export function collect({ onlyChanged = true, settings = loadSettings(), limit = 5000 } = {}) {
   const cursor = onlyChanged ? loadJson(cursorPath(), {}) : {};
   const since = Date.now() - settings.lookbackDays * 86400e3;
-  const rows = [], seen = {}, skipped = { excluded: 0, empty: 0, old: 0, unchanged: 0 };
-  const files = listSessionFiles(settings.sources);
-  for (const { source, file } of files) {
+  // files: which local file each row came from, for opt-in transcripts. It stays on this computer, never in a bundle.
+  const rows = [], sessionFiles = [], seen = {}, skipped = { excluded: 0, empty: 0, old: 0, unchanged: 0 };
+  const allFiles = listSessionFiles(settings.sources);
+  for (const { source, file } of allFiles) {
     let st; try { st = statSync(file); } catch { continue; }
     if (st.mtimeMs < since) { skipped.old++; continue; }
     const key = sha256(file);
@@ -313,9 +316,10 @@ export function collect({ onlyChanged = true, settings = loadSettings(), limit =
       project_fingerprint: projectFingerprint(sig.repo || sig.cwd), evidence_quality: "full-transcript",
       event_count: sig.events, observations: observationsOf(sig),
     });
+    sessionFiles.push({ source, digest: rows.at(-1).native_session_digest, file });
     if (rows.length >= limit) break;
   }
-  return { rows, seen, skipped, filesScanned: files.length };
+  return { rows, files: sessionFiles, seen, skipped, filesScanned: allFiles.length };
 }
 
 export function toBundles(rows, { chunk = 400 } = {}) {

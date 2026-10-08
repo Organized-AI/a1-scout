@@ -197,3 +197,33 @@ test("scripted runs are agents, kept out of your numbers, with a failing-since s
   assert.equal(g.harness, "paperclip"); assert.equal(g.runs, 3); assert.equal(g.failed, 2);
   assert.equal(g.failing_since.slice(0, 10), mid); assert.equal(g.failures[0].kind, "model_not_supported");
 });
+
+test("full transcripts: scrubbed on the Mac, stored in R2, read back decompressed", async () => {
+  const { scrub, packTranscript } = await import("../agent/scout-connect/transcripts.mjs");
+  const { gunzipSync } = await import("node:zlib");
+  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
+  const raw = JSON.stringify({ type: "user", message: { content: "use key sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ and hf_abcdefghijklmnopqrstuvwxyz0123456789 in /Users/jordan/proj" } })
+    + "\n" + JSON.stringify({ k: "-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----" });
+  const s = scrub(raw);
+  assert.equal(s.redacted, 3); assert.ok(!/sk-ant|hf_abc|MIIabc/.test(s.text)); assert.ok(s.text.includes("/Users/jordan/proj")); // paths stay
+  for (const l of s.text.split("\n")) JSON.parse(l); // still valid JSONL
+  const dir = mkdtempSync(join(tmpdir(), "tx-")), f = join(dir, "s.jsonl"); writeFileSync(f, raw);
+  const t = packTranscript({ source: "claude", digest: h("1"), file: f }, join(dir, "out"));
+  assert.equal(t.redacted, 3); assert.equal(gunzipSync(readFileSync(t.path)).toString(), s.text);
+
+  const e = env(); const store = new Map();
+  e.SESSION_LOGS = { put: async (k, v) => { store.set(k, new Uint8Array(await new Response(v).arrayBuffer())); return { size: store.get(k).length }; },
+    get: async k => store.has(k) ? { body: new Response(store.get(k)).body } : null };
+  const put = (digest) => worker.fetch(new Request(`https://x/api/sessions/transcript?source=claude&digest=${digest}&host=m&bytes=${s.text.length}&redacted=3`,
+    { method: "PUT", headers: { authorization: "Bearer t" }, body: readFileSync(t.path) }), e).then(async r => ({ status: r.status, j: await r.json() }));
+  assert.equal((await put(h("1"))).status, 409); // summary first
+  await call(e, "/api/sessions/upload", { host: "m", run_id: "run-000006", bundle: bundle([session("1", today, { app: "claude-code", launch: "interactive", tools: {} })]) });
+  assert.equal((await put(h("1"))).status, 200);
+  const back = await worker.fetch(new Request(`https://x/api/sessions/transcript?source=claude&digest=${h("1")}`, { headers: { authorization: "Bearer t" } }), e).then(r => r.text());
+  assert.equal(back, s.text);
+  const list = (await call(e, "/api/sessions/list?actor=you")).j.sessions;
+  assert.equal(list[0].transcript_bytes, s.text.length); assert.equal(list[0].transcript_redacted, 3);
+  assert.equal((await call(e, "/api/sessions/transcripts", { on: true })).j.connect.transcripts, true);
+  assert.equal((await call(e, "/api/sessions")).j.transcripts.n, 1);
+});

@@ -40,9 +40,10 @@ export function sessionTables(env) {
 
 // actor: "you" (you were at the keyboard) or "agent" (codex exec, claude -p / Agent SDK, or launched by an orchestrator
 // such as Paperclip). harness: which orchestrator. launch: what the log says. failure: a short category, never the text.
-const ADDED = ["actor TEXT", "harness TEXT", "launch TEXT", "failure TEXT"];
+const ADDED = ["actor TEXT", "harness TEXT", "launch TEXT", "failure TEXT", "transcript_bytes INTEGER", "transcript_at TEXT", "transcript_redacted INTEGER"];
 async function migrate(env) {
   for (const col of ADDED) { try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ${col}`).run(); } catch {} }
+  try { await env.DB.prepare("ALTER TABLE session_syncs ADD COLUMN transcripts INTEGER").run(); } catch {}
   // Rows from before the collector reported how a session started: scripted Codex runs look like one prompt, no tokens.
   await env.DB.prepare(`UPDATE sessions SET actor = CASE WHEN app = 'codex-cli' AND turns <= 1 AND tokens_in = 0 AND tokens_out = 0
     THEN 'agent' ELSE 'you' END WHERE actor IS NULL`).run();
@@ -61,7 +62,8 @@ export async function sessionOrders(env, kvGet) {
   const c = await kvGet(env, "sessions_connect");
   if (!c?.on) return { on: false };
   const n = await kvGet(env, "sessions_now");
-  return { on: true, every_min: c.every_min || SYNC_EVERY_MIN, force_at: n?.at && Date.now() - Date.parse(n.at) < 30 * 60e3 ? n.at : null };
+  return { on: true, every_min: c.every_min || SYNC_EVERY_MIN, transcripts: !!c.transcripts,
+    force_at: n?.at && Date.now() - Date.parse(n.at) < 30 * 60e3 ? n.at : null };
 }
 
 const num = v => (Number.isFinite(Number(v)) ? Math.max(0, Math.trunc(Number(v))) : 0);
@@ -72,11 +74,58 @@ export async function sessionsApi(req, env, url, p, { kvGet, kvSet }) {
 
   if (p === "/api/sessions/connect" && req.method === "POST") {
     const { on } = await req.json().catch(() => ({}));
-    const c = { on: on !== false, every_min: SYNC_EVERY_MIN, at: now() };
+    const prev = (await kvGet(env, "sessions_connect")) || {};
+    const c = { on: on !== false, every_min: SYNC_EVERY_MIN, transcripts: !!prev.transcripts, at: now() };
     await kvSet(env, "sessions_connect", c);
     if (c.on) await kvSet(env, "sessions_now", { at: now() }); // first sync right away, not in 15 minutes
     console.log(JSON.stringify({ event: "sessions.connect", on: c.on }));
     return json({ ok: true, connect: c });
+  }
+  // Full transcripts on or off for every Mac. Turning it on starts a sync now, and each Mac's first one sends all history.
+  if (p === "/api/sessions/transcripts" && req.method === "POST") {
+    const { on } = await req.json().catch(() => ({}));
+    const c = { ...((await kvGet(env, "sessions_connect")) || { on: false, every_min: SYNC_EVERY_MIN }), transcripts: on === true, transcripts_at: now() };
+    await kvSet(env, "sessions_connect", c);
+    if (c.on && c.transcripts) await kvSet(env, "sessions_now", { at: now() });
+    console.log(JSON.stringify({ event: "sessions.transcripts", on: c.transcripts }));
+    return json({ ok: true, connect: c });
+  }
+  // From a Mac: one session's full log, gzipped and credential-scrubbed on the Mac.
+  if (p === "/api/sessions/transcript" && req.method === "PUT") {
+    const source = url.searchParams.get("source"), digest = String(url.searchParams.get("digest") || "");
+    if (!["claude", "codex", "cowork", "other"].includes(source) || !/^[a-f0-9]{64}$/.test(digest)) return json({ error: "source and digest required" }, 400);
+    if (!env.SESSION_LOGS) return json({ error: "no transcript storage bound" }, 503);
+    const len = Number(req.headers.get("content-length") || 0);
+    if (len > 95 * 1024 * 1024) return json({ error: "transcript too large" }, 413);
+    const sess = await env.DB.prepare("SELECT host FROM sessions WHERE source = ? AND digest = ?").bind(source, digest).first();
+    if (!sess) return json({ error: "send the session summary first" }, 409);
+    const key = `transcripts/${source}/${digest}.jsonl.gz`, host = String(url.searchParams.get("host") || sess.host || "").slice(0, 40);
+    const obj = await env.SESSION_LOGS.put(key, req.body, { httpMetadata: { contentType: "application/gzip" },
+      customMetadata: { host, bytes: String(num(url.searchParams.get("bytes"))), redacted: String(num(url.searchParams.get("redacted"))) } });
+    await env.DB.prepare("UPDATE sessions SET transcript_bytes = ?, transcript_at = ?, transcript_redacted = ? WHERE source = ? AND digest = ?")
+      .bind(num(url.searchParams.get("bytes")), now(), num(url.searchParams.get("redacted")), source, digest).run();
+    console.log(JSON.stringify({ event: "sessions.transcript", host, source, gz_bytes: obj?.size || len, redacted: num(url.searchParams.get("redacted")) }));
+    return json({ ok: true, key, size: obj?.size || null });
+  }
+  // For the viewer: the transcript, decompressed (JSONL, one event per line, as the app wrote it).
+  if (p === "/api/sessions/transcript" && req.method === "GET") {
+    const source = url.searchParams.get("source"), digest = String(url.searchParams.get("digest") || "");
+    if (!/^[a-z]{2,10}$/.test(source || "") || !/^[a-f0-9]{64}$/.test(digest) || !env.SESSION_LOGS) return json({ error: "not found" }, 404);
+    const obj = await env.SESSION_LOGS.get(`transcripts/${source}/${digest}.jsonl.gz`);
+    if (!obj) return json({ error: "No transcript stored for this session yet." }, 404);
+    return new Response(obj.body.pipeThrough(new DecompressionStream("gzip")), { headers: { "content-type": "application/x-ndjson; charset=utf-8" } });
+  }
+  // For the viewer: recent sessions, newest first, yours or agents'.
+  if (p === "/api/sessions/list" && req.method === "GET") {
+    const actor = url.searchParams.get("actor") === "agent" ? "agent" : "you", before = url.searchParams.get("before") || "9999";
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 60));
+    const { results } = await env.DB.prepare(`SELECT source, digest, host, app, model, harness, failure, first_event, last_event, turns, edits, errors, active_minutes,
+      tokens_in + tokens_out + tokens_cache_read + tokens_cache_write tokens, transcript_bytes, transcript_redacted, observations
+      FROM sessions WHERE actor = ? AND first_event < ? ORDER BY first_event DESC LIMIT ?`).bind(actor, before, limit).all();
+    return json({ actor, sessions: results.map(({ observations, ...r }) => {
+      let o = {}; try { o = JSON.parse(observations); } catch {}
+      return { ...r, tools: Object.entries(o.tools || {}).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n), languages: Object.keys(o.languages || {}).slice(0, 3) };
+    }) });
   }
   if (p === "/api/sessions/sync-now" && req.method === "POST") {
     const at = now();
@@ -139,9 +188,9 @@ export async function sessionsApi(req, env, url, p, { kvGet, kvSet }) {
     const state = ["done", "up_to_date", "failed"].includes(r.state) ? r.state : "failed";
     const row = { run_id: r.run_id, host: r.host, started: r.started || null, finished: now(), state, trigger: String(r.trigger || "loop").slice(0, 20),
       sessions: num(r.sessions), stored: num(r.stored), files_scanned: num(r.files_scanned), skipped: JSON.stringify(r.skipped || {}).slice(0, 400),
-      note: r.note ? String(r.note).slice(0, 300) : null, duration_ms: num(r.duration_ms), r2_keys: num(r.parts) };
-    await env.DB.prepare(`INSERT INTO session_syncs (run_id, host, started, finished, state, trigger, sessions, stored, files_scanned, skipped, note, duration_ms, r2_keys)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...Object.values(row)).run();
+      note: r.note ? String(r.note).slice(0, 300) : null, duration_ms: num(r.duration_ms), r2_keys: num(r.parts), transcripts: r.transcripts == null ? null : num(r.transcripts) };
+    await env.DB.prepare(`INSERT INTO session_syncs (run_id, host, started, finished, state, trigger, sessions, stored, files_scanned, skipped, note, duration_ms, r2_keys, transcripts)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...Object.values(row)).run();
     await kvSet(env, `sessions_sync:${r.host}`, row);
     console.log(JSON.stringify({ event: "sessions.run", ...row, skipped: undefined }));
     return json({ ok: true });
@@ -160,6 +209,9 @@ export async function sessionsApi(req, env, url, p, { kvGet, kvSet }) {
 
 // ---------- reading it back ----------
 const STDLIB = new Set("os sys re json time datetime pathlib typing subprocess collections argparse shutil hashlib itertools functools math random string io csv urllib logging tempfile glob copy textwrap uuid base64 struct threading asyncio dataclasses enum abc contextlib traceback inspect html http socket signal platform getpass unittest pprint __future__ assert type fs path child_process util crypto url events stream readline zlib".split(" "));
+// Lines like "from the docs, ..." in pasted prose look like Python imports; these words are never real libraries.
+const NOT_LIBS = new Set("the a an this that these those here there it its your my our their which what when where why how then now just also and or but if in on at to for with test tests".split(" "));
+export const isLib = x => !STDLIB.has(x) && !NOT_LIBS.has(x);
 const add = (m, k, n = 1) => { if (k) m[k] = (m[k] || 0) + n; };
 const top = (m, n) => Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, count]) => ({ name, count }));
 // Monday of the ISO week, as a date: the bucket for trends.
@@ -188,10 +240,14 @@ async function overview(env, kvGet) {
   const { results } = await env.DB.prepare(`SELECT host, project_fp, app, model, first_event, turns, edits, errors, active_minutes, subagents,
     tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations FROM sessions WHERE actor = 'you' ORDER BY first_event`).all();
   const runs = (await env.DB.prepare("SELECT * FROM session_syncs ORDER BY id DESC LIMIT 30").all()).results;
+  const tx = await env.DB.prepare("SELECT COUNT(*) n, COALESCE(SUM(transcript_bytes), 0) bytes, COALESCE(SUM(transcript_redacted), 0) redacted, MAX(transcript_at) last FROM sessions WHERE transcript_at IS NOT NULL").first();
 
   // Compact rows for the stat cards, which pick their own time frame in the viewer's time zone:
-  // [start ms, host #, project #, prompts, edits, tool errors, active min, tokens in, out, cache read, cache write, tool calls]
-  const hostIx = [], projIx = new Map(), lite = [];
+  // [start ms, host #, project #, prompts, edits, tool errors, active min, tokens in, out, cache read, cache write, tool calls,
+  //  [[tool #, calls], ...], { a: app #, l: [[language #, n]], i: [library #], p: [package #], m: [HF model #], g: [[LLM #, n]] }]
+  // so the charts, tool grid and Your work lists can all follow whatever time frame the cards are on. # = index into names.
+  const hostIx = [], projIx = new Map(), toolIx = new Map(), nameIx = new Map(), lite = [];
+  const nm = n => { if (!nameIx.has(n)) nameIx.set(n, nameIx.size); return nameIx.get(n); };
   const weeks = {}, agg = { apps: {}, llms: {}, tools: {}, languages: {}, packages: {}, libraries: {}, models: {} };
   for (const r of results) {
     let o = {}; try { o = JSON.parse(r.observations); } catch {}
@@ -199,7 +255,11 @@ async function overview(env, kvGet) {
     let h = hostIx.indexOf(r.host); if (h < 0) h = hostIx.push(r.host) - 1;
     if (!projIx.has(r.project_fp)) projIx.set(r.project_fp, projIx.size);
     lite.push([Date.parse(r.first_event), h, projIx.get(r.project_fp), r.turns || 0, r.edits || 0, r.errors || 0, r.active_minutes || 0,
-      r.tokens_in || 0, r.tokens_out || 0, r.tokens_cache_read || 0, r.tokens_cache_write || 0, calls]);
+      r.tokens_in || 0, r.tokens_out || 0, r.tokens_cache_read || 0, r.tokens_cache_write || 0, calls,
+      Object.entries(o.tools || {}).map(([n, c]) => { if (!toolIx.has(n)) toolIx.set(n, toolIx.size); return [toolIx.get(n), c]; }),
+      { a: nm(r.app || "unknown"), l: Object.entries(o.languages || {}).map(([n, c]) => [nm(n), c]), i: [...new Set(o.imports || [])].filter(isLib).map(nm),
+        p: [...new Set(o.packages || [])].map(nm), m: [...new Set(o.models || [])].map(nm),
+        g: Object.entries(o.llms || (r.model ? { [r.model]: 1 } : {})).map(([n, c]) => [nm(n), c]) }]);
     if (r.first_event >= since) addToWeek(weeks[weekOf(r.first_event)] ||= emptyWeek(), r, o);
     if (Date.parse(r.first_event) < recent) continue;
     add(agg.apps, r.app);
@@ -207,7 +267,7 @@ async function overview(env, kvGet) {
     for (const [n, c] of Object.entries(o.tools || {})) add(agg.tools, n, c);
     for (const [n, c] of Object.entries(o.languages || {})) add(agg.languages, n, c);
     for (const x of new Set(o.packages || [])) add(agg.packages, x);
-    for (const x of new Set(o.imports || [])) if (!STDLIB.has(x)) add(agg.libraries, x);
+    for (const x of new Set(o.imports || [])) if (isLib(x)) add(agg.libraries, x);
     for (const x of new Set(o.models || [])) add(agg.models, x);
   }
   const history = Object.entries(weeks).sort(([a], [b]) => a.localeCompare(b)).map(([week, w]) => ({
@@ -217,7 +277,7 @@ async function overview(env, kvGet) {
   const hosts = await Promise.all(Object.entries(index).map(async ([host, v]) => ({ host, label: v.label, seen: v.at, last_sync: await kvGet(env, `sessions_sync:${host}`) })));
   return { connect, every_min: connect.every_min || SYNC_EVERY_MIN,
     totals: { sessions: lite.length, first: results[0]?.first_event || null, last: results.at(-1)?.first_event || null, macs: hostIx.length, projects: projIx.size },
-    lite: { hosts: hostIx, rows: lite }, agents: await agentSummary(env),
+    lite: { hosts: hostIx, tools: [...toolIx.keys()], names: [...nameIx.keys()], rows: lite }, agents: await agentSummary(env), transcripts: tx,
     hosts, history, runs, alerts: await latestAlerts(env),
     profile: { window_days: 90, apps: top(agg.apps, 6), llms: top(agg.llms, 8), tools: top(agg.tools, 12), languages: top(agg.languages, 10),
       packages: top(agg.packages, 15), libraries: top(agg.libraries, 15), models: top(agg.models, 10) } };
@@ -388,7 +448,7 @@ export async function workIndex(env) {
   const terms = {}, models = {};
   for (const r of results) {
     let o = {}; try { o = JSON.parse(r.observations); } catch { continue; }
-    for (const x of new Set([...(o.packages || []), ...(o.imports || []).filter(i => !STDLIB.has(i))])) add(terms, x.replace(/\[.*$/, ""));
+    for (const x of new Set([...(o.packages || []), ...(o.imports || []).filter(isLib)])) add(terms, x.replace(/\[.*$/, ""));
     for (const x of new Set(o.models || [])) add(models, x.toLowerCase());
   }
   const byToken = {};

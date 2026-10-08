@@ -1674,10 +1674,10 @@ def find_node():
     return None
 
 
-def start_sessions_sync(trigger):
+def start_sessions_sync(trigger, transcripts=False):
     """Run the sync in its own process so the heartbeat keeps checking in every minute."""
     with open(LOG, "a") as out:
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "sessions", trigger], stdout=out, stderr=out,
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "sessions", trigger] + (["--transcripts"] if transcripts else []), stdout=out, stderr=out,
                          stdin=subprocess.DEVNULL, start_new_session=True)
 
 
@@ -1692,10 +1692,22 @@ def sessions_heartbeat(orders):
     if forced:
         st["sessions_forced"] = orders["force_at"]
     st["sessions_at"] = time.time(); save_state(st)
-    start_sessions_sync("now" if forced else "loop")
+    transcripts = bool(orders.get("transcripts"))
+    # The first sync after full transcripts are turned on sends every session's transcript, not just the changed ones.
+    backfill = transcripts and st.get("transcripts_backfilled_at") is None
+    start_sessions_sync("all" if backfill else "now" if forced else "loop", transcripts)
 
 
-def sync_sessions(trigger="loop"):
+def put_file(path, file, ctype="application/gzip"):
+    with open(file, "rb") as fh:
+        data = fh.read()
+    req = urllib.request.Request(ENV["SCOUT_URL"].rstrip("/") + path, data=data, method="PUT", headers={
+        "authorization": f"Bearer {ENV['SCOUT_TOKEN']}", "content-type": ctype, "user-agent": "a1-scout-agent"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.loads(r.read() or b"{}")
+
+
+def sync_sessions(trigger="loop", transcripts=False):
     lock = open(STATE_DIR / "sessions.lock", "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1717,7 +1729,7 @@ def sync_sessions(trigger="loop"):
     if not node:
         return report("failed", note="Node 18 or newer isn't installed on this Mac (looked in ~/.local/bin, Homebrew, Volta and nvm; set NODE_BIN in scout.env)")
     SESSIONS_HOME.mkdir(parents=True, exist_ok=True)
-    args = [node, str(SESSIONS_JS)] + (["--all"] if trigger == "all" else [])
+    args = [node, str(SESSIONS_JS)] + (["--all"] if trigger == "all" else []) + (["--transcripts"] if transcripts else [])
     try:
         p = subprocess.run(args, capture_output=True, text=True, timeout=900, env={**os.environ, "SCOUT_HOME": str(SESSIONS_HOME)})
     except subprocess.TimeoutExpired:
@@ -1731,6 +1743,23 @@ def sync_sessions(trigger="loop"):
             stored += (api("/api/sessions/upload", "POST", {"host": host, "run_id": run_id, "part": i, "bundle": b}) or {}).get("stored", 0)
     except Exception as e:
         return report("failed", note=f"upload stopped: {e}"[:280], sessions=out.get("sessions", 0), stored=stored, files_scanned=out.get("files_scanned", 0))
+    # Full transcripts (only when turned on): one gzipped, credential-scrubbed file per session.
+    sent, skipped_t, t_bytes, redacted, t_err = 0, 0, 0, 0, None
+    for t in out.get("transcripts") or []:
+        if not t.get("path"):
+            skipped_t += 1; continue
+        try:
+            if not t_err:
+                q = urllib.parse.urlencode({"source": t["source"], "digest": t["digest"], "host": host, "bytes": t.get("bytes", 0), "redacted": t.get("redacted", 0)})
+                put_file(f"/api/sessions/transcript?{q}", t["path"])
+                sent += 1; t_bytes += t.get("gz_bytes", 0); redacted += t.get("redacted", 0)
+        except Exception as e:
+            t_err = f"transcript upload stopped after {sent}: {e}"[:280]
+        finally:
+            try: os.remove(t["path"])
+            except OSError: pass
+    if t_err:
+        return report("failed", note=t_err, sessions=out.get("sessions", 0), stored=stored, files_scanned=out.get("files_scanned", 0), transcripts=sent)
     # The cursor only moves once the Worker has everything, so a failed upload is retried on the next loop.
     cur_p = SESSIONS_HOME / "cursor.json"
     try:
@@ -1739,15 +1768,19 @@ def sync_sessions(trigger="loop"):
         cur = {}
     cur.update(out.get("seen") or {})
     cur_p.write_text(json.dumps(cur)); os.chmod(cur_p, 0o600)
+    if transcripts and trigger == "all":
+        st = load_state(); st["transcripts_backfilled_at"] = time.time(); save_state(st)
     report("done" if out.get("sessions") else "up_to_date", sessions=out.get("sessions", 0), stored=stored,
-           files_scanned=out.get("files_scanned", 0), skipped=out.get("skipped") or {}, parts=len(parts))
+           files_scanned=out.get("files_scanned", 0), skipped=out.get("skipped") or {}, parts=len(parts),
+           **({"transcripts": sent, "transcript_mb": round(t_bytes / 1e6, 1), "redacted": redacted, "transcripts_skipped": skipped_t} if transcripts else {}))
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "now"
     if mode == "sessions":
         STATE_DIR.mkdir(exist_ok=True)
-        return sync_sessions(sys.argv[2] if len(sys.argv) > 2 else "now")
+        rest = [a for a in sys.argv[2:] if not a.startswith("--")]
+        return sync_sessions(rest[0] if rest else "now", "--transcripts" in sys.argv)
     STATE_DIR.mkdir(exist_ok=True)
     if mode == "heartbeat":
         # Every minute (launchd on macOS, cron on Linux): tell the site whether the A1 is plugged in and whether a run is busy.
