@@ -104,7 +104,7 @@ const b64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").p
 let accessKeys = null, accessKeysAt = 0;
 export async function accessOk(req, env, fetcher = fetch) {
   if (!env.ACCESS_TEAM || !env.ACCESS_AUD || !env.ACCESS_EMAIL) return false;
-  const jwt = req.headers.get("cf-access-jwt-assertion");
+  const jwt = req.headers.get("cf-access-jwt-assertion") || cookie(req, "CF_Authorization");
   if (!jwt) return false;
   try {
     const [h, p, sig] = jwt.split(".");
@@ -122,6 +122,60 @@ export async function accessOk(req, env, fetcher = fetch) {
   } catch { return false; }
 }
 export const _resetAccessKeys = () => { accessKeys = null; };
+
+// Private by default. Every page and asset needs one of: Cloudflare Access (header or CF_Authorization cookie),
+// the Mac's Bearer SCOUT_TOKEN, or the scout_session cookie set by signing in with that token at /login.
+// The cookie holds a hash of the token, never the token; rotating SCOUT_TOKEN signs every browser out.
+const SESSION = "scout_session";
+function cookie(req, name) {
+  const m = (req.headers.get("cookie") || "").match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+async function sessionValue(env) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`a1-scout-session:${env.SCOUT_TOKEN}`));
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function sessionOk(req, env) {
+  const c = cookie(req, SESSION);
+  return !!(env.SCOUT_TOKEN && c && c === await sessionValue(env));
+}
+export async function signedIn(req, env) {
+  return authed(req, env) || await sessionOk(req, env) || await accessOk(req, env);
+}
+const PRIVATE_HEADERS = { "x-robots-tag": "noindex, nofollow", "cache-control": "private, no-store", "referrer-policy": "no-referrer" };
+function withPrivate(r) {
+  const h = new Headers(r.headers);
+  for (const [k, v] of Object.entries(PRIVATE_HEADERS)) h.set(k, v);
+  return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
+}
+const LOGIN_HTML = (msg = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>A1 Scout</title><style>
+:root{--bg:#f4f3ef;--fg:#1d2021;--muted:#666d70;--line:#d6d4cd;--accent:#1f1f1f;--bad:#a8362c;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#131516;--fg:#e7e8e6;--muted:#9da4a7;--line:#2f3437;--accent:#e7e8e6;--bad:#f08b80;color-scheme:dark}}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px;box-sizing:border-box}
+form{width:100%;max-width:360px;display:grid;gap:12px}h1{font-size:1.4rem;margin:0}p{margin:0;color:var(--muted)}
+input{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg)}
+button{font:inherit;padding:10px 12px;border:0;border-radius:6px;background:var(--accent);color:var(--bg);cursor:pointer}
+code{font-size:.85em}.bad{color:var(--bad);min-height:1.2em}</style></head><body>
+<form method="post" action="/login"><h1>A1 Scout</h1><p>Private. Sign in with the scout token from <code>~/.nvme-stash/scout.env</code>.</p>
+<label for="token" style="position:absolute;left:-9999px">Scout token</label>
+<input id="token" name="token" type="password" autocomplete="current-password" placeholder="SCOUT_TOKEN" required autofocus>
+<button type="submit">Sign in</button><div class="bad">${msg}</div></form></body></html>`;
+const loginPage = (msg, status = 401) => withPrivate(new Response(LOGIN_HTML(msg), { status, headers: { "content-type": "text/html; charset=utf-8" } }));
+
+async function login(req, env) {
+  if (req.method === "GET") return loginPage("", 200);
+  if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  const form = await req.formData().catch(() => null);
+  const t = String(form?.get("token") || "").trim();
+  if (!env.SCOUT_TOKEN || t !== env.SCOUT_TOKEN) return loginPage("That token didn't work.");
+  const secure = new URL(req.url).protocol === "https:" ? "; Secure" : "";
+  return withPrivate(new Response(null, { status: 303, headers: {
+    location: "/", "set-cookie": `${SESSION}=${await sessionValue(env)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${secure}` } }));
+}
+function logout() {
+  return withPrivate(new Response(null, { status: 303, headers: { location: "/login", "set-cookie": `${SESSION}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` } }));
+}
 async function kvGet(env, k) {
   const row = await env.DB.prepare("SELECT v FROM kv WHERE k=?").bind(k).first();
   return row ? JSON.parse(row.v) : null;
@@ -704,7 +758,7 @@ async function benchApi(req, env, url, p) {
 async function api(req, env, url) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
-  if (!authed(req, env) && !(await accessOk(req, env))) return json({ error: "unauthorized" }, 401);
+  if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
 
   if (p === "/api/state" && req.method === "GET") {
@@ -987,9 +1041,16 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) {
-      try { return await api(req, env, url); } catch (e) { return json({ error: e.message }, 500); }
+      try { return withPrivate(await api(req, env, url)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
     }
-    return env.ASSETS.fetch(req);
+    if (url.pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
+    if (url.pathname === "/login") return login(req, env);
+    if (url.pathname === "/logout") return logout();
+    if (!(await signedIn(req, env))) {
+      const page = req.method === "GET" && (req.headers.get("accept") || "").includes("text/html");
+      return page ? withPrivate(Response.redirect(new URL("/login", url).toString(), 302)) : withPrivate(new Response("Not found", { status: 404 }));
+    }
+    return withPrivate(await env.ASSETS.fetch(req));
   },
   async scheduled(_evt, env, ctx) { ctx.waitUntil(scan(env, "cron")); },
 };
