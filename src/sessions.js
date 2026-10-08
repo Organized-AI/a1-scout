@@ -33,9 +33,27 @@ export function sessionTables(env) {
       started TEXT, finished TEXT NOT NULL, state TEXT NOT NULL, trigger TEXT, sessions INTEGER, stored INTEGER, files_scanned INTEGER,
       skipped TEXT, note TEXT, duration_ms INTEGER, r2_keys INTEGER)`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS session_syncs_time ON session_syncs (finished)"),
-  ]).catch(e => { ready.delete(env.DB); throw e; });
+  ]).then(() => migrate(env)).catch(e => { ready.delete(env.DB); throw e; });
   ready.set(env.DB, p);
   return p;
+}
+
+// actor: "you" (you were at the keyboard) or "agent" (codex exec, claude -p / Agent SDK, or launched by an orchestrator
+// such as Paperclip). harness: which orchestrator. launch: what the log says. failure: a short category, never the text.
+const ADDED = ["actor TEXT", "harness TEXT", "launch TEXT", "failure TEXT"];
+async function migrate(env) {
+  for (const col of ADDED) { try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ${col}`).run(); } catch {} }
+  // Rows from before the collector reported how a session started: scripted Codex runs look like one prompt, no tokens.
+  await env.DB.prepare(`UPDATE sessions SET actor = CASE WHEN app = 'codex-cli' AND turns <= 1 AND tokens_in = 0 AND tokens_out = 0
+    THEN 'agent' ELSE 'you' END WHERE actor IS NULL`).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_actor ON sessions (actor, first_event)").run();
+}
+export function classify(o, tk = o.tokens || {}) {
+  const harness = /^[a-z][a-z-]{1,29}$/.test(o.harness || "") ? o.harness : null;
+  const launch = ["headless", "interactive"].includes(o.launch) ? o.launch : null;
+  const legacy = !launch && o.app === "codex-cli" && num(o.turns) <= 1 && !num(tk.input) && !num(tk.output);
+  return { actor: launch === "headless" || harness || legacy ? "agent" : "you", harness, launch,
+    failure: /^[a-z_]{2,30}$/.test(o.failure || "") ? o.failure : null };
 }
 
 // What the heartbeat tells every Mac: is the loop on, how often, and a pending "sync now".
@@ -79,22 +97,25 @@ export async function sessionsApi(req, env, url, p, { kvGet, kvSet }) {
     const t = now(), part = num(body.part);
     const stmts = [], points = [];
     for (const s of b.session_evidence) {
-      const o = s.observations || {}, tk = o.tokens || {};
+      const o = s.observations || {}, tk = o.tokens || {}, k = classify(o, tk);
       const row = { turns: num(o.turns), edits: num(o.edits), errors: num(o.errors), active: num(o.active_minutes), sub: num(o.subagents),
         tin: num(tk.input), tout: num(tk.output), tcr: num(tk.cache_read), tcw: num(tk.cache_write) };
       stmts.push(env.DB.prepare(`INSERT INTO sessions (source, digest, environment_id, host, project_fp, app, model, first_event, last_event, event_count,
-          turns, edits, errors, active_minutes, subagents, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations, first_seen, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          turns, edits, errors, active_minutes, subagents, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations, first_seen, updated_at,
+          actor, harness, launch, failure)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(source, digest) DO UPDATE SET host=excluded.host, environment_id=excluded.environment_id, app=excluded.app, model=excluded.model,
           last_event=excluded.last_event, event_count=excluded.event_count, turns=excluded.turns, edits=excluded.edits, errors=excluded.errors,
           active_minutes=excluded.active_minutes, subagents=excluded.subagents, tokens_in=excluded.tokens_in, tokens_out=excluded.tokens_out,
           tokens_cache_read=excluded.tokens_cache_read, tokens_cache_write=excluded.tokens_cache_write, observations=excluded.observations,
-          updated_at=excluded.updated_at, versions=sessions.versions+1`)
+          updated_at=excluded.updated_at, versions=sessions.versions+1, actor=excluded.actor, harness=excluded.harness, launch=excluded.launch,
+          failure=excluded.failure`)
         .bind(s.source, s.native_session_digest || s.fallback_fingerprint, b.environment.id, body.host, s.project_fingerprint,
           String(o.app || "").slice(0, 30) || null, String(o.model || "").slice(0, 41) || null, s.first_event, s.last_event, s.event_count,
-          row.turns, row.edits, row.errors, row.active, row.sub, row.tin, row.tout, row.tcr, row.tcw, JSON.stringify(o), t, t));
+          row.turns, row.edits, row.errors, row.active, row.sub, row.tin, row.tout, row.tcr, row.tcw, JSON.stringify(o), t, t,
+          k.actor, k.harness, k.launch, k.failure));
       points.push({ indexes: [body.host], blobs: [body.host, s.source, String(o.app || ""), String(o.model || ""), s.project_fingerprint.slice(0, 12), s.first_event.slice(0, 10),
-          String(s.native_session_digest || s.fallback_fingerprint).slice(0, 16)],
+          String(s.native_session_digest || s.fallback_fingerprint).slice(0, 16), k.actor, k.harness || "", k.failure || ""],
         doubles: [row.turns, row.edits, row.errors, row.active, row.tin, row.tout, row.tcr, row.tcw, s.event_count, row.sub] });
     }
     for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
@@ -162,17 +183,24 @@ const addDays = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * DAY).t
 async function overview(env, kvGet) {
   const connect = (await kvGet(env, "sessions_connect")) || { on: false };
   const index = (await kvGet(env, "machines")) || {};
-  const since = new Date(Date.now() - 26 * 7 * DAY).toISOString();
-  const { results } = await env.DB.prepare(`SELECT host, source, project_fp, app, model, first_event, last_event, turns, edits, errors, active_minutes, subagents,
-    tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations FROM sessions WHERE first_event >= ? ORDER BY first_event`).bind(since).all();
-  const total = await env.DB.prepare("SELECT COUNT(*) n, MIN(first_event) first, MAX(last_event) last, COUNT(DISTINCT host) hosts, COUNT(DISTINCT project_fp) projects FROM sessions").first();
+  const since = new Date(Date.now() - 26 * 7 * DAY).toISOString(), recent = Date.now() - 90 * DAY;
+  // Your sessions only: agent runs (codex exec, claude -p, Paperclip and the like) are summarized separately below.
+  const { results } = await env.DB.prepare(`SELECT host, project_fp, app, model, first_event, turns, edits, errors, active_minutes, subagents,
+    tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations FROM sessions WHERE actor = 'you' ORDER BY first_event`).all();
   const runs = (await env.DB.prepare("SELECT * FROM session_syncs ORDER BY id DESC LIMIT 30").all()).results;
 
-  // Weekly history: behavior, tool usage and token usage over time.
-  const weeks = {}, agg = { apps: {}, llms: {}, tools: {}, languages: {}, packages: {}, libraries: {}, models: {} }, recent = Date.now() - 90 * DAY;
+  // Compact rows for the stat cards, which pick their own time frame in the viewer's time zone:
+  // [start ms, host #, project #, prompts, edits, tool errors, active min, tokens in, out, cache read, cache write, tool calls]
+  const hostIx = [], projIx = new Map(), lite = [];
+  const weeks = {}, agg = { apps: {}, llms: {}, tools: {}, languages: {}, packages: {}, libraries: {}, models: {} };
   for (const r of results) {
     let o = {}; try { o = JSON.parse(r.observations); } catch {}
-    addToWeek(weeks[weekOf(r.first_event)] ||= emptyWeek(), r, o);
+    const calls = Object.values(o.tools || {}).reduce((t, c) => t + c, 0);
+    let h = hostIx.indexOf(r.host); if (h < 0) h = hostIx.push(r.host) - 1;
+    if (!projIx.has(r.project_fp)) projIx.set(r.project_fp, projIx.size);
+    lite.push([Date.parse(r.first_event), h, projIx.get(r.project_fp), r.turns || 0, r.edits || 0, r.errors || 0, r.active_minutes || 0,
+      r.tokens_in || 0, r.tokens_out || 0, r.tokens_cache_read || 0, r.tokens_cache_write || 0, calls]);
+    if (r.first_event >= since) addToWeek(weeks[weekOf(r.first_event)] ||= emptyWeek(), r, o);
     if (Date.parse(r.first_event) < recent) continue;
     add(agg.apps, r.app);
     for (const [n, c] of Object.entries(o.llms || (r.model ? { [r.model]: 1 } : {}))) add(agg.llms, n, c);
@@ -188,10 +216,34 @@ async function overview(env, kvGet) {
   }));
   const hosts = await Promise.all(Object.entries(index).map(async ([host, v]) => ({ host, label: v.label, seen: v.at, last_sync: await kvGet(env, `sessions_sync:${host}`) })));
   return { connect, every_min: connect.every_min || SYNC_EVERY_MIN,
-    totals: { sessions: total?.n || 0, first: total?.first || null, last: total?.last || null, macs: total?.hosts || 0, projects: total?.projects || 0 },
+    totals: { sessions: lite.length, first: results[0]?.first_event || null, last: results.at(-1)?.first_event || null, macs: hostIx.length, projects: projIx.size },
+    lite: { hosts: hostIx, rows: lite }, agents: await agentSummary(env),
     hosts, history, runs, alerts: await latestAlerts(env),
     profile: { window_days: 90, apps: top(agg.apps, 6), llms: top(agg.llms, 8), tools: top(agg.tools, 12), languages: top(agg.languages, 10),
       packages: top(agg.packages, 15), libraries: top(agg.libraries, 15), models: top(agg.models, 10) } };
+}
+
+// Scripted runs, grouped by orchestrator and Mac: how many, how many failed and why, and since when they've been failing.
+export async function agentSummary(env) {
+  const g = "COALESCE(harness, 'unlabeled')";
+  const [groups, kinds, daily] = await Promise.all([
+    env.DB.prepare(`SELECT ${g} harness, host, app, COUNT(*) runs, SUM(failure IS NOT NULL) failed, MIN(first_event) first, MAX(first_event) last,
+      MAX(CASE WHEN failure IS NULL THEN first_event END) last_ok, SUM(tokens_in + tokens_out + tokens_cache_read + tokens_cache_write) tokens
+      FROM sessions WHERE actor = 'agent' GROUP BY 1, host, app ORDER BY runs DESC`).all(),
+    env.DB.prepare(`SELECT ${g} harness, host, failure, COUNT(*) n, MIN(first_event) since FROM sessions WHERE actor = 'agent' AND failure IS NOT NULL
+      GROUP BY 1, host, failure`).all(),
+    env.DB.prepare(`SELECT substr(first_event, 1, 10) day, COUNT(*) runs, SUM(failure IS NOT NULL) failed FROM sessions
+      WHERE actor = 'agent' AND first_event >= ? GROUP BY day ORDER BY day`).bind(new Date(Date.now() - 120 * DAY).toISOString()).all(),
+  ]);
+  const out = [];
+  for (const r of groups.results) {
+    const ks = kinds.results.filter(k => k.harness === r.harness && k.host === r.host).sort((a, b) => b.n - a.n);
+    // Failing since: the first failure after the last run that worked (none worked: the first failure).
+    const streak = r.last_ok && r.last_ok >= r.last ? null : await env.DB.prepare(`SELECT MIN(first_event) t FROM sessions WHERE actor = 'agent'
+      AND ${g} = ? AND host = ? AND app = ? AND failure IS NOT NULL AND first_event > ?`).bind(r.harness, r.host, r.app, r.last_ok || "").first();
+    out.push({ ...r, tokens: r.tokens || 0, failing_since: streak?.t || null, failures: ks.map(k => ({ kind: k.failure, n: k.n, since: k.since })) });
+  }
+  return { groups: out, daily: daily.results };
 }
 
 // ---------- weekly alerts ----------
@@ -231,7 +283,7 @@ export async function sessionAlerts(env, { at = Date.now(), week } = {}) {
   const latest = weekOf(week || new Date(at - 7 * DAY).toISOString());
   const from = addDays(latest, -7 * ALERT_WEEKS), to = addDays(latest, 7);
   const { results } = await env.DB.prepare(`SELECT first_event, app, model, turns, edits, errors, active_minutes, subagents,
-    tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations FROM sessions WHERE first_event >= ? AND first_event < ?`).bind(from, to).all();
+    tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, observations FROM sessions WHERE actor = 'you' AND first_event >= ? AND first_event < ?`).bind(from, to).all();
   const weeks = {};
   for (const r of results) { let o = {}; try { o = JSON.parse(r.observations); } catch {} addToWeek(weeks[weekOf(r.first_event)] ||= emptyWeek(), r, o); }
   const cur = weeks[latest];
@@ -284,7 +336,7 @@ const SERIES_SUMS = ["turns", "edits", "errors", "active_minutes", "subagents", 
 
 function seriesD1(env, from, to) {
   return env.DB.prepare(`SELECT substr(first_event, 1, 10) day, COUNT(*) sessions, ${SERIES_SUMS.map(k => `COALESCE(SUM(${k}), 0) ${k}`).join(", ")}
-    FROM sessions WHERE first_event >= ? AND first_event < ? GROUP BY day ORDER BY day`).bind(from, to).all().then(r => r.results);
+    FROM sessions WHERE actor = 'you' AND first_event >= ? AND first_event < ? GROUP BY day ORDER BY day`).bind(from, to).all().then(r => r.results);
 }
 
 async function seriesAE(env, from, to) {
@@ -292,7 +344,7 @@ async function seriesAE(env, from, to) {
   const inner = d.map((k, i) => k && `max(double${i + 1}) AS ${k}`).filter(Boolean).join(", ");
   const sql = `SELECT day, count() AS sessions, ${SERIES_SUMS.map(k => `sum(${k}) AS ${k}`).join(", ")} FROM (
     SELECT blob6 AS day, blob7 AS sid, ${inner} FROM a1_scout_sessions
-    WHERE timestamp > NOW() - INTERVAL '${AE_DAYS + 1}' DAY AND blob7 != '' AND blob6 >= '${from}' AND blob6 < '${to}' GROUP BY day, sid)
+    WHERE timestamp > NOW() - INTERVAL '${AE_DAYS + 1}' DAY AND blob7 != '' AND blob8 = 'you' AND blob6 >= '${from}' AND blob6 < '${to}' GROUP BY day, sid)
     GROUP BY day ORDER BY day FORMAT JSON`;
   const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
     { method: "POST", headers: { authorization: `Bearer ${env.CF_AE_TOKEN}` }, body: sql });
@@ -331,7 +383,7 @@ export function tokensOfName(s) { return String(s || "").toLowerCase().split(/[\
 export async function workIndex(env) {
   try { await sessionTables(env); } catch { return null; }
   const since = new Date(Date.now() - 180 * DAY).toISOString();
-  const { results } = await env.DB.prepare("SELECT observations FROM sessions WHERE first_event >= ? LIMIT 20000").bind(since).all();
+  const { results } = await env.DB.prepare("SELECT observations FROM sessions WHERE actor = 'you' AND first_event >= ? LIMIT 20000").bind(since).all();
   if (!results.length) return null;
   const terms = {}, models = {};
   for (const r of results) {

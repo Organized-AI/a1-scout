@@ -121,7 +121,7 @@ function toolName(name) {
 function newSig() {
   return { tools: {}, commands: {}, languages: {}, packages: new Set(), models: new Set(), imports: new Set(),
     errors: 0, edits: 0, turns: 0, events: 0, first: null, last: null, id: null, cwd: null, repo: null, model: null, app: null,
-    usage: new Map(), codexTokens: null, llms: {}, buckets: new Set(), subagents: 0 };
+    usage: new Map(), codexTokens: null, llms: {}, buckets: new Set(), subagents: 0, headless: false, failure: null, succeeded: false };
 }
 function stamp(sig, ts) {
   const t = Date.parse(ts || ""); if (!Number.isFinite(t)) return;
@@ -138,6 +138,7 @@ export function readClaude(lines) {
     if (o.sessionId && !sig.id) sig.id = o.sessionId;
     if (o.cwd && !sig.cwd) sig.cwd = o.cwd;
     if (o.entrypoint && /desktop|cowork/i.test(o.entrypoint)) sig.app = "claude-desktop";
+    if (o.entrypoint && /^sdk/i.test(o.entrypoint)) sig.headless = true; // claude -p and the Agent SDK
     const msg = o.message;
     if (o.type === "user" && msg && typeof msg.content === "string") sig.turns++;
     if (o.type === "user" && Array.isArray(msg?.content)) {
@@ -175,6 +176,7 @@ export function readCodex(lines) {
     if (o.type === "session_meta") {
       sig.id = sig.id || p.id || p.session_id; sig.cwd = sig.cwd || p.cwd;
       if (p.git?.repository_url) sig.repo = p.git.repository_url;
+      if (p.originator === "codex_exec" || p.source === "exec") sig.headless = true; // codex exec: scripted, not a person
       if (/desktop/i.test(p.originator || "")) sig.app = "codex-desktop"; else if (/vscode/i.test(p.originator || p.source || "")) sig.app = "codex-ide"; else sig.app = "codex-cli";
     }
     if (o.type === "turn_context" && p.model) { if (!sig.model) sig.model = String(p.model).slice(0, 40); bump(sig.llms, String(p.model).slice(0, 40)); }
@@ -185,6 +187,7 @@ export function readCodex(lines) {
         input: Math.max(0, (t.input_tokens || 0) - (t.cached_input_tokens || 0)), output: t.output_tokens || 0,
         cache_read: t.cached_input_tokens || 0, cache_write: t.cache_write_input_tokens || 0, reasoning: t.reasoning_output_tokens || 0 };
     }
+    if (o.type === "event_msg" && p.type === "task_complete") { if (p.error) sig.failure = failureKind(JSON.stringify(p.error)); else sig.succeeded = true; }
     if (o.type === "event_msg" && p.type === "task_started") sig.turns++;
     if (o.type === "event_msg" && p.type === "user_message") sig.turns += 0; // counted via task_started
     if (o.type !== "response_item") continue;
@@ -214,6 +217,21 @@ export function readCodex(lines) {
 const top = (m, n) => Object.fromEntries(Object.entries(m).filter(([k]) => k && k !== "null").sort((a, b) => b[1] - a[1]).slice(0, n));
 const safeList = (set, n, re) => [...set].filter(x => re.test(x) && !findPrivacyProblem(x)).slice(0, n);
 
+// A short category for a failed run; the error text itself never leaves the computer.
+export function failureKind(text) {
+  const t = String(text || "");
+  if (/not supported|model_not_found|does not exist|unknown model/i.test(t)) return "model_not_supported";
+  if (/high demand|rate.?limit|429|quota|usage limit/i.test(t)) return "rate_limited";
+  if (/401|403|unauthori[sz]ed|forbidden|log ?in/i.test(t)) return "auth";
+  if (/5\d\d|service unavailable|overloaded|timed? ?out/i.test(t)) return "server_error";
+  if (/404|not found/i.test(t)) return "not_found";
+  return "other";
+}
+// Orchestrators that launch coding agents on their own, recognized by their workspace folder. Only the label is sent.
+const HARNESS = [[/[\\/]\.paperclip[\\/]/i, "paperclip"], [/[\\/]\.?openclaw[\\/]/i, "openclaw"], [/[\\/]\.hermes[\\/]/i, "hermes"],
+  [/[\\/]factory-foreman[\\/]/i, "factory-foreman"], [/[\\/]\.conductor[\\/]|[\\/]conductor[\\/]workspaces[\\/]/i, "conductor"]];
+export const harnessOf = cwd => (HARNESS.find(([re]) => re.test(String(cwd || ""))) || [])[1];
+
 const MODEL_RE = /^[a-z0-9][a-z0-9._:\/-]{0,40}$/i;
 function tokensOf(sig) {
   if (sig.codexTokens) { const { total, ...t } = sig.codexTokens; return t; }
@@ -231,6 +249,8 @@ export function observationsOf(sig) {
     app: sig.app, model: sig.model && MODEL_RE.test(sig.model) ? sig.model : undefined,
     turns: sig.turns, edits: sig.edits, errors: sig.errors,
     active_minutes: sig.buckets.size * 5, subagents: sig.subagents || undefined,
+    launch: sig.headless ? "headless" : "interactive", harness: harnessOf(sig.cwd),
+    failure: sig.failure && !sig.succeeded && !tokens ? sig.failure : undefined,
     tokens, llms: Object.keys(llms).length ? llms : undefined,
     tools: top(sig.tools, 25), commands: top(Object.fromEntries(Object.entries(sig.commands).filter(([k]) => WORD.test(k))), 30),
     languages: top(sig.languages, 12),

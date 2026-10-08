@@ -178,3 +178,22 @@ test("series: AE for its window (deduped per session), D1 before it, D1 when AE 
   const r = (await call(plain, "/api/sessions/series?days=30")).j;
   assert.equal(r.days, 30); assert.match(r.sources.ae.off, /not set/); assert.equal(r.series[0].source, "d1");
 });
+
+test("scripted runs are agents, kept out of your numbers, with a failing-since streak", async () => {
+  const { classify } = await import("../src/sessions.js");
+  assert.equal(classify({ app: "codex-cli", launch: "headless" }).actor, "agent");
+  assert.equal(classify({ app: "codex-desktop", launch: "interactive" }).actor, "you");
+  assert.equal(classify({ app: "codex-cli", launch: "interactive", harness: "paperclip" }).actor, "agent");
+  assert.equal(classify({ app: "codex-cli", turns: 1, tokens: {} }).actor, "agent");          // older rows: one prompt, no tokens
+  assert.equal(classify({ app: "codex-cli", launch: "headless", failure: "<b>x</b>" }).failure, null); // only short categories
+  const e = env();
+  const run = (id, day, failure) => session(id, day, { app: "codex-cli", launch: "headless", harness: "paperclip", turns: 1, tools: {}, ...(failure ? { failure } : { tokens: { input: 5, output: 5 } }) });
+  const old = new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10), mid = new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10);
+  await call(e, "/api/sessions/upload", { host: "pi5-dev", run_id: "run-000005", bundle: bundle([run("a", old), run("b", mid, "model_not_supported"), run("c", today, "model_not_supported"),
+    session("d", today, { app: "codex-desktop", launch: "interactive", turns: 3, tools: { exec_command: 4 }, tokens: { input: 100, output: 50, cache_read: 900 } })]) });
+  const o = (await call(e, "/api/sessions")).j;
+  assert.equal(o.totals.sessions, 1); assert.equal(o.lite.rows.length, 1); assert.equal(o.lite.rows[0][11], 4);
+  const g = o.agents.groups[0];
+  assert.equal(g.harness, "paperclip"); assert.equal(g.runs, 3); assert.equal(g.failed, 2);
+  assert.equal(g.failing_since.slice(0, 10), mid); assert.equal(g.failures[0].kind, "model_not_supported");
+});
