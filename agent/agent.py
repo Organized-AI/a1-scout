@@ -13,7 +13,9 @@ When the A1 drive (matched by volume UUID, not just name) is present it:
   7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
 
-Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|updates [--dry-run]|bench <suite|all> [--fresh] [--model PATH]]
+Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|sessions [loop|now|all]|updates [--dry-run]|bench <suite|all> [--fresh] [--model PATH]]
+`sessions` syncs this Mac's Claude and Codex session summaries to the dashboard (the heartbeat starts it every 15 minutes
+once "Connect coding sessions" is on; see sync_sessions).
 `bench` runs the A1 Bench task banks (tests/bench) against stash models, one model at a time (see bench.py).
 """
 import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request
@@ -1648,8 +1650,104 @@ def license_heartbeat(resp, present, busy):
             pass
 
 
+# ---------- coding sessions ----------
+# Every Mac with the agent (A1 plugged in or not) reads its own Claude and Codex history with the Scout connector's
+# reader and privacy filter (agent/scout-connect, Node), uploads the summaries, then advances its own cursor.
+# Only counts and names leave the Mac: tools, commands, languages, packages, models, tokens. Never prompts, code or paths.
+SESSIONS_HOME = STATE_DIR / "scout-sessions"
+SESSIONS_JS = Path(__file__).resolve().parent / "scout-connect" / "sessions.mjs"
+
+
+def find_node():
+    import glob
+    cands = [ENV.get("NODE_BIN"), str(HOME / ".local/bin/node"), "/opt/homebrew/bin/node", "/usr/local/bin/node", str(HOME / ".volta/bin/node")]
+    cands += sorted(glob.glob(str(HOME / ".nvm/versions/node/*/bin/node")), reverse=True) + [shutil.which("node")]
+    for c in cands:
+        if not c or not os.path.exists(c):
+            continue
+        try:
+            v = subprocess.run([c, "-v"], capture_output=True, text=True, timeout=10).stdout.strip()
+            if int(v.lstrip("v").split(".")[0]) >= 18:
+                return c
+        except Exception:
+            continue
+    return None
+
+
+def start_sessions_sync(trigger):
+    """Run the sync in its own process so the heartbeat keeps checking in every minute."""
+    with open(LOG, "a") as out:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "sessions", trigger], stdout=out, stderr=out,
+                         stdin=subprocess.DEVNULL, start_new_session=True)
+
+
+def sessions_heartbeat(orders):
+    if not (orders or {}).get("on"):
+        return
+    st = load_state()
+    forced = orders.get("force_at") and orders["force_at"] != st.get("sessions_forced")
+    due = time.time() - st.get("sessions_at", 0) > float(orders.get("every_min") or 15) * 60
+    if not (forced or due):
+        return
+    if forced:
+        st["sessions_forced"] = orders["force_at"]
+    st["sessions_at"] = time.time(); save_state(st)
+    start_sessions_sync("now" if forced else "loop")
+
+
+def sync_sessions(trigger="loop"):
+    lock = open(STATE_DIR / "sessions.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("a session sync is already running"); return
+    host, t0 = host_id(), time.time()
+    run_id = time.strftime("%Y%m%dT%H%M%S", time.gmtime()) + "-" + os.urandom(3).hex()
+    started = datetime.now(timezone.utc).isoformat()
+
+    def report(state, **kw):
+        try:
+            api("/api/sessions/run", "POST", {"run_id": run_id, "host": host, "started": started, "trigger": trigger, "state": state,
+                                             "duration_ms": int((time.time() - t0) * 1000), **kw})
+        except Exception as e:
+            log(f"sessions: couldn't report the run: {e}")
+        log(f"sessions {trigger}: {state} {json.dumps({k: v for k, v in kw.items() if k != 'skipped'})}")
+
+    node = find_node()
+    if not node:
+        return report("failed", note="Node 18 or newer isn't installed on this Mac (looked in ~/.local/bin, Homebrew, Volta and nvm; set NODE_BIN in scout.env)")
+    SESSIONS_HOME.mkdir(parents=True, exist_ok=True)
+    args = [node, str(SESSIONS_JS)] + (["--all"] if trigger == "all" else [])
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=900, env={**os.environ, "SCOUT_HOME": str(SESSIONS_HOME)})
+    except subprocess.TimeoutExpired:
+        return report("failed", note="reading the session logs took over 15 minutes")
+    if p.returncode:
+        return report("failed", note=(p.stderr.strip() or "the session reader failed")[-280:])
+    out = json.loads(p.stdout)
+    stored, parts = 0, out.get("bundles") or []
+    try:
+        for i, b in enumerate(parts):
+            stored += (api("/api/sessions/upload", "POST", {"host": host, "run_id": run_id, "part": i, "bundle": b}) or {}).get("stored", 0)
+    except Exception as e:
+        return report("failed", note=f"upload stopped: {e}"[:280], sessions=out.get("sessions", 0), stored=stored, files_scanned=out.get("files_scanned", 0))
+    # The cursor only moves once the Worker has everything, so a failed upload is retried on the next loop.
+    cur_p = SESSIONS_HOME / "cursor.json"
+    try:
+        cur = json.loads(cur_p.read_text())
+    except Exception:
+        cur = {}
+    cur.update(out.get("seen") or {})
+    cur_p.write_text(json.dumps(cur)); os.chmod(cur_p, 0o600)
+    report("done" if out.get("sessions") else "up_to_date", sessions=out.get("sessions", 0), stored=stored,
+           files_scanned=out.get("files_scanned", 0), skipped=out.get("skipped") or {}, parts=len(parts))
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "now"
+    if mode == "sessions":
+        STATE_DIR.mkdir(exist_ok=True)
+        return sync_sessions(sys.argv[2] if len(sys.argv) > 2 else "now")
     STATE_DIR.mkdir(exist_ok=True)
     if mode == "heartbeat":
         # Every minute (launchd on macOS, cron on Linux): tell the site whether the A1 is plugged in and whether a run is busy.
@@ -1690,6 +1788,10 @@ def main():
                                              "free_bytes": free_bytes() if present else None, "cap_gb": float(ENV["RUN_CAP_GB"]),
                                              "needs_license": sorted(needs_license()), "bar_check": bar_check,
                                              "licenses": licenses(), "hf_user": hf_user()})
+        try:
+            sessions_heartbeat((resp or {}).get("sessions"))
+        except Exception as e:
+            log(f"sessions heartbeat: {type(e).__name__}: {e}")
         dr = (resp or {}).get("drive_request")
         if dr and dr.get("state") == "pending":
             drive_request(dr, present, busy)

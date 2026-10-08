@@ -95,6 +95,23 @@ button.chip:hover{border-color:var(--accent)}
 .gate{max-width:420px;margin:12vh auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px}
 .gate input{width:100%;padding:10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:"IBM Plex Mono",monospace;margin:10px 0}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
+/* Sessions tab */
+.st-cta{margin:4px 0 10px}.st-cta .btn{align-self:center}
+.st-metrics{flex-wrap:wrap}.st-chart{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.st-svg{width:100%;height:auto;display:block;font:10px "IBM Plex Mono",monospace;fill:var(--mute)}
+.st-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font:11px "IBM Plex Mono",monospace;color:var(--mute)}.st-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.stat small{display:block;font:11px "IBM Plex Mono",monospace;margin-top:2px}.stat small.up{color:var(--c-papers)}.stat small.down{color:var(--warn)}
+.st-hint{text-transform:none;letter-spacing:0;font-size:11px}
+.st-grid{display:grid;grid-template-columns:minmax(90px,150px) repeat(var(--cols),minmax(14px,1fr));gap:3px;align-items:center;overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.st-wk{font:10px "IBM Plex Mono",monospace;color:var(--mute);text-align:center}.st-tool{font:12px "IBM Plex Mono",monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-cell{height:18px;border-radius:3px;background:color-mix(in srgb,var(--brand) calc(var(--a) * 100%),var(--chip))}
+.st-lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+.st-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.st-lt{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.st-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px;margin:4px 0}.st-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.st-row b{font:500 12px "IBM Plex Mono",monospace;color:var(--mute)}
+.st-row i{grid-column:1/-1;height:3px;background:var(--chip);border-radius:2px;overflow:hidden}.st-row u{display:block;height:100%;width:0;background:var(--brand)}
+.st-log{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font-size:13px;overflow-x:auto}
+.st-lr{display:grid;grid-template-columns:90px 130px 1fr 130px 60px;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);min-width:560px}.st-lr:last-child{border-bottom:0}
+.st-lh{font:500 11px "IBM Plex Mono",monospace;color:var(--mute);text-transform:uppercase}.st-lr.bad span:nth-child(3){color:var(--bad)}
 .run{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px}
 @media (max-width:620px){.pick{grid-template-columns:48px 1fr}.acts{grid-column:1/-1;flex-direction:row}.tm{aspect-ratio:3/4}}
   .a1bar { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 12px 14px; margin: 0 0 18px; display: grid; gap: 8px; font-size: 13px; }
@@ -226,6 +243,7 @@ button.chip:hover{border-color:var(--accent)}
 <script src="lab.js"></script>
 <script src="jobs.js"></script>
 <script src="bench.js"></script>
+<script src="sessions.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
@@ -256,17 +274,17 @@ async function load() {
   pollActivity();
 }
 function shell(inner) {
-  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "bench" ? "Bench" : "Scout"}</h1>
-   <div class="nav">${["map","scout","bench"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="bench"?"Bench":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
+  return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "bench" ? "Bench" : view === "sessions" ? "Coding sessions" : "Scout"}</h1>
+   <div class="nav">${["map","scout","sessions","bench"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="bench"?"Bench":v==="sessions"?"Sessions":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
    <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}
    <footer class="foot"><img class="brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="47" height="12"><img class="brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="47" height="12"><span>· A1 Scout · an Organized AI asset · Austin, TX</span><a href="/m/">Phone app</a><a href="https://guide.organizedai.vip/local-compute/" target="_blank" rel="noopener">Local Compute guide</a><a href="https://github.com/organized-ai/a1-scout">source</a></footer>`;
 }
 function render(first) {
   if (view === "lab") { JobsView.openLab(); view = "bench"; }          // the Lab is now Bench → Simulate
-  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "bench" ? JobsView.html(catalog, picks) : scoutView());
-  $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; render(true); });
+  $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "bench" ? JobsView.html(catalog, picks) : view === "sessions" ? SessionsView.html() : scoutView());
+  $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; if (view === "sessions") SessionsView.load(call).then(() => view === "sessions" && render()).catch(() => {}); render(true); });
   view === "map" ? MapView.wire(first, () => render())
-    : view === "bench" ? JobsView.wire(first, () => render(), call) : wireScout(first);
+    : view === "bench" ? JobsView.wire(first, () => render(), call) : view === "sessions" ? SessionsView.wire(first, () => render(), call) : wireScout(first);
   if (!render.introDone && !RM()) {
     render.introDone = true;
     gsap.timeline()
