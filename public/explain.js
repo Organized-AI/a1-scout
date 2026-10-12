@@ -132,6 +132,14 @@ window.TYPES = {
 Object.assign(window.CONCEPTS, {
   "calibration": { title: "Calibration",
     body: "A calibrated model's confidence means something: when it says 80%, it is right about 80% of the time. That lets you set rules on the number, like auto-approve above 0.9 and ask a person below 0.6, instead of trusting free text." },
+  "system-one": { title: "System One requests",
+    body: "The request shape decision models share: a state (the text being judged) plus typed questions. A noul is yes or no with one probability, a choice picks one option and scores every option, and a score places the answer on an ordered scale. Hosted Jev, Clef, Kev, Laya and Ollama 0.35's /v1/systemone all take this shape, so one client can try them all." },
+  "bench-scoring": { title: "Bench scoring",
+    body: "How the A1 Bench compares models on your own task banks. A task passes when every top answer matches the right one; the score is the average probability placed on the right answers. choose_best keeps models within 5 points of the top score, then picks the fastest. Small banks are noisy: on 20 tasks, one task is 5 points." },
+  "fallback": { title: "Fallback order",
+    body: "The order jev-gateway tries backends in (SELECT_BACKENDS, today clef,jev). If the first fails, the next answers and a skill_selection_fallback event records which failed and why, so a sleeping Mac mini or a broken tunnel shows up in the logs before callers notice." },
+  "evidence-retention": { title: "Evidence retention",
+    body: "Where a decision's record lives and for how long. D1 is the system of record; Workers Logs keep structured events for 7 days; AI Gateway keeps each raw model call; an R2 or OpenTelemetry export keeps anything older. Offline, write to a local outbox and replay it to the deployed Worker when you reconnect." },
   "decision-models": { title: "Decision models",
     body: "Small models trained to answer typed questions (yes/no, pick one of these options, score 1 to 5) instead of writing prose. They are fast, cheap and predictable, which makes them good for routing, guardrails and checks. Jev is the hosted one you use through jev-gateway; Clef (Cloudflare's open release, same API as Jev), Laya and the Jev-Style models are ones you can run here." },
 });
