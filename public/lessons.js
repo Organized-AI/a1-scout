@@ -11,6 +11,8 @@
     { id: "c2", title: "Put it to work", blurb: "Point the models at the jobs you actually do: analytics data, web pages, screens, voice, and your own examples.", steps: ["s5", "s7", "s6", "s9", "s8"] },
     { id: "c3", title: "Look inside", blurb: "Explain a prediction, then open a network up: read its activations, probe them, find a circuit, and decompose a layer into features.", steps: ["s11", "s12", "s13", "s14", "s15"] },
     { id: "c4", title: "Decide and route", blurb: "Use small decision models as the judges in your stack: ask typed questions, score models on your own work, turn confidence into rules, route through jev-gateway, and keep the evidence.", steps: ["s16", "s17", "s18", "s19", "s20"] },
+    { id: "c5", title: "Read a GTM container", blurb: "How a container decides what fires: dataLayer pushes, triggers and variables, consent, double counts, and the server-side hop through Stape. Then let local models check the changes.", steps: ["s21", "s22", "s23", "s24", "s25"] },
+    { id: "c6", title: "Design schemas", blurb: "Write the contract before you ask a model for data: what a schema is, how to build one from real examples, how to make a model fill it, how to score the result, and where the same idea shows up in decisions, events and tables.", steps: ["s26", "s27", "s28", "s29", "s30"] },
   ];
 
   // Pill shorthand: "<color><flags>:<text>". Colors y b p g n. Flags: ! highlight, + stretch to fill the row.
@@ -220,6 +222,111 @@
         cap: "Where a decision's evidence lives, online and off. Every event carries run_id and the model version." },
       q: { q: "A client asks about a decision from five weeks ago. Where is the evidence?", o: ["Workers Logs", "D1 and your R2 or OpenTelemetry export", "AI Gateway's cache"], a: 1,
         why: "Workers Logs keep seven days; D1 and the export are what last." } },
+    s21: {
+      p: ["A GTM container is three kinds of thing. Tags send data somewhere, triggers decide when a tag fires, and variables read values for both. Almost everything starts with a dataLayer push: the page announces an event, every trigger checks it, and the tags whose triggers match fire.",
+          "Triggers match literally. A Custom Event trigger set to equal \"purchase\" is case sensitive, so a page that pushes \"Purchase\" fires nothing, and GTM Preview shows the trigger as not matched."],
+      fig: { type: "flow", rows: [
+        ["Page", ["g+:dataLayer.push({ event: \"Purchase\", ecommerce: { value: 42 } })"]],
+        ["Trigger", ["b:CE - purchase", "b:event equals \"purchase\"", "b:case sensitive"]],
+        ["Match?", ["p!:\"Purchase\" ≠ \"purchase\""]],
+        ["Tag", ["n+:GA4 - purchase · not fired"]]],
+        cap: "The gtm-case task from the Bench's gtm-debug suite. The answer is no." },
+      q: { q: "The page pushes event \"Purchase\" and the trigger equals \"purchase\". Does the tag fire?", o: ["Yes, GTM ignores case", "No, the match is case sensitive", "Only in Preview mode"], a: 1,
+        why: "Equals is an exact string comparison. Use a regex with (?i) or fix the push if the casing varies." } },
+    s22: {
+      p: ["Variables are how tags read the page. A Data Layer Variable looks a key up in what has been pushed so far. Version 2 understands dot notation, so ecommerce.value walks into the nested object and returns the number inside.",
+          "When a tag sends the wrong value, check the variable before the tag: open GTM Preview on the event, choose Variables, and read what each one returned at that moment."],
+      fig: { type: "flow", rows: [
+        ["Push", ["g+:{ event: \"purchase\", ecommerce: { transaction_id: \"T-TEST-0002\", value: 59.98, currency: \"USD\" } }"]],
+        ["Variable", ["b:DLV - value", "b:key ecommerce.value", "b:version 2"]],
+        ["Returns", ["y!:59.98"]],
+        ["Tag sends", ["p+:GA4 purchase · value 59.98 · currency USD"]]],
+        cap: "The gtm-dlv task: version 2 walks the dot path into the ecommerce object." },
+      q: { q: "Where do you check what a Data Layer Variable returned on one event?", o: ["The GA4 Realtime report", "GTM Preview, on that event's Variables tab", "The tag's settings"], a: 1,
+        why: "Preview records each variable's value at each event, which is the evidence you need before changing a tag." } },
+    s23: {
+      p: ["Two problems cause most bad conversion numbers. Consent first: with Consent Mode v2, a tag that needs ad_storage stays quiet when the visitor rejects it. Then double counting: two tags on the same event, or a browser pixel and a server event both reporting one purchase.",
+          "Fix duplicate tags by pausing the old one. Fix browser-plus-server by sending the same event name and event ID from both, so Meta keeps one and drops the other. GA4 does the same with transaction_id for purchases."],
+      fig: { type: "flow", rows: [
+        ["Browser", ["y:Meta Pixel · Purchase", "y!:event_id T-1001"]],
+        ["Server", ["b:Meta CAPI · Purchase", "b!:event_id T-1001"]],
+        ["Meta", ["g+:same name + same event_id → counted once"]],
+        ["Consent", ["n:ad_storage denied → Ads conversion waits"]]],
+        cap: "Deduplication and consent, the two checks behind the gtm-dupe, gtm-consent and gtm-gate event-id tasks." },
+      q: { q: "Purchases doubled the day a new GA4 purchase tag went live, and the old one still fires. What do you do?", o: ["Delete the new tag", "Pause the old tag", "Turn off the trigger"], a: 1,
+        why: "Both tags send the same event, so pausing the old one stops the double count and keeps the new ecommerce setup." } },
+    s24: {
+      p: ["Server-side tagging adds a hop. The web container sends one stream of events to a server container, here hosted on Stape, and the server container forwards them to GA4, Meta CAPI, TikTok or a database. You control what leaves, and ad blockers see one first-party request.",
+          "Most server tags come from templates, and Stape's catalog has hundreds. Picking the right one is a decision problem: the Bench's stape-select suite asks a yes or no per template, and Clef-Flash picked the right one on 24 of 29 jobs."],
+      fig: { type: "flow", rows: [
+        ["Web container", ["g:GA4 config", "g:dataLayer events"]],
+        ["Server container", ["b+:sGTM on Stape · your own subdomain"]],
+        ["Template", ["y!:facebook-tag", "n:capi-bigcommerce", "n:fb-tag"]],
+        ["Destinations", ["p:GA4", "p:Meta CAPI", "p:TikTok Events API"]]],
+        cap: "The stape-meta-capi job: send server purchases to the Meta Conversions API. Gold answer: facebook-tag." },
+      q: { q: "What does the server container add that the web container alone can't do?", o: ["It replaces the dataLayer", "It controls and enriches what reaches each platform, from your own domain", "It makes consent unnecessary"], a: 1,
+        why: "The server hop is where you filter, add server-side data and send first-party requests. Consent still applies." } },
+    s25: {
+      p: ["Two kinds of local model help with GTM, and they answer different questions. A chat model reads a container setup and answers in text: what does this variable return, which tag should be paused. A decision model judges a proposed change with probabilities: will it still fire, is it risky, which area does it touch.",
+          "Use the decision model as the gate before publishing, and the chat model to explain why. Both are scored on your own GTM tasks, so you know where each one fails."],
+      fig: { type: "bars", input: "Same M1, same Bench, two suites. Score is the mean task score.",
+        groups: [{ q: "gtm-debug · chat models · 10 container questions", rows: [["qwen3.5-9b · 7 of 10", 0.775], ["Qwen3-4B · 6 of 10", 0.675], ["qwen3.5-4b · 6 of 10", 0.675]] },
+                 { q: "gtm-gate · decision models · 20 proposed changes", rows: [["clef-flash-4bit · 11 of 20", 0.77], ["kev-4b-mlx-8bit · 4 of 20", 0.60]] }],
+        cap: "Real Bench scores from Oct 4. The 9B is the better explainer but runs at about 23 tokens a second against 56 for the 4B." },
+      q: { q: "You want a yes or no on \"should this container change ship?\" with a confidence you can set a rule on. Which model type?", o: ["A chat model", "A decision model", "An embedding model"], a: 1,
+        why: "Decision models return calibrated probabilities, which is what a publish gate needs." } },
+    s26: {
+      p: ["A schema is a contract for the shape of data: which fields exist, what type each one is, which are required, and which values are allowed. JSON Schema writes that contract in JSON, so a program can check any object against it.",
+          "You meet schemas everywhere already. A GA4 event has a set of parameters, a dataLayer push follows a spec, a D1 table has columns. A schema makes that shape explicit enough for a machine to enforce."],
+      fig: { type: "flow", rows: [
+        ["Data", ["g+:{ \"banner\": true, \"cmp\": \"ExampleCMP\", \"buttons\": [\"Accept all\", \"Reject all\"] }"]],
+        ["Types", ["b:banner · boolean", "b:cmp · string", "b:buttons · array of strings"]],
+        ["Rules", ["y:required: banner, cmp, buttons", "y:buttons: at least 1"]],
+        ["Check", ["p!:valid ✓"]]],
+        cap: "The hj-consent schema from the Bench: three fields, their types, and what must be there." },
+      q: { q: "What does a schema let a program do?", o: ["Generate the data", "Check whether data has the agreed shape", "Store the data faster"], a: 1,
+        why: "A schema is a contract a validator can enforce, so bad data is caught before it is used." } },
+    s27: {
+      p: ["Build a schema from real examples, not from memory. Collect three or more real cases, list every field you need, give each a type, and mark which are required. Then tighten it: an enum for fixed choices, a pattern for formats like dates, minItems and maxItems for lists you can count.",
+          "Each constraint turns a silent mistake into a validation error. A date written as \"Nov 3\" passes a string type but fails a YYYY-MM-DD pattern, and that failure is the point."],
+      fig: { type: "flow", rows: [
+        ["Example", ["g+:<td>2026-11-03</td><td>GTM basics</td><td>20</td>"]],
+        ["Fields", ["b:date", "b:title", "b:seats"]],
+        ["Types", ["y:string", "y:string", "y:integer"]],
+        ["Tighten", ["p!:date pattern ^\\d{4}-\\d{2}-\\d{2}$", "p:sessions: exactly 2", "p:all required"]]],
+        cap: "Building the hj-events schema from one row of a schedule table." },
+      q: { q: "A model returns \"Nov 3\" for a date field typed only as string. What catches it?", o: ["Nothing; it's a valid string", "A pattern constraint for YYYY-MM-DD", "Marking the field required"], a: 1,
+        why: "Type alone accepts any text. The pattern is what states the format you actually need." } },
+    s28: {
+      p: ["To get data back in your shape, put the shape in the request. The Bench's extraction prompts end with the shape and the words \"Return only JSON\". Some runtimes go further and enforce a schema while generating, which Claude Code's --json-schema flag and Jockey's json_schema option both do.",
+          "Always validate what comes back. Valid JSON in the wrong shape is the common failure, and a validator turns it into an error you can retry or log instead of a silent bad row."],
+      fig: { type: "flow", rows: [
+        ["Input", ["g+:<section class=\"pricing\">… Starter $19/month … Agency $490/year</section>"]],
+        ["Ask", ["b+:Shape: {\"plans\": [{\"name\", \"price\": number, \"interval\": \"month\" | \"year\"}]} · Return only JSON"]],
+        ["Model", ["y:UI-TARS-1.5-7B", "y:Qwen3-VL-8B", "y:ReaderLM-v2"]],
+        ["Validate", ["p!:schema ✓ or a list of errors"]]],
+        cap: "The hj-pricing task: the shape travels with the request, and the validator has the last word." },
+      q: { q: "A model returns valid JSON with price as \"$19\". What should happen?", o: ["Use it; it's valid JSON", "The validator rejects it: price must be a number", "Convert it silently"], a: 1,
+        why: "Valid JSON isn't the same as valid data. The schema says number, so the string fails and you retry or log it." } },
+    s29: {
+      p: ["The Bench scores extraction in two parts. One point if the output passes the schema, plus one point for each expected field that holds the right value, divided by the total. A task passes only when the schema is valid and every expected field is right.",
+          "That splits two kinds of failure: wrong shape and wrong facts. ReaderLM-v2 is fast but often gets the shape wrong; UI-TARS got every task right."],
+      fig: { type: "bars", input: "html-json · 8 extraction tasks · M1 · Oct 4",
+        groups: [{ q: "Mean score: (schema valid + right fields) ÷ (1 + fields checked)", rows: [["UI-TARS-1.5-7B · 8 of 8", 1.0], ["Qwen3-VL-8B · 7 of 8", 0.875], ["ReaderLM-v2 · 3 of 8", 0.594]] }],
+        cap: "Real Bench scores. ReaderLM-v2 runs about 4 times faster, so it fits as a first pass before a stricter model." },
+      q: { q: "Output passes the schema; 2 of 4 expected fields are right. What's the score?", o: ["0.5", "0.6", "1.0"], a: 1,
+        why: "(1 for the schema + 2 right fields) ÷ (1 + 4) = 3 ÷ 5 = 0.6." } },
+    s30: {
+      p: ["The same habit runs through the whole stack. A System One request is a schema for a decision: each question has a type and, for choices and scores, its criteria. A dataLayer spec is a schema for events. A D1 table is a schema for stored rows.",
+          "Version schemas like code. jev-gateway refuses a rubric whose digest doesn't match, so a changed schema can't quietly reuse old answers. Give each schema a version, change it on purpose, and regenerate whatever depends on it."],
+      fig: { type: "flow", rows: [
+        ["Event spec", ["g:purchase", "g:transaction_id · string · required", "g:value · number", "g:currency · ISO 4217"]],
+        ["Decision", ["b:fires · noul", "b:risk · score 0–2", "b:area · choice of 7"]],
+        ["Table", ["y:skill_selections(id, backend, scores, created)"]],
+        ["Version", ["p!:digest changes → old answers are stale"]]],
+        cap: "One idea in three places: a dataLayer contract, a decision's questions, and a D1 table." },
+      q: { q: "You add a field to a rubric's questions. What should happen to answers stored under the old version?", o: ["Reuse them; it's a small change", "Treat them as stale and ask again", "Delete the rubric"], a: 1,
+        why: "The digest changed, so old answers belong to a different contract. That's how jev-gateway and the stale-plan rule both work." } },
   };
 
   const parsePill = s => { const m = /^([ybpgn])([!+]*):(.*)$/s.exec(s) || [0, "n", "", s]; return { c: m[1], hl: m[2].includes("!"), wide: m[2].includes("+"), t: m[3] }; };
