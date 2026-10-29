@@ -745,9 +745,13 @@ async function api(req, env, url, ctx) {
   }
   if (p === "/api/picks" && req.method === "GET") {
     const status = url.searchParams.get("status");
+    // limit/offset page through a status (the dashboard loads each tab 100 at a time). Without them the old caps hold,
+    // so the agent's ?status=approved call is unchanged.
+    const lim = Math.min(2000, Math.max(1, Number(url.searchParams.get("limit")) || (status ? 300 : 400)));
+    const off = Math.max(0, Number(url.searchParams.get("offset")) || 0);
     const q = status
-      ? env.DB.prepare("SELECT * FROM picks WHERE status=? ORDER BY score DESC LIMIT 300").bind(status)
-      : env.DB.prepare("SELECT * FROM picks ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC LIMIT 400");
+      ? env.DB.prepare("SELECT * FROM picks WHERE status=? ORDER BY score DESC, id LIMIT ? OFFSET ?").bind(status, lim, off)
+      : env.DB.prepare("SELECT * FROM picks ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC, id LIMIT ? OFFSET ?").bind(lim, off);
     let rows = (await q.all()).results.map(shapePick);
     // An agent that can't honor include lists would download whole repos (Gemma Scope is hundreds of GB): hold those back.
     if (status === "approved" && url.searchParams.get("include_ok") !== "1") rows = rows.filter(r => !r.extra?.include);
