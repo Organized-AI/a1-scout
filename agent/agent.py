@@ -1740,6 +1740,8 @@ def main():
         if time.time() - st.get("last_mount_run", 0) < 600:
             return
         trigger = st.pop("next_trigger", None) or "mount"
+        # Stamp the start, not only a finished run: a run that fails still debounces the next mount.
+        st["last_mount_run"] = time.time()
         save_state(st)
         if trigger == "mount":
             time.sleep(5)  # let Spotlight and the filesystem settle after mount
