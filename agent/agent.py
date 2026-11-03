@@ -1557,6 +1557,14 @@ def run_mounted(trigger):
     catalog = build_catalog()
     push_catalog(catalog)
     push_profile(catalog)
+    if STASH.is_dir() and not os.access(STASH, os.W_OK):
+        # macOS can mount the A1 read-only. Every write then fails, so stop here instead of retrying on each mount.
+        hint = "The A1 is mounted read-only, so nothing can be written to it. Check the drive or its enclosure, then plug it in again."
+        log("A1 is read-only; skipping updates, downloads and the scan")
+        notify("A1 Scout", hint)
+        activity(force=True, state="idle", phase="The A1 is read-only", current=None, queue=[], summary=hint)
+        s = load_state(); s["last_mount_run"] = time.time(); save_state(s)
+        return
     activity(force=True, phase="Checking stashed items for updates", needs_license=sorted(needs_license()))
     report, spent = run_updates(catalog)
     activity(force=True, phase="Scanning Hugging Face for new picks", current=None, check=None)
