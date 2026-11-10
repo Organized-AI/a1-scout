@@ -88,6 +88,8 @@ const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embeddi
 const DTYPE_BYTES = { F64: 8, I64: 8, U64: 8, F32: 4, I32: 4, U32: 4, BF16: 2, F16: 2, I16: 2, U16: 2, I8: 1, U8: 1, F8_E4M3: 1, F8_E5M2: 1, BOOL: 1 };
 const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl|^other$|unknown)/i;
 const SKIP_NAME = /(uncensored|abliterat|nsfw|erotic|jailbreak)/i;
+const PICK_KINDS = ["model", "dataset", "space", "paper", "collection", "code"];
+const PICKS_MAX_LIMIT = 1000;
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
@@ -775,14 +777,35 @@ async function api(req, env, url) {
     });
   }
   if (p === "/api/picks" && req.method === "GET") {
-    const status = url.searchParams.get("status");
-    const q = status
-      ? env.DB.prepare("SELECT * FROM picks WHERE status=? ORDER BY score DESC LIMIT 300").bind(status)
-      : env.DB.prepare("SELECT * FROM picks ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC LIMIT 400");
-    let rows = (await q.all()).results.map(shapePick);
+    const sel = k => { const v = url.searchParams.get(k); return v && v !== "all" ? v : null; };
+    // capped at MAX_SAFE_INTEGER so a huge offset binds as an integer and returns [] instead of a SQLite type error
+    const int = (k, d) => { const v = url.searchParams.get(k); return v === null ? d : /^\d+$/.test(v) ? Math.min(+v, Number.MAX_SAFE_INTEGER) : NaN; };
+    const status = sel("status"), kind = sel("kind");
+    if (kind && !PICK_KINDS.includes(kind)) return json({ error: `kind must be one of ${PICK_KINDS.join("|")}` }, 400);
+    // Without limit the old caps stay (300 with a status, 400 without): the Mac agent reads these lists unpaged.
+    const limit = int("limit", status ? 300 : 400), offset = int("offset", 0);
+    if (!(limit >= 1 && limit <= PICKS_MAX_LIMIT)) return json({ error: `limit must be 1-${PICKS_MAX_LIMIT}` }, 400);
+    if (!(offset >= 0)) return json({ error: "offset must be 0 or more" }, 400);
+    const where = [status && "status=?", kind && "kind=?"].filter(Boolean);
+    // id breaks score ties, so pages never overlap or skip a row
+    const order = status ? "score DESC, id" : "CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC, id";
+    let rows = (await env.DB.prepare(`SELECT * FROM picks ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${order} LIMIT ? OFFSET ?`)
+      .bind(...[status, kind].filter(Boolean), limit, offset).all()).results.map(shapePick);
     // An agent that can't honor include lists would download whole repos (Gemma Scope is hundreds of GB): hold those back.
     if (status === "approved" && url.searchParams.get("include_ok") !== "1") rows = rows.filter(r => !r.extra?.include);
     return json(rows);
+  }
+  // Exact numbers for the dashboard's tabs and type chips: every row, no include-list hold-back.
+  if (p === "/api/picks/counts" && req.method === "GET") {
+    const rows = (await env.DB.prepare("SELECT status, kind, COUNT(*) n FROM picks GROUP BY status, kind").all()).results;
+    const c = { total: 0, by_status: {}, by_kind: {}, by_status_kind: {} };
+    for (const { status, kind, n } of rows) {
+      c.total += n;
+      c.by_status[status] = (c.by_status[status] || 0) + n;
+      c.by_kind[kind] = (c.by_kind[kind] || 0) + n;
+      (c.by_status_kind[status] ||= {})[kind] = n;
+    }
+    return json(c);
   }
   if (p === "/api/picks/status" && req.method === "POST") {
     const { id, status } = await req.json();
