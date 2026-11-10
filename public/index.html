@@ -95,6 +95,7 @@ button.chip:hover{border-color:var(--accent)}
 .gate{max-width:420px;margin:12vh auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px}
 .gate input{width:100%;padding:10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-family:"IBM Plex Mono",monospace;margin:10px 0}
 .empty{color:var(--mute);padding:30px 0;text-align:center}
+.more{display:flex;gap:12px;align-items:center;justify-content:center;margin:14px 0 0}
 /* Sessions tab */
 .st-card{position:relative;cursor:pointer;padding-right:34px;transition:border-color .15s}.st-card:hover,.st-card:focus-visible{border-color:var(--brand);outline:none}
 .st-card b{display:block;font:600 26px "IBM Plex Mono",monospace}.st-card span{display:block}
@@ -305,8 +306,28 @@ function gate(msg = "") {
   $("#save").onclick = () => { token = $("#tok").value.trim(); try { localStorage.setItem("a1-scout-token", token); } catch {} load(); };
   gsap.fromTo(".gate", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: .4, ease: "power2.out", clearProps: "all" });
 }
+// Picks load per tab, PAGE at a time: one request for every pick grew past what the old cap returned, which emptied the
+// Stashed tab. pages[tab] = { rows, done }; picks is everything loaded so far (the info card and the Lab use it).
+const PAGE = 100;
+let pages = {};
+const pickUrl = (tab, offset) => `/api/picks?${tab === "all" ? "" : `status=${tab}&include_ok=1&`}limit=${PAGE}&offset=${offset}`;
+function mergePicks() { const m = new Map(); for (const pg of Object.values(pages)) for (const r of pg.rows) m.set(r.id, r); picks = [...m.values()]; }
+async function loadPage(tab, more = false) {
+  const pg = pages[tab] && more ? pages[tab] : (pages[tab] = { rows: [], done: false, loading: false });
+  if (pg.loading || pg.done) return;
+  pg.loading = true;
+  try {
+    const got = await call(pickUrl(tab, pg.rows.length));
+    // a pick shown in one tab is the same object everywhere, so a status change made here shows up in every tab
+    const byId = new Map(picks.map(p => [p.id, p]));
+    pg.rows.push(...got.map(r => byId.get(r.id) || r));
+    pg.done = got.length < PAGE;
+  } finally { pg.loading = false; }
+  mergePicks();
+}
 async function load() {
-  [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
+  pages = {};
+  [state, catalog] = await Promise.all([call("/api/state"), call("/api/catalog"), loadPage(filter)]);
   render(true);
   // measured bench numbers feed the Lab; repaint it if it's open when they arrive
   BenchView.load(call).then(() => { if (view === "bench") render(); });
@@ -746,7 +767,11 @@ function animateBar(el, st, live, o) {
 const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection", code: "code (GitHub)" };
 function scoutView() {
   const c = state.counts || {}, lr = state.last_run;
-  const shown = picks.filter(p => filter === "all" || p.status === filter);
+  const pg = pages[filter];
+  if (!pg) loadPage(filter).then(() => view === "scout" && render()).catch(() => {});
+  const shown = (pg?.rows || []).filter(p => filter === "all" || p.status === filter);
+  const total = filter === "all" ? Object.values(c).reduce((a, n) => a + n, 0) : (c[filter] || 0);
+  const more = pg && !pg.done && shown.length < total;
   return `<div class="sub">Hugging Face models, datasets, Spaces, papers and collections scored against ${state.repos} Organized-AI repos. Approved picks download to the A1 the next time it's plugged in. Approving a collection queues each of its items here for review.</div>
   <div class="stats">
     <div class="stat"><b data-n="${c.new||0}">0</b><span>to review</span></div>
@@ -762,7 +787,8 @@ function scoutView() {
     <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
   <div class="section">Picks</div>
   <div class="tabs">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(c[f]||0):""}</button>`).join("")}</div>
-  <div id="list">${shown.length? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>`;
+  <div id="list">${!pg ? `<div class="empty">Loading…</div>` : shown.length ? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>
+  ${more ? `<div class="more"><button class="btn" id="more">Show ${Math.min(PAGE, total - shown.length)} more</button><span class="meta">${shown.length} of ${total}</span></div>` : ""}`;
 }
 // The agent's last check of stashed items against the Hub (runs on every A1 mount).
 function updatesBlock(u) {
@@ -798,6 +824,9 @@ function row(p) {
 }
 function wireScout(first) {
   $$(".tabs .tab").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
+  const mb = $("#more");
+  if (mb) mb.onclick = async () => { mb.disabled = true; mb.textContent = "Loading…"; const n = $$(".pick").length; await loadPage(filter, true); render();
+    const fresh = $$(".pick").slice(n); if (fresh.length && !RM()) gsap.fromTo(fresh, { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: { amount: .4 }, clearProps: "all" }); };
   $$("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); act(b.dataset.id, b.dataset.act, b.closest(".pick")); });
   // Clicking a pick (anywhere but its buttons and links) opens an info card that flips over.
   const openPick = el => { const p = picks.find(x => x.id === el.dataset.pick); if (p) MapView.pickCard({ ...p, hub: hubUrl(p) }, el, status => act(p.id, status, el)); };
@@ -814,9 +843,19 @@ function wireScout(first) {
 async function act(id, status, el) {
   await gsap.to(el, { x: status === "skipped" ? -30 : 30, opacity: 0, duration: .25, ease: "power2.in" });
   const r = await call("/api/picks/status", { method: "POST", body: JSON.stringify({ id, status }) });
-  if (r.expanded) { picks = await call("/api/picks"); }
-  else { const p = picks.find(x => x.id === id); if (p) p.status = status; }
-  state.counts = picks.reduce((a, x) => (a[x.status] = (a[x.status]||0)+1, a), {});
+  if (r.expanded) {
+    // a collection became several new picks: reload the counts and the tabs from the server
+    pages = {}; picks = []; const st = await call("/api/state"); state.counts = st.counts; await loadPage(filter);
+  } else {
+    const p = picks.find(x => x.id === id);
+    if (p && p.status !== status) {
+      // move the counts by one, rather than recounting a partial list
+      state.counts[p.status] = Math.max(0, (state.counts[p.status] || 0) - 1);
+      state.counts[status] = (state.counts[status] || 0) + 1;
+      if (pages[status] && !pages[status].rows.includes(p)) pages[status].rows.unshift(p);
+      p.status = status;
+    }
+  }
   render();
 }
 load();

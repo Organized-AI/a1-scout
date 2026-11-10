@@ -227,13 +227,27 @@
   }
   // Previous versions the updater kept. The agent never deletes on the A1, so this is where you decide.
   function oldVersions() { return (catalog.categories.find(c => c.id === "versions")?.items || []).slice().sort((a, b) => (b.bytes || 0) - (a.bytes || 0)); }
-  const rmCmd = list => list.map(v => `rm -rf ${JSON.stringify(abs(v))}`).join("\n");
+  // Guarded delete: each old version goes only when its current copy is on the drive with the agent's .verified stamp
+  // (written once an update has fully downloaded and checked out); anything else is skipped and said so. Paths are
+  // single-quoted for the shell, so spaces, $ or backticks in a name can't change the command.
+  const shq = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const rmCmd = list => {
+    const rel = list.map(v => String(v.path).replace(/^versions\//, "")).filter(r => r.includes("@"));
+    if (!rel.length) return "";
+    return [`cd ${shq(catalog.stash_root)} || exit 1`,
+      `for p in ${rel.map(shq).join(" ")}; do`,
+      `  cur="\${p%@*}"`,
+      `  if [ -d "versions/$p" ] && [ -f "$cur/.verified" ]; then rm -rf "versions/$p" && echo "deleted versions/$p"`,
+      `  else echo "skipped $p (old copy missing, or current copy not verified)"; fi`,
+      `done`,
+      `df -h ${shq(catalog.mount || catalog.stash_root)} | tail -1`].join("\n");
+  };
   function versionsHtml() {
     const vs = oldVersions(); if (!vs.length) return "";
     const total = vs.reduce((t, v) => t + (v.bytes || 0), 0);
     return `<section class="m-old" aria-label="Old versions">
       <div class="m-old-head"><div><b>Old versions you can delete · ${gb(total)}</b>
-        <p class="meta">Kept when a newer revision was downloaded. The current copy of each is already on the drive, so these are only needed if you want to go back. The agent never deletes on the A1; run the command yourself with the A1 plugged in.</p></div>
+        <p class="meta">Kept when a newer revision was downloaded. The current copy of each is already on the drive, so these are only needed if you want to go back. The agent never deletes on the A1; run the command yourself with the A1 plugged in. It only removes an old version when the current copy is on the drive and verified, skips anything else, and shows the free space after.</p></div>
         <button class="btn" data-rmall>Copy delete command for all</button></div>
       <ul>${vs.map(v => `<li><code>${esc(v.path)}</code><span>${gb(v.bytes)}</span><small>current: ${esc(v.meta?.replaced_by || "?")}</small><button class="btn" data-rm="${esc(v.path)}">Copy command</button></li>`).join("")}</ul>
     </section>`;
