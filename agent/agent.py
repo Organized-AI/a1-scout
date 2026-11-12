@@ -839,6 +839,25 @@ def hub_access(repo, kind="model", http=None):
     return "granted" if st in (200, 302, 307) else "blocked" if st in (401, 403) else "unknown"
 
 
+GONE_RE = re.compile(r"not found|RepositoryNotFound|404 Client Error|Invalid username or password", re.I)
+
+
+def hub_gone(repo, kind="model", http=None):
+    """True when Hugging Face no longer serves this repo to anyone: its page answers 401 or 404 (removed, renamed
+    or made private). A gated repo still shows its page, so it is not "gone"; no answer at all is not proof either."""
+    st, _ = (http or _hf_http)(f"{HF_SITE}/api/{kind}s/{repo}", "GET")
+    return st in (401, 404)
+
+
+def retire_pick(p):
+    """Skip a pick whose repo is gone, so it stops failing on every run and stops counting toward the queue."""
+    try:
+        api("/api/picks/status", "POST", {"id": p.get("id") or f"{p['kind']}:{p['repo']}", "status": "skipped"})
+        return True
+    except Exception:
+        return False
+
+
 def licenses():
     return load_state().get("licenses", {})
 
@@ -1228,6 +1247,13 @@ def fetch_approved(spent=0):
             if not ok:
                 log(f"  hf download failed: {(r.stderr or r.stdout)[-400:]}")
         if not ok:
+            said = (r.stderr or "") + (r.stdout or "") if p["kind"] not in ("paper", "code") else ""
+            if said and GONE_RE.search(said) and not LICENSE_RE.search(said) and hub_gone(p["repo"], p["kind"]):
+                skipped = retire_pick(p)
+                log(f"  {p['repo']} is no longer on Hugging Face (removed, renamed or made private)" + ("; pick skipped" if skipped else ""))
+                waiting.append((p["repo"], "no longer on Hugging Face (removed, renamed or made private); skipped, nothing to download"
+                                if skipped else "no longer on Hugging Face (removed, renamed or made private)"))
+                continue
             refused = p["kind"] not in ("paper", "code") and LICENSE_RE.search((r.stderr or "") + (r.stdout or ""))
             waiting.append((p["repo"], f"needs license: accept the terms at https://huggingface.co/{p['repo']}, then it downloads next mount"
                             if refused else "download failed; retries next mount"))

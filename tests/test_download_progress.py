@@ -78,6 +78,30 @@ class CachedCommit(unittest.TestCase):
             self.assertIsNone(A.cached_commit(Path(d)))
 
 
+class GoneFromTheHub(unittest.TestCase):
+    """nvidia/Nemotron-RL-Agentic-Conversational-Tool-Use-Seed-v1 was approved, then taken off the Hub (2026-11-12)."""
+    ERR = "Error: Dataset 'nvidia/Nemotron-RL-Agentic-Conversational-Tool-Use-Seed-v1' not found. If the repo is private, make sure you are authenticated."
+
+    def test_the_real_error_text_reads_as_gone_not_as_a_license(self):
+        self.assertTrue(A.GONE_RE.search(self.ERR))
+        self.assertFalse(A.LICENSE_RE.search(self.ERR))
+
+    def test_gone_only_when_the_hub_says_so(self):
+        self.assertTrue(A.hub_gone("nvidia/x", "dataset", http=lambda u, m: (401, b"")))
+        self.assertTrue(A.hub_gone("nvidia/x", "dataset", http=lambda u, m: (404, b"")))
+        self.assertFalse(A.hub_gone("nvidia/x", "dataset", http=lambda u, m: (200, b"{}")))   # gated repos still answer
+        self.assertFalse(A.hub_gone("nvidia/x", "dataset", http=lambda u, m: (0, b"")))       # offline is not proof
+
+    def test_retiring_skips_the_pick(self):
+        calls, orig = [], A.api
+        A.api = lambda path, method="GET", body=None, raw=False: calls.append((path, method, body)) or {"ok": True}
+        try:
+            self.assertTrue(A.retire_pick({"id": "dataset:nvidia/x", "repo": "nvidia/x", "kind": "dataset"}))
+        finally:
+            A.api = orig
+        self.assertEqual(calls, [("/api/picks/status", "POST", {"id": "dataset:nvidia/x", "status": "skipped"})])
+
+
 class HfDownload(unittest.TestCase):
     def setUp(self):
         self.posts, self._activity, self._progress = [], A.activity, A.PROGRESS
