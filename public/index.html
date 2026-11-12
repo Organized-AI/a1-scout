@@ -380,14 +380,14 @@ function runModel() {
   if (live) {
     const c = a.current;
     return { src: "live", asOf: a.updated_at, phase: a.phase, startedAt: a.started_at, dlStartedAt: a.dl_started_at || c?.started_at,
-      done: a.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, rate: c.rate, startedAt: c.started_at } : null,
+      done: a.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, rate: c.rate, startedAt: c.started_at, files: c.done_files, totalFiles: c.total_files } : null,
       queue: a.queue || [], check: a.check || null, blocked: a.blocked || null };
   }
   const r = p.logrun;
   if (!r || r.finished) return null;
   const c = r.current;
   return { src: "log", asOf: p.at, phase: r.phase, startedAt: r.started_at, dlStartedAt: r.dl_started_at,
-    done: r.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, startedAt: c.started_at } : null,
+    done: r.done || [], current: c ? { repo: c.repo, action: c.action, total: c.total_bytes || 0, done: c.done_bytes || 0, startedAt: c.started_at, files: c.done_files, totalFiles: c.total_files } : null,
     queue: r.queue || [] };
 }
 const rate = r => r == null ? "—" : r >= 1e9 ? `${(r / 1e9).toFixed(2)} GB/s` : `${(r / 1e9).toFixed(3)} GB/s · ${(r / 1e6).toFixed(0)} MB/s`;
@@ -482,7 +482,7 @@ function paintBar(animate) {
         </dl>
       </div>
       <div class="a1-track big"><i data-k="bar" style="width:${(total ? disp.got / total * 100 : 0)}%"><b class="a1-sheen"></b></i></div>
-      ${run.current ? `<div class="a1-item" data-repo="${esc(run.current.repo)}"><div class="a1-line"><span>${esc(run.current.action || "Downloading")} <b>${esc(short(run.current.repo))}</b></span>
+      ${run.current ? `<div class="a1-item" data-repo="${esc(run.current.repo)}"><div class="a1-line"><span>${esc(run.current.action || "Downloading")} <b>${esc(short(run.current.repo))}</b>${run.current.totalFiles ? ` · ${(run.current.files || 0).toLocaleString()} of ${run.current.totalFiles.toLocaleString()} files` : ""}</span>
           <span class="a1-nums" data-k="cnum"></span></div>
           <div class="a1-track"><i data-k="cbar" style="width:0%"><b class="a1-sheen"></b></i></div></div>`
         : run.check && run.check.total ? `<div class="a1-item"><div class="a1-line"><span>${esc(run.phase || "Working")}</span><span class="a1-nums">${run.check.done} of ${run.check.total} checked</span></div><div class="a1-track"><i style="width:${Math.round(run.check.done / run.check.total * 100)}%"></i></div></div>`
