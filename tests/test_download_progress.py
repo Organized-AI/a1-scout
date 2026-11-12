@@ -57,6 +57,27 @@ class FilesSize(unittest.TestCase):
             self.assertIsNone(A.files_size(Path(d), budget_s=-1))
 
 
+class CachedCommit(unittest.TestCase):
+    def test_reads_a_sample_not_every_metadata_file(self):
+        sha = "836caf2fdd78b888ddd14fb62dc038e932e17898"
+        with tempfile.TemporaryDirectory() as d:
+            for i in range(300):
+                m = Path(d) / f".cache/huggingface/download/claudesdk/run{i}/t.json.metadata"
+                m.parent.mkdir(parents=True)
+                m.write_text(f"{sha}\netag\n1.0\n")
+            reads, orig = [], Path.read_text
+            Path.read_text = lambda self, *a, **k: reads.append(self) or orig(self, *a, **k)
+            try:
+                self.assertEqual(A.cached_commit(Path(d)), sha)
+            finally:
+                Path.read_text = orig
+            self.assertEqual(len(reads), A.COMMIT_SAMPLE)
+
+    def test_none_without_hf_bookkeeping(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(A.cached_commit(Path(d)))
+
+
 class HfDownload(unittest.TestCase):
     def setUp(self):
         self.posts, self._activity, self._progress = [], A.activity, A.PROGRESS
