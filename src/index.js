@@ -1,3 +1,5 @@
+import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
+import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
 // actually building, stores picks in D1, serves them to the Mac agent that fills the
@@ -88,6 +90,8 @@ const COLLECTION_QUERIES = ["mlx", "apple silicon", "function calling", "embeddi
 const DTYPE_BYTES = { F64: 8, I64: 8, U64: 8, F32: 4, I32: 4, U32: 4, BF16: 2, F16: 2, I16: 2, U16: 2, I8: 1, U8: 1, F8_E4M3: 1, F8_E5M2: 1, BOOL: 1 };
 const NC_LICENSE = /(nc|non-?commercial|research|llama.*community|gemma|agpl|gpl|^other$|unknown)/i;
 const SKIP_NAME = /(uncensored|abliterat|nsfw|erotic|jailbreak)/i;
+const PICK_KINDS = ["model", "dataset", "space", "paper", "collection", "code"];
+const PICKS_MAX_LIMIT = 1000;
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), { status, headers: { "content-type": "application/json" } });
@@ -479,7 +483,7 @@ async function scan(env, trigger) {
   const invBase = new Set(inv.map(baseName));
   const invExact = new Set(inv.map(s => s.toLowerCase()));
   const { w, hits } = themeWeights(profile);
-  const { candidates, errors } = await collect(env, w);
+  const [{ candidates, errors }, work] = await Promise.all([collect(env, w), workIndex(env)]);
   const maxBytes = Number(env.MAX_PICK_GB || 40) * 1e9;
 
   const QUOTA = { model: 6, dataset: 5, space: 3, paper: 3, collection: 2 };
@@ -489,7 +493,10 @@ async function scan(env, trigger) {
     if (invExact.has(c.repo.toLowerCase()) || invBase.has(baseName(c.repo))) continue;
     if (c.size_bytes && c.size_bytes > maxBytes) continue;
     if (c.kind === "dataset" && c.size_bytes !== null && c.size_bytes < 50_000) continue; // empty stubs
-    const { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
+    let { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
+    // Ranked against your coding sessions: what you actually install, import and pull.
+    const wb = workBoost(c, work);
+    if (wb) { score = Math.round(Math.min(100, score + wb.points) * 10) / 10; reasons.unshift(wb.reason); }
     if (score < 35 && !c.extra?.watched) continue;  // a watched author's uploads always count
     scored.push({ c, score, reasons, flags });
   }
@@ -755,11 +762,17 @@ async function benchApi(req, env, url, p) {
   return json({ error: "not found" }, 404);
 }
 
-async function api(req, env, url) {
+async function api(req, env, url, ctx) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
+  const pub = await waitlistApi(req, env, url, ctx); // public: docs waitlist + survey
+  if (pub) return pub;
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
+  if (p === "/api/waitlist" && req.method === "GET") return waitlistList(env);
+  if (p.startsWith("/api/waitlist/")) { const o = await waitlistOwner(req, env, url, ctx); if (o) return o; }
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
+  const sess = await sessionsApi(req, env, url, p, { kvGet, kvSet });
+  if (sess) return sess;
 
   if (p === "/api/state" && req.method === "GET") {
     const profile = await kvGet(env, "profile");
@@ -775,14 +788,35 @@ async function api(req, env, url) {
     });
   }
   if (p === "/api/picks" && req.method === "GET") {
-    const status = url.searchParams.get("status");
-    const q = status
-      ? env.DB.prepare("SELECT * FROM picks WHERE status=? ORDER BY score DESC LIMIT 300").bind(status)
-      : env.DB.prepare("SELECT * FROM picks ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC LIMIT 400");
-    let rows = (await q.all()).results.map(shapePick);
+    const sel = k => { const v = url.searchParams.get(k); return v && v !== "all" ? v : null; };
+    // capped at MAX_SAFE_INTEGER so a huge offset binds as an integer and returns [] instead of a SQLite type error
+    const int = (k, d) => { const v = url.searchParams.get(k); return v === null ? d : /^\d+$/.test(v) ? Math.min(+v, Number.MAX_SAFE_INTEGER) : NaN; };
+    const status = sel("status"), kind = sel("kind");
+    if (kind && !PICK_KINDS.includes(kind)) return json({ error: `kind must be one of ${PICK_KINDS.join("|")}` }, 400);
+    // Without limit the old caps stay (300 with a status, 400 without): the Mac agent reads these lists unpaged.
+    const limit = int("limit", status ? 300 : 400), offset = int("offset", 0);
+    if (!(limit >= 1 && limit <= PICKS_MAX_LIMIT)) return json({ error: `limit must be 1-${PICKS_MAX_LIMIT}` }, 400);
+    if (!(offset >= 0)) return json({ error: "offset must be 0 or more" }, 400);
+    const where = [status && "status=?", kind && "kind=?"].filter(Boolean);
+    // id breaks score ties, so pages never overlap or skip a row
+    const order = status ? "score DESC, id" : "CASE status WHEN 'approved' THEN 0 WHEN 'new' THEN 1 WHEN 'stashed' THEN 2 ELSE 3 END, score DESC, id";
+    let rows = (await env.DB.prepare(`SELECT * FROM picks ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${order} LIMIT ? OFFSET ?`)
+      .bind(...[status, kind].filter(Boolean), limit, offset).all()).results.map(shapePick);
     // An agent that can't honor include lists would download whole repos (Gemma Scope is hundreds of GB): hold those back.
     if (status === "approved" && url.searchParams.get("include_ok") !== "1") rows = rows.filter(r => !r.extra?.include);
     return json(rows);
+  }
+  // Exact numbers for the dashboard's tabs and type chips: every row, no include-list hold-back.
+  if (p === "/api/picks/counts" && req.method === "GET") {
+    const rows = (await env.DB.prepare("SELECT status, kind, COUNT(*) n FROM picks GROUP BY status, kind").all()).results;
+    const c = { total: 0, by_status: {}, by_kind: {}, by_status_kind: {} };
+    for (const { status, kind, n } of rows) {
+      c.total += n;
+      c.by_status[status] = (c.by_status[status] || 0) + n;
+      c.by_kind[kind] = (c.by_kind[kind] || 0) + n;
+      (c.by_status_kind[status] ||= {})[kind] = n;
+    }
+    return json(c);
   }
   if (p === "/api/picks/status" && req.method === "POST") {
     const { id, status } = await req.json();
@@ -818,7 +852,9 @@ async function api(req, env, url) {
       mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
       theme: THEMES.some(t => t.id === theme) ? theme : "agents",
     };
-    const { score, reasons, flags } = scoreCandidate(c, 1);
+    let { score, reasons, flags } = scoreCandidate(c, 1);
+    const wb = workBoost(c, await workIndex(env));
+    if (wb) { score = Math.round(Math.min(100, score + wb.points) * 10) / 10; reasons.unshift(wb.reason); }
     reasons.unshift(source || "added from chat");
     if (note) reasons.push(note);
     await upsertPick(env, c, score, reasons, [], flags, now()).run();
@@ -915,6 +951,36 @@ async function api(req, env, url) {
     await kvSet(env, "drive_request", dr);
     return json({ ok: true, drive_request: dr });
   }
+  // "Delete" on the Drive map's old versions. The Mac's heartbeat carries it out once no run is going (within a
+  // minute when idle); the agent re-checks every path itself and only removes an old version whose current copy is verified.
+  if (p === "/api/versions-delete" && req.method === "GET") return json({ versions_delete: await kvGet(env, "versions_delete") });
+  if (p === "/api/versions-delete" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const paths = [...new Set(Array.isArray(body.paths) ? body.paths : [])];
+    const okPath = v => typeof v === "string" && v.length < 400 && /^versions\/[^@]+@[0-9a-f]{4,40}$/.test(v) && !v.split("/").some(seg => seg === ".." || seg === "." || seg === "");
+    if (!paths.length || paths.length > 200 || !paths.every(okPath)) return json({ ok: false, error: "paths must be old versions, like versions/models/mlx/Name@815b83c" }, 400);
+    const known = new Set((((await kvGet(env, "catalog")) || {}).categories || []).find(c => c.id === "versions")?.items?.map(i => i.path) || []);
+    if (!paths.every(v => known.has(v))) return json({ ok: false, error: "That old version isn't on the Drive map any more. Reload and try again." }, 409);
+    const presence = await kvGet(env, "presence");
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    if (!fresh || !presence.present) return json({ ok: false, error: "The A1 isn't plugged in, or the Mac hasn't checked in for a few minutes." }, 409);
+    const vd = { state: "pending", paths, at: now(), waiting_for_run: !!presence.busy };
+    await kvSet(env, "versions_delete", vd);
+    return json({ ok: true, versions_delete: vd });
+  }
+  if (p === "/api/versions-delete/ack" && req.method === "POST") {
+    const { state, note, results, freed_bytes, free_bytes } = await req.json();
+    const vd = await kvGet(env, "versions_delete");
+    const res = (Array.isArray(results) ? results : []).slice(0, 200).map(r => ({ path: String(r.path), outcome: r.outcome === "deleted" ? "deleted" : "skipped", why: r.why ? String(r.why).slice(0, 200) : null }));
+    if (vd) await kvSet(env, "versions_delete", { ...vd, state: ["done", "failed"].includes(state) ? state : "failed", note: note || null, results: res,
+      freed_bytes: Number(freed_bytes) || 0, free_bytes: Number(free_bytes) || null, acked_at: now() });
+    // Take what was deleted off the stored Drive map, so the panel is right before the next full catalog push.
+    const gone = new Set(res.filter(r => r.outcome === "deleted").map(r => r.path));
+    const cat = gone.size ? await kvGet(env, "catalog") : null;
+    const vcat = cat?.categories?.find(c => c.id === "versions");
+    if (vcat) { vcat.items = (vcat.items || []).filter(i => !gone.has(i.path)); await kvSet(env, "catalog", cat); }
+    return json({ ok: true });
+  }
   if (p === "/api/drive-request/ack" && req.method === "POST") {
     const { state, note } = await req.json();
     const dr = await kvGet(env, "drive_request");
@@ -953,7 +1019,9 @@ async function api(req, env, url) {
         const all = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
         const active = activePresence(all);
         await kvSet(env, "presence", active);
-        if (active.machine !== m) return json({ ok: true, active: active.machine, run_request: null, license_check: null, license_decisions: {}, drive_request: null });
+        // Coding-session sync goes to every Mac, not only the one with the A1.
+        const sessions = await sessionOrders(env, kvGet).catch(() => ({ on: false }));
+        if (active.machine !== m) return json({ ok: true, active: active.machine, run_request: null, license_check: null, license_decisions: {}, drive_request: null, sessions });
         // hand a pending dashboard request to the heartbeat (ignored after 10 minutes)
         const rr = await kvGet(env, "run_request");
         const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
@@ -963,7 +1031,9 @@ async function api(req, env, url) {
         const pendingLd = Object.fromEntries(Object.entries(ld).filter(([, d]) => d.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3));
         const dr = await kvGet(env, "drive_request");
         const drLive = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
-        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null });
+        const vd = await kvGet(env, "versions_delete");
+        const vdLive = vd?.state === "pending" && Date.now() - Date.parse(vd.at) < 24 * 3600e3;   // waits out a long run
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null, versions_delete: vdLive ? vd : null, sessions });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
@@ -1038,12 +1108,20 @@ async function api(req, env, url) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) {
-      try { return withPrivate(await api(req, env, url)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
+      try { return withPrivate(await api(req, env, url, ctx)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
     }
-    if (url.pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
+    if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /docs\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
+    // Public product docs. Everything else below stays behind sign-in.
+    if (url.pathname === "/docs" || url.pathname.startsWith("/docs/")) {
+      if (url.pathname !== "/docs") return Response.redirect(new URL("/docs", url).toString(), 301);
+      const r = await env.ASSETS.fetch(new Request(new URL("/docs/", url), req));
+      const h = new Headers(r.headers);
+      h.set("cache-control", "public, max-age=300");
+      return new Response(r.body, { status: r.status, headers: h });
+    }
     if (url.pathname === "/login") return login(req, env);
     if (url.pathname === "/logout") return logout();
     if (!(await signedIn(req, env))) {
@@ -1052,5 +1130,10 @@ export default {
     }
     return withPrivate(await env.ASSETS.fetch(req));
   },
-  async scheduled(_evt, env, ctx) { ctx.waitUntil(scan(env, "cron")); },
+  // Monday: the weekly scan, and last week's coding-session alerts against the 4 weeks before it.
+  // Tuesday: alerts again (same week, replaced), so Macs that were off at the weekend still count.
+  async scheduled(evt, env, ctx) {
+    if (evt.cron !== "0 13 * * 2") ctx.waitUntil(scan(env, "cron"));
+    ctx.waitUntil(sessionAlerts(env).catch(e => console.log(JSON.stringify({ event: "sessions.alerts_failed", error: e.message }))));
+  },
 };

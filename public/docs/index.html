@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="A1 Scout keeps an offline AI library current: it scouts Hugging Face for models and datasets that fit your work and stashes them on storage you control.">
+<meta property="og:title" content="A1 Scout Docs">
+<meta property="og:description" content="Offline AI library, kept current. Docs, API and fine-tuning guide.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23F2C200'/%3E%3Ctext x='16' y='21' font-family='monospace' font-weight='700' font-size='13' text-anchor='middle' fill='%2317160F'%3EA1%3C/text%3E%3C/svg%3E">
+<title>A1 Scout Docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: docs shell — sticky top bar with tabs, left nav, reading column, right "on this page" rail. Yellow is the only accent: tab underline, active nav, callout edge, the A1 chip. */
+:root{
+  --bg:#FAFAF6; --panel:#F1F0E8; --raise:#FFFFFF; --ink:#17160F; --muted:#66634F; --line:#E2DFD0;
+  --accent:#F2C200; --on-accent:#17160F; --link:#7A5E00; --code-bg:#17160F; --code-fg:#EFEBDA; --code-dim:#8F8A70;
+  --ok:#2F7D4F; --warn:#A35A00; --info:#2B5C9E;
+  --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F0F0C; --panel:#18170F; --raise:#1D1C14; --ink:#EDEADB; --muted:#9E9984; --line:#2C2A20;
+  --accent:#FFD21F; --on-accent:#17160F; --link:#FFD21F; --code-bg:#080805; --code-fg:#EFEBDA; --code-dim:#7D7860;
+  --ok:#5FC28A; --warn:#F0A44A; --info:#7FA9E6; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F0F0C; --panel:#18170F; --raise:#1D1C14; --ink:#EDEADB; --muted:#9E9984; --line:#2C2A20;
+  --accent:#FFD21F; --on-accent:#17160F; --link:#FFD21F; --code-bg:#080805; --code-fg:#EFEBDA; --code-dim:#7D7860;
+  --ok:#5FC28A; --warn:#F0A44A; --info:#7FA9E6; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15.5px;line-height:1.65}
+a{color:var(--link);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+code,pre,kbd{font-family:var(--f-mono)}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+.top-row{display:flex;align-items:center;gap:16px;padding:12px 20px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-family:var(--f-display);font-weight:800;font-size:19px;letter-spacing:-.01em;white-space:nowrap}
+.chip{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:7px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:800;font-family:var(--f-mono)}
+.brand small{font-family:var(--f-body);font-weight:500;font-size:13px;color:var(--muted)}
+.search{flex:1;max-width:380px;margin-left:auto;position:relative}
+.search input{width:100%;padding:8px 36px 8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;font-size:14px}
+.search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--muted)}
+.results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.14);max-height:60vh;overflow:auto}
+.results button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:6px;color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
+.results button:hover,.results button.sel{background:var(--panel)}
+.results span{display:block;font-size:12px;color:var(--muted)}
+.icon-btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+.menu-btn{display:none}
+.tabs{display:flex;gap:4px;padding:0 20px;overflow-x:auto}
+.tabs a{padding:8px 12px 10px;text-decoration:none;color:var(--muted);font-size:14px;font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.on{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* shell */
+.shell{display:grid;grid-template-columns:260px minmax(0,1fr) 210px;gap:40px;max-width:1360px;margin:0 auto;padding-inline:20px}
+nav.side{position:sticky;top:110px;align-self:start;max-height:calc(100vh - 120px);overflow:auto;padding-block:24px 40px}
+.grp{margin-bottom:22px}
+.grp h4{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.grp a{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;text-decoration:none;color:var(--ink);font-size:14px}
+.grp a:hover{background:var(--panel)}
+.grp a.on{background:var(--panel);box-shadow:inset 2px 0 0 var(--accent);font-weight:600}
+.meth{font-family:var(--f-mono);font-size:10px;font-weight:500;padding:1px 5px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.meth.post{color:var(--ok);border-color:currentColor}.meth.get{color:var(--info);border-color:currentColor}.meth.del{color:var(--warn);border-color:currentColor}
+
+main{min-width:0;padding-block:28px 80px}
+.crumb{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+article{max-width:740px}
+article h1{font-family:var(--f-display);font-weight:800;font-size:clamp(30px,4vw,42px);line-height:1.08;letter-spacing:-.02em;margin:10px 0 8px;text-wrap:balance}
+article .lede{font-size:17.5px;color:var(--muted);margin:0 0 28px;max-width:62ch}
+article h2{font-family:var(--f-display);font-weight:700;font-size:23px;letter-spacing:-.01em;margin:40px 0 10px;scroll-margin-top:120px;text-wrap:balance}
+article h3{font-size:16.5px;margin:26px 0 6px;scroll-margin-top:120px}
+article p,article li{max-width:68ch}
+article :not(pre)>code{background:var(--panel);border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:.86em}
+.badge{display:inline-block;font-family:var(--f-mono);font-size:10.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:var(--accent);color:var(--on-accent);vertical-align:middle}
+.badge.soft{background:transparent;color:var(--muted);border:1px solid var(--line)}
+
+pre{background:var(--code-bg);color:var(--code-fg);padding:16px 18px;border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.6;margin:14px 0}
+pre .c{color:var(--code-dim)}
+.codetabs{margin:14px 0;border-radius:10px;overflow:hidden;background:var(--code-bg)}
+.codetabs .bar{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.codetabs .bar button{background:none;border:0;color:var(--code-dim);font:500 12.5px var(--f-mono);padding:7px 10px;cursor:pointer;border-bottom:2px solid transparent}
+.codetabs .bar button.on{color:var(--code-fg);border-bottom-color:var(--accent)}
+.codetabs pre{margin:0;border-radius:0}
+.ascii{font-size:12px;line-height:1.45}
+
+.callout{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--panel);padding:12px 16px;border-radius:8px;margin:18px 0;font-size:14.5px}
+.callout strong:first-child{display:block;margin-bottom:2px}
+.callout.warn{border-left-color:var(--warn)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:16px 0 8px}
+.card{display:block;border:1px solid var(--line);border-radius:12px;padding:16px;text-decoration:none;color:var(--ink);background:var(--raise);transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.card b{display:block;font-family:var(--f-display);font-size:16.5px;margin-bottom:4px}
+.card span{font-size:13.5px;color:var(--muted);line-height:1.5}
+
+.tbl{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;background:var(--panel)}
+tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.num{font-variant-numeric:tabular-nums}
+
+.endpoint{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--f-mono);font-size:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0 18px}
+.endpoint .meth{font-size:12px;padding:2px 8px}
+
+.shapes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}
+.shape{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--raise)}
+.shape .k{font-family:var(--f-mono);font-size:13px;color:var(--link);font-weight:500}
+.shape .q{font-size:13.5px;color:var(--muted);margin:6px 0 10px}
+.shape pre{font-size:12px;padding:10px 12px;margin:0}
+
+.steps{counter-reset:s;list-style:none;padding:0;margin:18px 0}
+.steps>li{counter-increment:s;position:relative;padding:0 0 18px 44px;border-left:1px solid var(--line);margin-left:14px}
+.steps>li:last-child{border-left-color:transparent}
+.steps>li::before{content:counter(s);position:absolute;left:-15px;top:-2px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font:700 13px var(--f-mono)}
+.steps>li b{display:block;font-size:15.5px}
+
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line);flex-wrap:wrap}
+.pager a{text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px;color:var(--ink);min-width:0;flex:1;max-width:48%}
+.pager a span{display:block;font-size:12px;color:var(--muted)}
+.pager a.next{text-align:right;margin-left:auto}
+
+aside.toc{position:sticky;top:110px;align-self:start;padding-block:32px;font-size:13px}
+aside.toc h5{margin:0 0 8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+aside.toc a{display:block;padding:3px 0 3px 10px;color:var(--muted);text-decoration:none;border-left:1px solid var(--line)}
+aside.toc a.on{color:var(--ink);border-left-color:var(--accent)}
+
+.hero-strip{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--panel);display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;margin:0 0 26px}
+.drive{width:92px;height:56px;border-radius:9px;background:var(--code-bg);position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.drive::after{content:"A1";position:absolute;left:10px;top:9px;font:800 13px var(--f-mono);color:var(--accent)}
+.drive i{position:absolute;right:10px;bottom:10px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.drive b{position:absolute;left:10px;right:24px;bottom:12px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+.drive b::after{content:"";position:absolute;inset:0;width:var(--fill,62%);background:var(--accent)}
+.hero-strip p{margin:0;font-size:14px;color:var(--muted)}
+.hero-strip strong{color:var(--ink)}
+
+@media (max-width:1180px){.shell{grid-template-columns:240px minmax(0,1fr)}aside.toc{display:none}}
+@media (max-width:820px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0}
+  .menu-btn{display:inline-block}
+  nav.side{position:fixed;inset:0 auto 0 0;width:min(300px,86vw);background:var(--bg);z-index:30;border-right:1px solid var(--line);padding:20px;max-height:none;transform:translateX(-102%);transition:transform .2s}
+  nav.side.open{transform:none}
+  .brand small{display:none}
+  .search kbd{display:none}
+  .pager a{max-width:100%}
+  .hero-strip{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* waitlist */
+.cta{background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;padding:9px 16px;font:600 14px var(--f-body);cursor:pointer;white-space:nowrap}
+.cta:hover{filter:brightness(1.05)}
+.linkish{background:none;border:0;padding:0;color:var(--link);font:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.wl-band{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin:0 0 8px;background:var(--raise)}
+.wl-band b{display:block;font-family:var(--f-display);font-size:16px}
+.wl-band span{font-size:14px;color:var(--muted)}
+dialog.wl{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px);border:1px solid var(--line);border-radius:16px;padding:0;background:var(--bg);color:var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+dialog.wl::backdrop{background:rgba(10,10,6,.55)}
+.wl-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+.wl-head .brand{font-size:16px}
+.wl-bar{height:3px;background:var(--line)}
+.wl-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.wl-body{padding:26px 24px 22px;min-height:300px;display:flex;flex-direction:column}
+.wl-step{display:flex;flex-direction:column;gap:14px;flex:1}
+.wl-q{font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.2;text-wrap:balance;margin:0}
+.wl-q small{display:block;font-family:var(--f-body);font-weight:400;font-size:14px;color:var(--muted);margin-top:6px}
+.wl-n{font:500 12px var(--f-mono);color:var(--link)}
+.wl label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+.wl input[type=text],.wl input[type=email],.wl textarea{font:inherit;font-size:16px;color:var(--ink);background:transparent;border:0;border-bottom:2px solid var(--line);padding:8px 2px;border-radius:0}
+.wl input:focus,.wl textarea:focus{outline:0;border-bottom-color:var(--accent)}
+.wl textarea{resize:vertical;min-height:84px}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--line);background:var(--raise);color:var(--ink);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px;cursor:pointer}
+.opt kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;border:1px solid var(--line);border-radius:5px;font-size:12px;color:var(--muted)}
+.opt[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.opt[aria-pressed=true] kbd{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.wl-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:auto;padding-top:18px}
+.wl-foot .hint{font-size:12px;color:var(--muted)}
+.wl-err{color:var(--warn);font-size:14px;min-height:1.2em;margin:0}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.ghost{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 12px;font:inherit;font-size:14px;cursor:pointer}
+.tf-wrap{flex:1;min-height:420px}
+@media (max-width:820px){.top-row .wl-open{padding:8px 12px}}
+@media (max-width:480px){.top-row .wl-open{display:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open navigation">Menu</button>
+    <a class="brand" href="#welcome"><span class="chip">A1</span>A1 Scout <small>Docs</small></a>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search docs" aria-label="Search docs" autocomplete="off">
+      <kbd>/</kbd>
+      <div class="results" id="results" hidden></div>
+    </div>
+    <button type="button" class="wl-open cta" data-src="header">Join waitlist</button>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</header>
+
+<div class="shell">
+  <nav class="side" id="side" aria-label="Docs navigation"></nav>
+  <main>
+    <div class="crumb"><span id="crumb"></span><button class="icon-btn" id="copyBtn">Copy page</button></div>
+    <article id="page"></article>
+    <div class="pager" id="pager"></div>
+  </main>
+  <aside class="toc" id="toc"></aside>
+</div>
+
+<dialog class="wl" id="wl" aria-labelledby="wlTitle">
+  <div class="wl-head"><span class="brand"><span class="chip">A1</span>A1 Scout waitlist</span><button type="button" class="ghost" id="wlClose">Close</button></div>
+  <div class="wl-bar"><i id="wlBar"></i></div>
+  <div class="wl-body" id="wlBody"></div>
+</dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const TABS=[["docs","Documentation","welcome"],["api","API Reference","api-overview"],["shapes","Fine-tuning","shapes-overview"],["roadmap","Roadmap","roadmap"]];
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const code=(s,lang)=>`<pre data-lang="${lang||""}"><code>${esc(s.trim()).replace(/^(#.*)$/gm,'<span class="c">$1</span>')}</code></pre>`;
+const tabs=(obj)=>`<div class="codetabs"><div class="bar">${Object.keys(obj).map((k,i)=>`<button type="button" class="${i?"":"on"}" data-i="${i}">${k}</button>`).join("")}</div>${Object.values(obj).map((v,i)=>`<div ${i?"hidden":""}>${code(v)}</div>`).join("")}</div>`;
+const ep=(m,p)=>`<div class="endpoint"><span class="meth ${m.toLowerCase()==="delete"?"del":m.toLowerCase()}">${m}</span>${esc(p)}</div>`;
+const tbl=(head,rows)=>`<div class="tbl"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+const card=(id,t,d)=>`<a class="card" href="#${id}"><b>${t}</b><span>${d}</span></a>`;
+const note=(t,b,cls)=>`<div class="callout ${cls||""}"><strong>${t}</strong>${b}</div>`;
+
+const PAGES=[
+/* ---------------- DOCUMENTATION ---------------- */
+{id:"welcome",tab:"docs",group:"Get Started",title:"Welcome",html:`
+<h1>Welcome</h1>
+<p class="lede">A1 Scout keeps an offline AI library current for you. It reads what you build, scouts Hugging Face and GitHub for the models, datasets and papers that fit, and stashes the ones you approve on storage you control.</p>
+<div class="hero-strip"><div class="drive" style="--fill:62%"><b></b><i></i></div><p><strong>Plug in your drive and the scout runs.</strong> Every mount checks stashed items for new revisions, looks for newer releases in the same families, and downloads approved picks. Older versions stay on the drive.</p></div>
+<div class="wl-band"><div><b>Workspaces are opening in small groups.</b><span>Join the waitlist and tell us how you'd use it.</span></div><button type="button" class="wl-open cta" data-src="welcome">Join the waitlist</button></div>
+<h2 id="get-started">Get started</h2>
+<p>Bring your own drive or use a hosted stash. Both get the same scout, review queue, Drive Map and Bench.</p>
+<div class="cards">
+${card("introduction","Introduction","Core ideas: the stash, the scout, picks and themes.")}
+${card("quickstart","Quickstart","Deploy your scout, connect a drive and run the first scan.")}
+${card("shapes-overview","Fine-tune to a shape","Train a small decision model that answers in null, choice or score.")}
+${card("api-overview","API Reference","Every endpoint the agent, dashboard and your tools call.")}
+</div>
+<h2 id="storage">Pick your storage</h2>
+<div class="cards">
+${card("storage-byo","Your own drive","An NVMe or SSD you plug into a Mac, Linux box or Raspberry Pi. Fully offline once stashed.")}
+${card("storage-hosted","Hosted stash","We keep the files in cloud object storage. Pull them down to any machine when you need them.")}
+</div>
+<h2 id="help">Need help?</h2>
+<div class="cards">
+${card("faq","FAQ","Licenses, gated repos, drive formats and how picks are chosen.")}
+${card("limits","Limits and errors","Caps, quotas and what each error means.")}
+</div>`},
+
+{id:"introduction",tab:"docs",group:"Get Started",title:"Introduction",html:`
+<h1>Introduction</h1>
+<p class="lede">An offline library is only useful if it stays current and stays relevant. A1 Scout handles both, so you spend your time using models instead of hunting for them.</p>
+<h2 id="how">How it works</h2>
+<ol class="steps">
+<li><b>Profile</b>Your agent sends your GitHub repo names, descriptions and push dates, plus a list of what is already stashed. Nothing else leaves your machine.</li>
+<li><b>Scout</b>A weekly scan, and a scan on every plug-in, searches the Hub across nine themes weighted by how recently you worked in each.</li>
+<li><b>Review</b>New picks land in a queue with a score, the reasons behind it and any flags. You approve or skip.</li>
+<li><b>Stash</b>Approved picks download on the next mount, within a per-run size cap and a free-space floor.</li>
+<li><b>Prove</b>The Bench runs stashed models against task suites on your own hardware so you know which one to use.</li>
+</ol>
+<h2 id="why-offline">Why offline</h2>
+<p>Client data you cannot send to a hosted API, flights and job sites without a connection, and a Mac mini cluster you already own all argue for local models. The stash also pins exact revisions, so a result you got last month is reproducible.</p>
+<h2 id="pieces">The pieces</h2>
+${tbl(["Piece","Runs on","Job"],[
+["Scout Worker","Cloudflare Workers, D1, KV","Scans, scores and queues picks; serves the dashboard and API"],
+["Mount agent","macOS (launchd), Linux (cron)","Detects the drive, sends the profile, downloads approved picks"],
+["Dashboard","Browser and installable phone app","Review queue, Drive Map, Bench, run and eject controls"],
+["Storage","Your drive or hosted bucket","Holds the stash and its manifests"]])}`},
+
+{id:"quickstart",tab:"docs",group:"Get Started",title:"Quickstart",html:`
+<h1>Quickstart</h1>
+<p class="lede">A1 Scout is opening to new workspaces in small groups. Join the waitlist, and when your workspace opens you'll be scanning within one plug-in.</p>
+<h2 id="join">1. Join the waitlist</h2>
+<p>Leave your name, work email and company website, then answer a short onboarding survey about your business, your goals and the workflows you want an agent to take on. The answers decide who gets in first and shape the workspace we set up for you.</p>
+<p><button type="button" class="wl-open cta" data-src="quickstart">Join the waitlist</button></p>
+<h2 id="workspace">2. Open your workspace</h2>
+<p>Your invite email links to your workspace dashboard and a one-line installer. The installer writes the agent's settings for you, including the workspace key, so you never copy credentials by hand.</p>
+${code(`curl -fsSL https://scout.organizedai.vip/install.sh | sh`)}
+<h2 id="agent">3. Point it at your storage</h2>
+<p>The installer asks for one of two things.</p>
+${tbl(["Storage","What you give it"],[["Your own drive","Plug it in when asked. The installer records the volume and the safety limits."],["Hosted stash","Nothing. Picks download to your workspace bucket."]])}
+${code(`# ~/.a1-scout/scout.env   written by the installer
+DRIVE_UUID=volume-uuid-of-your-drive
+DRIVE_MOUNT=/Volumes/A1
+ORG=your-github-org
+RUN_CAP_GB=60
+FREE_FLOOR_GB=150`)}
+<h2 id="scan">4. Run the first scan</h2>
+${code(`python3 ~/.a1-scout/agent.py run`)}
+<p>The run sends your profile, scans the Hub and reports what it found.</p>
+${code(`{ "trigger": "first", "candidates": 412, "kept": 38, "new_picks": 38, "auto_approved": 0, "errors": [] }`)}
+${note("Next","Open the dashboard, approve a few picks, then plug the drive back in. The status bar shows the download with speed and time left.")}`},
+
+{id:"stash",tab:"docs",group:"Core Concepts",title:"Stash",html:`
+<h1>Stash</h1>
+<p class="lede">The stash is the set of files on your storage plus the manifests that describe them.</p>
+<h2 id="layout">Layout</h2>
+${code(`stash/
+  models/<owner>/<name>/<revision>/
+  datasets/<owner>/<name>/<revision>/
+  spaces/<owner>/<name>/
+  papers/<arxiv-id>.pdf
+  code/<owner>/<name>/
+  manifests/
+    pins.json          # what you pinned by hand
+    scout-pins.json    # what the scout stashed, with revision and size
+    hf_report*.json    # update checks`)}
+<h2 id="revisions">Revisions are kept</h2>
+<p>When a stashed repo gets a new commit, the agent downloads it beside the old one. Nothing is overwritten, so a benchmark or fine-tune that used an older revision can still be rerun exactly.</p>
+<h2 id="inventory">Inventory</h2>
+<p>The agent sends repo names only. The scout uses them to skip anything you already have, including quantized variants of the same base model.</p>`},
+
+{id:"scout",tab:"docs",group:"Core Concepts",title:"Scout and themes",html:`
+<h1>Scout and themes</h1>
+<p class="lede">The scout searches nine themes. Each theme is weighted by how recently you pushed to repos whose names or descriptions match its keywords.</p>
+<h2 id="themes">Themes</h2>
+${tbl(["Theme","Matched from repos like","Searches for"],[
+["Tracking &amp; analytics","gtm, ga4, stape, capi, consent","SQL and coder models, clickstream and ecommerce datasets"],
+["Agents &amp; tool calling","agent, mcp, skill, plugin, harness","Tool and function-calling models, agent trajectories"],
+["Decision models &amp; routing","jev, router, bench, guard, verdict","Reward and guard models, judge and routing datasets"],
+["Embeddings, rerank &amp; memory","memory, rag, index, knowledge","Embedding and reranker models, retrieval pairs"],
+["Video, vision &amp; creative","video, clip, yolo, creative","Vision-language and detection models"],
+["Voice &amp; audio","voice, tts, music, transcript","TTS, Whisper and audio models"],
+["Coding agents","codebase, devops, gitops, codex","Coder models, SWE datasets"],
+["Markets, energy &amp; time series","trading, ercot, grid, diligence","Time-series models, energy and finance data"],
+["Interpretability &amp; explainable AI","interp, xai, sae, probe","Sparse autoencoders, probing datasets"]])}
+<p>A theme you pushed to in the last 30 days counts fully, within 90 days counts 0.6, and older counts 0.3. Weights are square-rooted so a single busy theme doesn't drown the rest.</p>
+<h2 id="sources">Sources</h2>
+<p>Models, datasets and Spaces from the Hub, daily papers, trending collections, GitHub repos you add, and every release from authors you watch.</p>`},
+
+{id:"picks",tab:"docs",group:"Core Concepts",title:"Picks",html:`
+<h1>Picks</h1>
+<p class="lede">A pick is one candidate the scout thinks you should stash, with the evidence for it.</p>
+<h2 id="kinds">Kinds and statuses</h2>
+${tbl(["Kinds","Statuses"],[["<code>model</code> <code>dataset</code> <code>space</code> <code>paper</code> <code>collection</code> <code>code</code>","<code>new</code> → <code>approved</code> → <code>stashed</code>, or <code>skipped</code>"]])}
+<p>Approving a collection expands it into its items so you can review each one.</p>
+<h2 id="scoring">Scoring</h2>
+${tbl(["Signal","Points"],[
+["Theme weight","up to 40"],["Likes or upvotes (log scale)","up to 20"],["Trending","up to 15"],
+["Updated in last 30 / 90 / 365 days","15 / 10 / 4"],["Runs on MLX","+10"],["Static Space that runs in a browser","+5"],
+["From a watched author","+20"],["Larger than 20 GB","−10"]])}
+<p>Picks under 35 are dropped unless they come from a watched author. Each theme keeps at most 6 models, 5 datasets, 3 Spaces, 3 papers and 2 collections per scan.</p>
+<h2 id="flags">Flags</h2>
+${tbl(["Flag","Meaning"],[
+["<code>gated</code>","You must accept the license on the Hub before it can download"],
+["<code>license-check</code>","Non-commercial, research-only or custom license. Read it first"],
+["<code>no-license</code>","No license declared"],["<code>large</code>","Over 20 GB"],["<code>size-unknown</code>","The Hub didn't report a size"]])}
+<h2 id="auto">Auto-approve</h2>
+<p>Off by default. When on, up to 3 picks a week are approved for you if they score 70 or more, are 6 GB or smaller, are a model or dataset, and carry no flags.</p>`},
+
+{id:"drive-map",tab:"docs",group:"Core Concepts",title:"Drive Map",html:`
+<h1>Drive Map</h1>
+<p class="lede">A drill-down view of everything on your storage, grouped by the job each item does.</p>
+<h2 id="views">Views</h2>
+<ul>
+<li><b>Learning path.</b> A lesson-style curriculum built from what you have stashed, with quizzes as you go.</li>
+<li><b>Job groups.</b> Items sorted by what they're for: coding, retrieval, decisions, vision and so on.</li>
+<li><b>Disk space.</b> A treemap of sizes. Click any block for a card that explains the item, its license and whether it fits your Mac's memory.</li>
+</ul>
+<h2 id="notes">Field notes</h2>
+<p>Each job group has an "I tried this" survey. Your answers are saved to your workspace and shown on the item's card.</p>`},
+
+{id:"bench",tab:"docs",group:"Core Concepts",title:"Bench",html:`
+<h1>Bench</h1>
+<p class="lede">The Bench answers one question: which stashed model should I use for this job on this machine?</p>
+<h2 id="suites">Suites</h2>
+${tbl(["Suite","Tests"],[
+["<code>gtm-debug</code>","Diagnosing tag and trigger problems"],["<code>sql-ga4</code>","Writing GA4 BigQuery SQL"],
+["<code>html-json</code>","Extracting structured JSON from pages"],["<code>rag-notes</code>","Answering from retrieved notes"],
+["<code>asr</code>","Speech to text"],["<code>screen</code>","A short screening pass before a full run"],
+["<code>gtm-gate</code>","Approving or blocking a proposed container change"],["<code>skill-select</code>","Picking the right skill for a job"],
+["<code>stape-select</code>","Picking the right Stape template"]])}
+<h2 id="metrics">What gets recorded</h2>
+<p>Pass rate and score, time to first token, tokens per second, peak memory and load time, per machine. The leaderboard keeps the latest run per suite, machine and model.</p>
+<h2 id="battles">Battles</h2>
+<p>Two models' answers to the same task, side by side, with names hidden. Your votes feed an Elo rating per suite.</p>`},
+
+{id:"machines",tab:"docs",group:"Core Concepts",title:"Machines",html:`
+<h1>Machines</h1>
+<p class="lede">Your drive can move between computers. Each one runs the agent and checks in with its own identity.</p>
+<p>The dashboard shows which machine has the drive, whether a run is going, and the run's speed and time left. From any device you can start a run or eject and remount the drive.</p>
+${tbl(["Platform","Scheduler","Notes"],[["macOS","launchd","Detects the volume by UUID on mount"],["Linux","cron","Works on a Raspberry Pi 5 for downloads; benchmarks need more memory"]])}
+${note("Two machines, one drive","Only the machine that has the drive mounted acts on run and eject requests. Others report presence and wait.")}`},
+
+{id:"storage-byo",tab:"docs",group:"Storage",title:"Your own drive",html:`
+<h1>Your own drive</h1>
+<p class="lede">The default. Files live on storage you own and work with no connection once stashed.</p>
+<h2 id="choosing">Choosing a drive</h2>
+<p>A 2 TB NVMe in a USB 4 or Thunderbolt enclosure holds a working library with room for revisions. exFAT works on macOS, Linux and Windows; APFS is faster on Macs but Mac-only.</p>
+<h2 id="safety">Safety rails</h2>
+${tbl(["Setting","Default","Effect"],[["<code>RUN_CAP_GB</code>","60","Most a single mount run will download"],["<code>FREE_FLOOR_GB</code>","150","Downloads stop before free space drops below this"]])}
+<p>A single approved pick larger than the cap still downloads, alone, on its own run.</p>`},
+
+{id:"storage-hosted",tab:"docs",group:"Storage",title:"Hosted stash",badge:"Beta",html:`
+<h1>Hosted stash <span class="badge">Beta</span></h1>
+<p class="lede">We hold the files for you in cloud object storage. Use it when you don't want a drive, or as a second copy of one.</p>
+<h2 id="how-hosted">How it works</h2>
+<p>Approved picks download into your workspace bucket instead of a drive. Pull any item to a machine with the agent, or stream model files straight into an inference server.</p>
+${code(`python3 agent/agent.py pull model:mlx-community/Qwen3-8B-4bit --to ~/models`)}
+<h2 id="hybrid">Hybrid</h2>
+<p>Keep a drive as the working copy and the hosted stash as backup. The agent syncs in both directions and never deletes a revision on either side.</p>
+${note("Your profile stays yours","Each workspace has its own scout, queue and bucket. Your repos and inventory are never mixed with another workspace's.","")}`},
+
+{id:"cli",tab:"docs",group:"Integrations",title:"Agent CLI",html:`
+<h1>Agent CLI</h1>
+${tbl(["Command","Does"],[
+["<code>agent.py install</code>","Registers the mount watcher for your OS"],["<code>agent.py run</code>","Profile, update check, scan, download"],
+["<code>agent.py pull ID --to DIR</code>","Copies one stashed item to a folder"],["<code>agent.py bench SUITE</code>","Runs a Bench suite on this machine"],
+["<code>agent.py status</code>","Shows drive, queue and last run"]])}`},
+
+{id:"mcp",tab:"docs",group:"Integrations",title:"MCP and skills",html:`
+<h1>MCP and skills</h1>
+<p class="lede">Let your coding agent add picks, check the queue and read Bench results.</p>
+<p>The scout API is small enough to wrap as an MCP server or a Claude Code skill. The useful tools are <code>add_pick</code> (wraps <code>POST /api/picks/add</code>), <code>queue</code> (<code>GET /api/picks?status=new</code>), and <code>best_model</code> (<code>GET /api/bench/leaderboard</code>).</p>
+${code(`# add a model from chat, pre-approved, only the 4-bit weights
+POST /api/picks/add
+{ "repo": "mlx-community/Qwen3-8B-4bit", "kind": "model",
+  "theme": "agents", "status": "approved",
+  "include": ["*.safetensors", "*.json"], "note": "tool-calling baseline" }`)}`},
+
+{id:"faq",tab:"docs",group:"Resources",title:"FAQ",html:`
+<h1>FAQ</h1>
+<h3>Does the scout see my code?</h3><p>No. It sees repo names, short descriptions and push dates.</p>
+<h3>What about gated models?</h3><p>Accept the license on the Hub with the account whose token the agent uses. The dashboard has a license check that tells you which approved picks are still blocked.</p>
+<h3>Why was something skipped automatically?</h3><p>It matched a name you already have, it was over the size limit, or its name matched the unsafe-content filter.</p>
+<h3>Can I add things the scout didn't find?</h3><p>Yes. Add any Hub repo or GitHub repo by id. You can limit a download to specific files with include patterns.</p>`},
+
+{id:"limits",tab:"docs",group:"Resources",title:"Limits and errors",html:`
+<h1>Limits and errors</h1>
+${tbl(["Limit","Value"],[["Largest pick the scout keeps","40 GB (<code>MAX_PICK_GB</code>)"],["Profile repos","1,000"],["Inventory entries","3,000"],["Bench run payload","1 MB, 200 results"],["Catalog upload","1.5 MB"],["Notes per item","20 KB"]])}
+${tbl(["Status","Meaning"],[["<code>401</code>","Missing or wrong workspace key"],["<code>409</code>","The drive isn't mounted, a run is already going, or the machine hasn't checked in for four minutes"],["<code>413</code>","Payload over the limit"],["<code>500</code>","Upstream Hub or GitHub error; the message names the call"]])}`},
+
+/* ---------------- API ---------------- */
+{id:"api-overview",tab:"api",group:"Overview",title:"Authentication",html:`
+<h1>API Reference</h1>
+<p class="lede">JSON over HTTPS. The agent and dashboard call it for you; you only need it to build on top.</p>
+<h2 id="access">Access</h2>
+<p>Each workspace gets its own key when it opens. The installer stores it with the agent, and the dashboard signs you in with your email, so you never paste a key into a browser.</p>
+${note("Waiting for access?","Workspaces open from the waitlist. <button type=\"button\" class=\"wl-open linkish\" data-src=\"api\">Join the waitlist</button> and the survey after it tells us what you'll build.")}
+${ep("GET","/api/health")}
+<p>Public. Returns <code>{"ok": true}</code>.</p>`},
+{id:"api-state",tab:"api",group:"Scout",title:"Get state",m:"GET",html:`
+<h1>Get state</h1>${ep("GET","/api/state")}
+<p>Theme weights and the repos behind them, pick counts by status, the last scan, inventory size and free space.</p>`},
+{id:"api-scan",tab:"api",group:"Scout",title:"Run a scan",m:"POST",html:`
+<h1>Run a scan</h1>${ep("POST","/api/scan?trigger=manual&if_stale=1&min_hours=144")}
+${tbl(["Param","Type","Description"],[["<code>trigger</code>","string","Label stored with the run: cron, mount, manual"],["<code>if_stale</code>","1","Skip if the last scan is newer than <code>min_hours</code>"],["<code>min_hours</code>","number","Default 144"]])}`},
+{id:"api-picks",tab:"api",group:"Picks",title:"List picks",m:"GET",html:`
+<h1>List picks</h1>${ep("GET","/api/picks?status=new")}
+<p>Up to 300 picks for one status, or 400 across all statuses ordered approved, new, stashed, skipped.</p>`},
+{id:"api-picks-status",tab:"api",group:"Picks",title:"Set status",m:"POST",html:`
+<h1>Set status</h1>${ep("POST","/api/picks/status")}
+${code(`{ "id": "model:mlx-community/Qwen3-8B-4bit", "status": "approved" }`)}
+<p>Status is <code>new</code>, <code>approved</code> or <code>skipped</code>. Approving a collection returns <code>{"expanded": n}</code>.</p>`},
+{id:"api-picks-add",tab:"api",group:"Picks",title:"Add a pick",m:"POST",html:`
+<h1>Add a pick</h1>${ep("POST","/api/picks/add")}
+${tbl(["Field","Type","Description"],[["<code>repo</code>","string","owner/name"],["<code>kind</code>","string","model, dataset, space or code (GitHub)"],["<code>theme</code>","string","Theme id; defaults to agents"],["<code>status</code>","string","Pass approved to queue it for download"],["<code>include</code>","string[]","Up to 20 glob patterns; size is measured from matching files"],["<code>note</code>","string","Shown as a reason on the card"]])}`},
+{id:"api-stashed",tab:"api",group:"Agent",title:"Mark stashed",m:"POST",html:`
+<h1>Mark stashed</h1>${ep("POST","/api/stashed")}
+${code(`{ "id": "dataset:owner/name", "sha": "abc123", "path": "stash/datasets/owner/name/abc123", "size_bytes": 812000000 }`)}`},
+{id:"api-profile",tab:"api",group:"Agent",title:"Send profile",m:"POST",html:`
+<h1>Send profile</h1>${ep("POST","/api/profile")}
+${code(`{ "repos": [{ "name": "gtm-autoresearch", "description": "...", "pushedAt": "2026-10-01T12:00:00Z" }],
+  "inventory": ["mlx-community/Qwen3-8B-4bit"], "free_bytes": 640000000000 }`)}`},
+{id:"api-activity",tab:"api",group:"Agent",title:"Presence and activity",m:"POST",html:`
+<h1>Presence and activity</h1>${ep("POST","/api/activity")}
+<p>The agent posts <code>{"kind":"presence", "host", "present", "attached", "busy", ...}</code> about once a minute. The reply carries any pending run, eject, mount or license request for that machine.</p>
+${ep("GET","/api/activity")}
+<p>What the dashboard polls: live progress, every machine's presence, and the download plan for the next plug-in.</p>`},
+{id:"api-run",tab:"api",group:"Remote control",title:"Request a run",m:"POST",html:`
+<h1>Request a run</h1>${ep("POST","/api/run-request")}
+<p>Queues a run on the machine that has the drive. Returns 409 if the drive isn't mounted or a run is going. The agent acknowledges with <code>POST /api/run-request/ack</code>.</p>`},
+{id:"api-drive",tab:"api",group:"Remote control",title:"Eject or mount",m:"POST",html:`
+<h1>Eject or mount</h1>${ep("POST","/api/drive-request")}${code(`{ "action": "eject" }`)}`},
+{id:"api-license",tab:"api",group:"Remote control",title:"License checks",m:"POST",html:`
+<h1>License checks</h1>${ep("POST","/api/license-check")}${ep("POST","/api/license-decision")}
+${code(`{ "repo": "google/gemma-3-4b-it", "kind": "model", "decision": "yes" }`)}`},
+{id:"api-notes",tab:"api",group:"Workspace",title:"Notes",m:"GET",html:`
+<h1>Notes</h1>${ep("GET","/api/notes")}${ep("POST","/api/notes")}${ep("DELETE","/api/notes?path=...")}
+<p>Field notes keyed by stash path, up to 20 KB of answers each.</p>`},
+{id:"api-catalog",tab:"api",group:"Workspace",title:"Catalog and updates",m:"GET",html:`
+<h1>Catalog and updates</h1>${ep("GET","/api/catalog")}${ep("GET","/api/updates")}
+<p>The catalog is the Drive Map's source; the agent posts it after each run. Updates lists stashed items with newer revisions upstream.</p>`},
+{id:"api-bench-runs",tab:"api",group:"Bench",title:"Submit a run",m:"POST",html:`
+<h1>Submit a run</h1>${ep("POST","/api/bench/runs")}
+${code(`{ "uid": "run-7f3a", "suite": "gtm-gate", "machine": "m4-mini", "model": "laya-850m",
+  "runtime": "mlx", "passed": 41, "total": 50, "score": 0.82,
+  "ttft_ms": 140, "tok_s": 96.5, "peak_rss": 1900000000,
+  "results": [{ "id": "t01", "pass": true, "output": "{...}" }] }`)}
+<p>Sending the same <code>uid</code> twice returns the first run instead of duplicating it.</p>`},
+{id:"api-bench-lb",tab:"api",group:"Bench",title:"Leaderboard",m:"GET",html:`
+<h1>Leaderboard</h1>${ep("GET","/api/bench/leaderboard?suite=gtm-gate&machine=m4-mini")}
+<p>Latest run per suite, machine and model, sorted by score then speed, with Elo and the best pick recorded per machine.</p>`},
+{id:"api-bench-battle",tab:"api",group:"Bench",title:"Battles",m:"GET",html:`
+<h1>Battles</h1>${ep("GET","/api/bench/battle?suite=gtm-gate")}${ep("POST","/api/bench/battle")}
+${code(`{ "id": "battle-uuid", "vote": "a" }`)}<p>Vote is <code>a</code>, <code>b</code> or <code>tie</code>. Battles expire after an hour.</p>`},
+
+/* ---------------- FINE-TUNING ---------------- */
+{id:"shapes-overview",tab:"shapes",group:"Shapes",title:"Answer shapes",html:`
+<h1>Answer shapes</h1>
+<p class="lede">A decision model doesn't write paragraphs. It returns one of three shapes, checked against a schema, so the rest of your system can act on it.</p>
+<div class="shapes">
+<div class="shape"><div class="k">null</div><div class="q">Yes or no. Should this change ship?</div>${code(`{ "shape": "null", "answer": false,
+  "confidence": 0.91,
+  "why": "removes consent check" }`)}</div>
+<div class="shape"><div class="k">choice</div><div class="q">One from a list. Which template fits?</div>${code(`{ "shape": "choice",
+  "options": ["ga4","meta-capi","tiktok"],
+  "answer": "meta-capi",
+  "confidence": 0.77 }`)}</div>
+<div class="shape"><div class="k">score</div><div class="q">A rating with confidence. How healthy is this container?</div>${code(`{ "shape": "score", "answer": 0.64,
+  "confidence": 0.70,
+  "rubric": "gtm-health-v1" }`)}</div>
+</div>
+<h2 id="gates">Gates</h2>
+<p>The model sits behind a gate. If the output doesn't parse into the shape, or confidence is below your threshold, the gate returns <b>none</b> and the request goes to a larger model or a person. For choice tasks the gate can also return a <b>shortlist</b> of the top options instead of a single pick.</p>
+${tbl(["Gate result","When"],[["pick","Valid shape, confidence at or above threshold"],["shortlist","Choice shape, top options too close to call"],["none","Invalid output or low confidence"]])}
+<h2 id="why-small">Why a small model</h2>
+<p>A sub-1B model fine-tuned to one shape answers in milliseconds on a Mac mini, runs offline next to client data, and is easy to benchmark because every answer is checkable.</p>`},
+
+{id:"shapes-data",tab:"shapes",group:"Shapes",title:"Your training data",html:`
+<h1>Your training data</h1>
+<p class="lede">You fine-tune on your own examples. For tracking work they are often already JSON, because a GTM container export is JSON.</p>
+<h2 id="observe">Observe before you train</h2>
+<p>Most teams can't list their decisions up front. Run the audit first and log real cases over a full working cycle; longer cycles, like a sales process, need a longer window. The examples you collect become the training set.</p>
+<h2 id="format">Format</h2>
+<p>One JSON object per line in <code>train.jsonl</code> and <code>valid.jsonl</code>. The completion is the shape, exactly as the gate will check it.</p>
+${code(`{"prompt": "Container diff:\\n{...tag 42 fires on All Pages, consent check removed...}\\nShip?",
+ "completion": "{\\"shape\\":\\"null\\",\\"answer\\":false,\\"confidence\\":0.9,\\"why\\":\\"removes consent check\\"}"}`)}
+<h2 id="sources">Good sources</h2>
+<ul><li>Container versions before and after a fix, labelled ship or block</li><li>Audit findings mapped to a severity score</li><li>Past requests and the skill or template you actually used</li></ul>
+${note("Keep it in your workspace","Training files live in your stash under <code>shapes/&lt;name&gt;/</code>, on your drive or in your hosted bucket. They aren't shared with other workspaces.")}`},
+
+{id:"shapes-train",tab:"shapes",group:"Shapes",title:"Train and evaluate",html:`
+<h1>Train and evaluate</h1>
+<p class="lede">Pick a base model from your stash, train a LoRA adapter on Apple Silicon, and prove it on the Bench before you use it.</p>
+<ol class="steps">
+<li><b>Choose a base</b>Run the matching suite across your small stashed models and start from the best score per gigabyte.</li>
+<li><b>Train</b>${code(`mlx_lm.lora --model stash/models/BASE --train \\
+  --data stash/shapes/gtm-gate --iters 600 \\
+  --adapter-path stash/shapes/gtm-gate/adapters`)}</li>
+<li><b>Fuse</b>${code(`mlx_lm.fuse --model stash/models/BASE \\
+  --adapter-path stash/shapes/gtm-gate/adapters \\
+  --save-path stash/models/local/gtm-gate-v1`)}</li>
+<li><b>Benchmark</b>${code(`python3 agent/agent.py bench gtm-gate --model stash/models/local/gtm-gate-v1`)}It shows up on the leaderboard beside the base model and any hosted decision models you've tested.</li>
+<li><b>Promote</b>Point your gate at the new model only if it beats the base on pass rate without falling under your speed floor.</li>
+</ol>
+<h2 id="hosted-train">Hosted training</h2>
+<p>On the hosted stash you can queue the same job to run on our hardware. The adapter and fused model land in your bucket with the run logged on the Bench. <span class="badge soft">Planned</span></p>`},
+
+/* ---------------- ROADMAP ---------------- */
+{id:"roadmap",tab:"roadmap",group:"Roadmap",title:"Phased plan",html:`
+<h1>Roadmap</h1>
+<p class="lede">How A1 Scout goes from one person's drive to a product other people run, in order.</p>
+<h2 id="arch">Architecture</h2>
+<pre class="ascii"><code>  ┌──────────────── docs.a1scout (Worker Assets) ────────────────┐
+  │  Documentation · API Reference · Fine-tuning · Roadmap       │
+  └──────────────────────────────────────────────────────────────┘
+
+  USER MACHINES                      CLOUDFLARE (per workspace)
+  ┌───────────────────┐   presence   ┌───────────────────────────┐
+  │ Mount agent       │─────────────▶│ Scout Worker              │
+  │  launchd / cron   │◀─ requests ──│  /api/*  + cron scan      │
+  │  Mac · Linux · Pi │   profile    │  auth: workspace key      │
+  └────────┬──────────┘─────────────▶└──┬──────┬──────┬───────┬──┘
+           │ download                   │      │      │       │
+  ┌────────▼──────────┐           ┌─────▼─┐ ┌──▼──┐ ┌─▼──┐ ┌──▼────────┐
+  │ YOUR DRIVE        │◀── sync ──│  R2   │ │ D1  │ │ KV │ │ Queues    │
+  │ stash/ manifests/ │           │hosted │ │picks│ │elo │ │downloads, │
+  │ shapes/           │           │stash  │ │runs │ │    │ │training   │
+  └────────┬──────────┘           └───────┘ └─────┘ └────┘ └───────────┘
+           │ MLX                          ▲
+  ┌────────▼──────────┐   results  ┌─────┴──────────────┐
+  │ Bench + LoRA      │───────────▶│ Leaderboard · Elo  │
+  │ null/choice/score │            │ Gate: pick/short/none│
+  └───────────────────┘            └────────────────────┘
+
+  Hugging Face Hub ──┐
+  GitHub ────────────┼──▶ Scout Worker (themes × weights → picks)
+  Daily papers ──────┘</code></pre>
+<h2 id="phases">Phases</h2>
+<ol class="steps">
+<li><b>Docs site and waitlist</b>Docs live at scout.organizedai.vip/docs with a public waitlist and follow-up survey stored in D1. Then add <code>/llms.txt</code> and a <code>.md</code> version of every page for coding agents.</li>
+<li><b>Workspaces</b>Add a <code>workspace_id</code> to every D1 table and KV key, sign-up through Cloudflare Access or magic link, and one key per workspace, issued from the waitlist. Hide the owner's own drive data from everyone else.</li>
+<li><b>Bring your own drive</b>Rename agent settings from A1 to generic drive names, ship a one-line installer, and a first-run wizard that finds the volume UUID.</li>
+<li><b>Hosted stash</b>R2 bucket per workspace, Queues consumer that downloads approved picks into it, and <code>agent pull</code> for machines.</li>
+<li><b>Shapes</b>Shape schemas, the <code>shapes/</code> folder convention, a gate endpoint returning pick, shortlist or none, and Bench suites per shape.</li>
+<li><b>Hosted training</b>Queue LoRA jobs, store adapters in the workspace bucket, log runs to the Bench.</li>
+<li><b>Billing and plans</b>Free self-hosted tier; paid hosted storage and training.</li>
+</ol>`},
+];
+
+/* ---------- render ---------- */
+const $=s=>document.querySelector(s);
+const byId=Object.fromEntries(PAGES.map(p=>[p.id,p]));
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let current=null;
+
+function renderTabs(tab){$("#tabs").innerHTML=TABS.map(([k,l,first])=>`<a href="#${first}" class="${k===tab?"on":""}">${l}</a>`).join("")}
+function renderSide(tab,id){
+  const groups={};PAGES.filter(p=>p.tab===tab).forEach(p=>(groups[p.group]||=[]).push(p));
+  $("#side").innerHTML=Object.entries(groups).map(([g,ps])=>`<div class="grp"><h4>${g}</h4>${ps.map(p=>`<a href="#${p.id}" class="${p.id===id?"on":""}"><span>${p.title}</span>${p.m?`<span class="meth ${p.m==="DELETE"?"del":p.m.toLowerCase()}">${p.m}</span>`:p.badge?`<span class="badge">${p.badge}</span>`:""}</a>`).join("")}</div>`).join("");
+}
+function renderToc(){
+  const hs=[...$("#page").querySelectorAll("h2[id]")];
+  $("#toc").innerHTML=hs.length?`<h5>On this page</h5>${hs.map(h=>`<a href="#${current}" data-t="${h.id}">${h.textContent}</a>`).join("")}`:"";
+}
+function renderPager(){
+  const list=PAGES.filter(p=>p.tab===byId[current].tab),i=list.findIndex(p=>p.id===current);
+  const prev=list[i-1],next=list[i+1];
+  $("#pager").innerHTML=(prev?`<a href="#${prev.id}"><span>Previous</span>${prev.title}</a>`:"")+(next?`<a class="next" href="#${next.id}"><span>Next</span>${next.title}</a>`:"");
+}
+function go(id){
+  const p=byId[id]||byId.welcome; current=p.id;
+  renderTabs(p.tab); renderSide(p.tab,p.id);
+  $("#crumb").textContent=`${TABS.find(t=>t[0]===p.tab)[1]} / ${p.group}`;
+  $("#page").innerHTML=p.html; renderToc(); renderPager();
+  document.title="A1 Scout Docs";
+  $("#side").classList.remove("open");
+  window.scrollTo(0,0);
+  if(window.gsap&&!reduce){
+    gsap.fromTo("#page > *",{y:10,opacity:.0001},{y:0,opacity:1,duration:.4,stagger:.035,ease:"power2.out",clearProps:"all"});
+    gsap.fromTo(".steps > li",{x:-6},{x:0,duration:.35,stagger:.05,ease:"power1.out",clearProps:"transform"});
+  }
+  spyInit();
+}
+addEventListener("hashchange",()=>go(location.hash.slice(1)));
+
+/* code tabs + toc clicks */
+document.addEventListener("click",e=>{
+  const b=e.target.closest(".codetabs .bar button");
+  if(b){const box=b.closest(".codetabs");box.querySelectorAll(".bar button").forEach(x=>x.classList.toggle("on",x===b));
+    [...box.children].slice(1).forEach((d,i)=>d.hidden=i!=b.dataset.i);return}
+  const t=e.target.closest("#toc a");
+  if(t){e.preventDefault();document.getElementById(t.dataset.t)?.scrollIntoView({behavior:reduce?"auto":"smooth"})}
+});
+
+/* scroll spy */
+let spy;
+function spyInit(){
+  spy?.disconnect();
+  const links=[...document.querySelectorAll("#toc a")];if(!links.length)return;
+  spy=new IntersectionObserver(es=>es.forEach(en=>{if(en.isIntersecting)links.forEach(a=>a.classList.toggle("on",a.dataset.t===en.target.id))}),{rootMargin:"-120px 0px -65% 0px"});
+  document.querySelectorAll("#page h2[id]").forEach(h=>spy.observe(h));
+}
+
+/* search */
+const q=$("#q"),res=$("#results");let sel=0,hits=[];
+const plain=h=>h.replace(/<[^>]+>/g," ").replace(/\s+/g," ");
+const INDEX=PAGES.map(p=>({id:p.id,title:p.title,where:`${TABS.find(t=>t[0]===p.tab)[1]} / ${p.group}`,text:plain(p.html).toLowerCase()}));
+function search(){
+  const s=q.value.trim().toLowerCase();
+  if(!s){res.hidden=true;return}
+  hits=INDEX.map(x=>({...x,r:(x.title.toLowerCase().includes(s)?10:0)+(x.text.split(s).length-1)})).filter(x=>x.r).sort((a,b)=>b.r-a.r).slice(0,8);
+  sel=0;
+  res.innerHTML=hits.length?hits.map((h,i)=>`<button type="button" data-id="${h.id}" class="${i?"":"sel"}">${h.title}<span>${h.where}</span></button>`).join(""):`<button type="button" disabled>No matches for "${esc(s)}"<span>Try a theme, suite or endpoint name</span></button>`;
+  res.hidden=false;
+}
+q.addEventListener("input",search);
+q.addEventListener("keydown",e=>{
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();sel=(sel+(e.key==="ArrowDown"?1:-1)+hits.length)%Math.max(hits.length,1);[...res.children].forEach((b,i)=>b.classList.toggle("sel",i===sel))}
+  if(e.key==="Enter"&&hits[sel]){location.hash=hits[sel].id;q.value="";res.hidden=true;q.blur()}
+  if(e.key==="Escape"){res.hidden=true;q.blur()}
+});
+res.addEventListener("click",e=>{const b=e.target.closest("button[data-id]");if(b){location.hash=b.dataset.id;q.value="";res.hidden=true}});
+document.addEventListener("keydown",e=>{if(e.key==="/"&&document.activeElement!==q&&!/input|textarea/i.test(document.activeElement.tagName)){e.preventDefault();q.focus()}});
+document.addEventListener("click",e=>{if(!e.target.closest(".search"))res.hidden=true});
+
+/* copy page as markdown-ish text */
+$("#copyBtn").addEventListener("click",async()=>{
+  const btn=$("#copyBtn"),txt=$("#page").innerText;
+  try{await navigator.clipboard.writeText(txt);btn.textContent="Copied"}catch{const r=document.createRange();r.selectNodeContents($("#page"));getSelection().removeAllRanges();getSelection().addRange(r);btn.textContent="Selected, press Copy"}
+  setTimeout(()=>btn.textContent="Copy page",1600);
+});
+$("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("open"));
+
+/* ---------- waitlist + survey ---------- */
+window.dataLayer=window.dataLayer||[];
+const track=(event,extra={})=>{try{dataLayer.push({event,...extra})}catch{}};
+const QUESTIONS=[
+ {k:"business",q:"What does your business do?",sub:"One line is fine, e.g. \"Shopify skincare brand, 12 people\".",type:"short"},
+ {k:"team_size",q:"Who would use this?",type:"one",o:["Just me","Me and a small team (2–10)","A team of 11–50","More than 50 people"]},
+ {k:"revenue",q:"Roughly what is your annual revenue?",sub:"Optional. Helps us match you with the right setup.",type:"one",opt:true,o:["Under $1M","$1M–$5M","$5M–$50M","Over $50M","Prefer not to say"]},
+ {k:"ai_tools",q:"Which AI tools does your team use today?",sub:"Pick all that apply.",type:"many",o:["Claude","Claude Code","ChatGPT","Codex","Cursor","Gemini","None yet"]},
+ {k:"skills_level",q:"How far have you gone with customizing them?",type:"one",o:["Just chatting, nothing saved","A few saved prompts or projects","Skills, custom instructions or AGENTS.md files in use","We've built our own plugins or MCP servers"]},
+ {k:"terminal",q:"How comfortable is your team in a terminal?",sub:"1 is never opened one, 5 is lives in it.",type:"one",o:["1","2","3","4","5"]},
+ {k:"goals",q:"What do you most want AI to do for the business?",sub:"Pick up to three.",type:"many",max:3,o:["Save hours on repetitive work","Trust our reporting and tracking","Ship internal tools faster","Keep client or customer data off third-party APIs","Cut what we spend on AI","Get the team using AI consistently"]},
+ {k:"workflows",q:"Which workflows take the most time each week?",sub:"Pick all that apply.",type:"many",o:["Reporting and dashboards","Ads and marketing ops","Tracking, GTM and analytics fixes","Customer support","Sales follow-up and CRM updates","Content and creative","Bookkeeping and finance ops","Building or fixing internal tools"]},
+ {k:"workflow_detail",q:"Walk us through one workflow you'd hand to an agent tomorrow.",sub:"What starts it, the steps someone takes, and what \"done\" looks like.",type:"text"},
+ {k:"data_sources",q:"Where does that workflow's data live?",sub:"Pick all that apply.",type:"many",o:["Google Workspace","Microsoft 365","Shopify","HubSpot or Salesforce","Slack","Notion","Spreadsheets or Airtable","GTM, GA4 or ad platforms","Our own database"]},
+ {k:"offline_data",q:"Is there data that must stay on your own hardware?",sub:"Client records, health or financial data, anything a contract keeps off hosted APIs.",type:"one",o:["Yes","No"]},
+ {k:"storage",q:"Where would your model library live?",type:"one",o:["A drive we plug into our own machines","Hosted by you","Both","Not sure yet"]},
+ {k:"decisions",q:"Which yes/no or pick-one calls would you trust a small model to make?",sub:"Optional. E.g. \"Is this GTM change safe to publish?\"",type:"text",opt:true},
+ {k:"win",q:"What result would make this an obvious win for you?",sub:"Optional.",type:"text",opt:true},
+];
+let WL={step:-1,id:null,token:null,src:"",answers:{},cfg:null};
+const wl=$("#wl"),body=$("#wlBody");
+const setBar=()=>{$("#wlBar").style.width=WL.step<0?"0%":`${Math.round(Math.min(1,(WL.step+1)/(QUESTIONS.length+1))*100)}%`};
+const anim=()=>{if(window.gsap&&!reduce)gsap.fromTo(".wl-step",{y:14,opacity:.0001},{y:0,opacity:1,duration:.32,ease:"power2.out",clearProps:"all"})};
+fetch("/api/waitlist/config").then(r=>r.ok?r.json():{}).then(c=>{WL.cfg=c;if(c.gtm_id&&/^GTM-[A-Z0-9]+$/.test(c.gtm_id)){track("gtm.js",{"gtm.start":Date.now()});const sc=document.createElement("script");sc.async=true;sc.src="https://www.googletagmanager.com/gtm.js?id="+c.gtm_id;document.head.appendChild(sc)}}).catch(()=>{WL.cfg={}});
+
+function openWL(src){
+  WL.src=src||"docs";
+  if(WL.id&&WL.step>=QUESTIONS.length){renderDone(true)}else if(WL.id){renderQ()}else{WL.step=-1;renderForm()}
+  wl.showModal?wl.showModal():wl.setAttribute("open","");
+  track("waitlist_open",{source:WL.src});
+}
+document.addEventListener("click",e=>{const b=e.target.closest(".wl-open");if(b){e.preventDefault();openWL(b.dataset.src)}});
+$("#wlClose").addEventListener("click",()=>wl.close());
+wl.addEventListener("click",e=>{if(e.target===wl)wl.close()});
+
+function renderForm(msg=""){
+  setBar();
+  body.innerHTML=`<form class="wl-step" id="wlForm" novalidate>
+    <h2 class="wl-q" id="wlTitle">Get early access to A1 Scout<small>We open workspaces in small groups. A short survey follows so we know what you'll build.</small></h2>
+    <label class="f" for="wlName">Name<input id="wlName" type="text" autocomplete="name" required maxlength="120" placeholder="Your name"></label>
+    <label class="f" for="wlEmail">Work email<input id="wlEmail" type="email" autocomplete="email" required maxlength="254" placeholder="you@company.com"></label>
+    <label class="f" for="wlCompany">Company website<input id="wlCompany" type="text" inputmode="url" autocomplete="url" maxlength="300" placeholder="acme.com"></label>
+    <label class="hp" aria-hidden="true">Website<input id="wlWeb" type="text" tabindex="-1" autocomplete="off"></label>
+    <p class="wl-err" id="wlErr" role="alert">${esc(msg)}</p>
+    <div class="wl-foot"><span class="hint">We read your company's public website to tailor your workspace, and only email about your access.</span><button class="cta" type="submit" id="wlGo">Join the waitlist</button></div>
+  </form>`;
+  anim(); setTimeout(()=>$("#wlName").focus(),50);
+  $("#wlForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const name=$("#wlName").value.trim(),email=$("#wlEmail").value.trim(),company=$("#wlCompany").value.trim();
+    if(!name)return $("#wlErr").textContent="Add your name.";
+    if(!/^\S+@\S+\.\S+$/.test(email))return $("#wlErr").textContent="That email address doesn't look right.";
+    const go=$("#wlGo");go.disabled=true;go.textContent="Joining";
+    try{
+      const r=await fetch("/api/waitlist",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,email,company,website:$("#wlWeb").value,source:WL.src})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||"We couldn't save that. Try again.");
+      Object.assign(WL,{id:d.id,token:d.token,name,email,company:d.company||""});
+      if(d.typeform_form_id)WL.cfg={...(WL.cfg||{}),typeform_form_id:d.typeform_form_id};
+      track("waitlist_signup",{source:WL.src,already:!!d.already});
+      if(d.surveyed){WL.step=QUESTIONS.length;return renderDone(true)}
+      WL.step=0; WL.cfg?.typeform_form_id?renderTypeform():renderQ();
+    }catch(err){go.disabled=false;go.textContent="Join the waitlist";$("#wlErr").textContent=err.message}
+  });
+}
+
+function renderQ(){
+  const i=WL.step,Q=QUESTIONS[i];setBar();
+  const cur=WL.answers[Q.k];
+  const opts=Q.type==="text"?`<label class="f" for="wlText"><span class="hp">Answer</span><textarea id="wlText" maxlength="2000" placeholder="Type your answer">${esc(cur||"")}</textarea></label>`
+   :Q.type==="short"?`<label class="f" for="wlText"><span class="hp">Answer</span><input type="text" id="wlText" maxlength="200" placeholder="Type your answer" value="${esc(cur||"")}"></label>`
+   :`<div class="opts" role="group" aria-label="${esc(Q.q)}">${Q.o.map((o,j)=>{const on=Q.type==="many"?(cur||[]).includes(o):cur===o;return`<button type="button" class="opt" aria-pressed="${on}" data-v="${esc(o)}"><kbd>${String.fromCharCode(65+j)}</kbd>${esc(o)}</button>`}).join("")}</div>`;
+  body.innerHTML=`<div class="wl-step"><span class="wl-n">${i+1} / ${QUESTIONS.length}</span><h2 class="wl-q" id="wlTitle">${esc(Q.q)}${Q.sub?`<small>${esc(Q.sub)}</small>`:""}</h2>${opts}
+    <p class="wl-err" id="wlErr" role="alert"></p>
+    <div class="wl-foot">${i?`<button type="button" class="ghost" id="wlBack">Back</button>`:`<span class="hint">You're on the list. These help us decide who gets in first.</span>`}<button type="button" class="cta" id="wlNext">${i===QUESTIONS.length-1?"Submit":"Next"}</button></div></div>`;
+  anim();
+  body.querySelectorAll(".opt").forEach(b=>b.addEventListener("click",()=>{
+    const v=b.dataset.v;
+    if(Q.type==="many"){const a=new Set(WL.answers[Q.k]||[]);if(!a.has(v)&&Q.max&&a.size>=Q.max){$("#wlErr").textContent=`Pick up to ${Q.max}.`;return}$("#wlErr").textContent="";a.has(v)?a.delete(v):a.add(v);WL.answers[Q.k]=[...a];b.setAttribute("aria-pressed",a.has(v))}
+    else{WL.answers[Q.k]=v;body.querySelectorAll(".opt").forEach(x=>x.setAttribute("aria-pressed",x===b));setTimeout(next,220)}
+  }));
+  $("#wlBack")?.addEventListener("click",()=>{saveText();WL.step--;renderQ()});
+  $("#wlNext").addEventListener("click",next);
+  (body.querySelector(".opt")||$("#wlText"))?.focus();
+}
+const saveText=()=>{const t=$("#wlText");if(t)WL.answers[QUESTIONS[WL.step].k]=t.value.trim()};
+async function next(){
+  const Q=QUESTIONS[WL.step];saveText();
+  const v=WL.answers[Q.k];
+  if(!Q.opt&&(!v||(Array.isArray(v)&&!v.length)))return $("#wlErr").textContent=Q.type==="many"?"Pick at least one.":Q.type==="one"?"Pick one to continue.":"Add a short answer to continue.";
+  track("survey_step",{step:WL.step+1,question:Q.k});
+  if(WL.step<QUESTIONS.length-1){WL.step++;return renderQ()}
+  const btn=$("#wlNext");btn.disabled=true;btn.textContent="Sending";
+  try{
+    const r=await fetch("/api/waitlist/survey",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:WL.id,token:WL.token,answers:WL.answers})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||"We couldn't save your answers. Try again.");
+    WL.step=QUESTIONS.length;track("survey_complete",{source:WL.src});renderDone(false);
+  }catch(err){btn.disabled=false;btn.textContent="Submit";$("#wlErr").textContent=err.message}
+}
+wl.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&e.target.id==="wlText"&&e.target.tagName==="INPUT"){e.preventDefault();return next()}
+  if(WL.step<0||WL.step>=QUESTIONS.length||/textarea|input/i.test(e.target.tagName))return;
+  const Q=QUESTIONS[WL.step];if(!Q.o)return;
+  const j=e.key.toUpperCase().charCodeAt(0)-65;
+  if(e.key.length===1&&j>=0&&j<Q.o.length){e.preventDefault();body.querySelectorAll(".opt")[j].click()}
+  if(e.key==="Enter"&&Q.type==="many"){e.preventDefault();next()}
+});
+function renderTypeform(){
+  setBar();
+  const id=WL.cfg.typeform_form_id;
+  body.innerHTML=`<div class="wl-step"><h2 class="wl-q" id="wlTitle">You're on the list.<small>A few questions about your business, goals and workflows so we can set up your workspace.</small></h2><div class="tf-wrap" data-tf-widget="${esc(id)}" data-tf-opacity="0" data-tf-inline-on-mobile data-tf-hidden="waitlist_id=${encodeURIComponent(WL.id)},email=${encodeURIComponent(WL.email)},name=${encodeURIComponent(WL.name)},company=${encodeURIComponent(WL.company||"")}" data-tf-on-submit="tfDone"></div></div>`;
+  window.tfDone=()=>{WL.step=QUESTIONS.length;track("survey_complete",{source:WL.src,via:"typeform"});setTimeout(()=>renderDone(false),900)};
+  const sc=document.createElement("script");sc.src="https://embed.typeform.com/next/embed.js";document.body.appendChild(sc);
+}
+function renderDone(already){
+  $("#wlBar").style.width="100%";
+  body.innerHTML=`<div class="wl-step"><h2 class="wl-q" id="wlTitle">${already?"You're already on the list.":"Thanks. You're on the list."}<small>We'll email ${esc(WL.email||"you")} when your workspace opens. Until then, the Quickstart and Fine-tuning pages show what you'll be able to do.</small></h2>
+  <div class="wl-foot"><a class="ghost" href="#shapes-overview" id="wlShapes" style="text-decoration:none">Read about fine-tuning</a><button type="button" class="cta" id="wlFin">Back to the docs</button></div></div>`;
+  anim();$("#wlFin").addEventListener("click",()=>wl.close());$("#wlShapes").addEventListener("click",()=>wl.close());
+  if(window.gsap&&!reduce)gsap.fromTo("#wlTitle",{scale:.97},{scale:1,duration:.5,ease:"back.out(2)"});
+}
+if(location.hash==="#waitlist")setTimeout(()=>openWL("link"),300);
+
+go(location.hash.slice(1)||"welcome");
+if(window.gsap&&!reduce){gsap.fromTo(".drive",{"--fill":"8%"},{"--fill":"62%",duration:1.4,ease:"power2.inOut",delay:.2})}
+</script>
+</body>
+</html>

@@ -225,17 +225,54 @@
     }
     return out;
   }
-  // Previous versions the updater kept. The agent never deletes on the A1, so this is where you decide.
+  // Previous versions the updater kept. The agent only deletes one when you press Delete here.
   function oldVersions() { return (catalog.categories.find(c => c.id === "versions")?.items || []).slice().sort((a, b) => (b.bytes || 0) - (a.bytes || 0)); }
-  const rmCmd = list => list.map(v => `rm -rf ${JSON.stringify(abs(v))}`).join("\n");
+  // Delete: the dashboard asks, the Mac does it. The agent removes an old version only when its current copy is on the
+  // drive with the agent's .verified stamp (written once an update has fully downloaded and checked out), skips
+  // anything else and says why. It waits for a run to finish first.
+  let vdel = null, vdelTimer = null, vdelErr = "", vdelLoaded = false;
+  const vdelBusy = () => vdel?.state === "pending";
+  function vdelNote() {
+    if (vdelErr) return vdelErr;
+    if (!vdel) return "";
+    if (vdel.state === "pending") return vdel.waiting_for_run ? `Queued ${vdel.paths.length}. The Mac deletes them as soon as the current run finishes.` : `Deleting ${vdel.paths.length}. The Mac picks this up within a minute.`;
+    const res = vdel.results || [], del = res.filter(r => r.outcome === "deleted"), skip = res.filter(r => r.outcome !== "deleted");
+    if (vdel.state !== "done") return `Delete failed${vdel.note ? ": " + vdel.note : ""}.`;
+    return `Deleted ${del.length}, freed ${gb(vdel.freed_bytes || 0)}${vdel.free_bytes ? `, ${gb(vdel.free_bytes)} free on the A1` : ""}.` +
+      (skip.length ? ` Skipped ${skip.length}: ${skip.map(r => `${r.path.replace(/^versions\//, "")} (${r.why || "not removed"})`).join("; ")}.` : "");
+  }
+  function vdelApply(vd) {
+    const was = vdel?.state; vdel = vd || null;
+    if (vdel?.state === "done" && was === "pending" && catalog) {
+      const gone = new Set((vdel.results || []).filter(r => r.outcome === "deleted").map(r => r.path));
+      const vc = catalog.categories.find(c => c.id === "versions"); if (vc) vc.items = (vc.items || []).filter(i => !gone.has(i.path));
+    }
+    clearTimeout(vdelTimer);
+    if (vdelBusy()) vdelTimer = setTimeout(vdelPoll, 10e3);
+  }
+  async function vdelPoll() {
+    try { vdelApply((await window.call("/api/versions-delete")).versions_delete); } catch { vdelTimer = setTimeout(vdelPoll, 20e3); return; }
+    if (mode === "space") rerender();
+  }
+  async function vdelAsk(list) {
+    const paths = list.map(v => v.path); if (!paths.length || vdelBusy()) return;
+    vdelErr = "";
+    try {
+      const r = await window.call("/api/versions-delete", { method: "POST", body: JSON.stringify({ paths }) });
+      if (r.ok === false) vdelErr = r.error || "Could not queue the delete."; else vdelApply(r.versions_delete);
+    } catch (e) { vdelErr = String(e?.message || e || "Could not reach the dashboard."); }
+    rerender();
+  }
   function versionsHtml() {
-    const vs = oldVersions(); if (!vs.length) return "";
-    const total = vs.reduce((t, v) => t + (v.bytes || 0), 0);
+    const vs = oldVersions(), note = vdelNote();
+    if (!vs.length && !note) return "";
+    const total = vs.reduce((t, v) => t + (v.bytes || 0), 0), queued = new Set(vdelBusy() ? vdel.paths : []);
     return `<section class="m-old" aria-label="Old versions">
-      <div class="m-old-head"><div><b>Old versions you can delete · ${gb(total)}</b>
-        <p class="meta">Kept when a newer revision was downloaded. The current copy of each is already on the drive, so these are only needed if you want to go back. The agent never deletes on the A1; run the command yourself with the A1 plugged in.</p></div>
-        <button class="btn" data-rmall>Copy delete command for all</button></div>
-      <ul>${vs.map(v => `<li><code>${esc(v.path)}</code><span>${gb(v.bytes)}</span><small>current: ${esc(v.meta?.replaced_by || "?")}</small><button class="btn" data-rm="${esc(v.path)}">Copy command</button></li>`).join("")}</ul>
+      <div class="m-old-head"><div><b>${vs.length ? `Old versions you can delete · ${gb(total)}` : "Old versions"}</b>
+        ${vs.length ? `<p class="meta">Kept when a newer revision was downloaded. The current copy of each is already on the drive, so these are only needed if you want to go back. Delete asks the Mac to remove them from the A1: it only removes an old version when the current copy is on the drive and verified, skips anything else, and waits for a run to finish first. Deleted versions can't be brought back.</p>` : ""}
+        ${note ? `<p class="meta m-old-note" role="status">${esc(note)}</p>` : ""}</div>
+        ${vs.length ? `<button class="btn" data-rmall ${vdelBusy() ? "disabled" : ""}>Delete all ${vs.length}</button>` : ""}</div>
+      <ul>${vs.map(v => `<li><code>${esc(v.path)}</code><span>${gb(v.bytes)}</span><small>current: ${esc(v.meta?.replaced_by || "?")}</small><button class="btn" data-rm="${esc(v.path)}" ${vdelBusy() ? "disabled" : ""}>${queued.has(v.path) ? "Queued" : "Delete"}</button></li>`).join("")}</ul>
     </section>`;
   }
   function spaceView() { return `${versionsHtml()}<p class="meta" style="margin:0 0 8px">Blocks are grouped by job and sized by disk space (square-root scaled so small items stay clickable).</p><div class="tm" id="m-tm"></div>`; }
@@ -648,9 +685,10 @@
     $$("#m-body [data-step]").forEach(b => b.onclick = () => { const s = b.dataset.step; stepsDone.has(s) ? stepsDone.delete(s) : stepsDone.add(s); store.set("a1-steps", [...stepsDone]); rerender(); });
     if (mode === "space") {
       drawTreemap();
-      const copy = async (b, text) => { try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Copy failed"; } setTimeout(() => b.textContent = b.dataset.rmall != null ? "Copy delete command for all" : "Copy command", 2000); };
-      $$("[data-rm]").forEach(b => b.onclick = () => copy(b, rmCmd(oldVersions().filter(v => v.path === b.dataset.rm))));
-      const all = $("[data-rmall]"); if (all) all.onclick = () => copy(all, rmCmd(oldVersions()));
+      $$("[data-rm]").forEach(b => b.onclick = () => vdelAsk(oldVersions().filter(v => v.path === b.dataset.rm)));
+      const all = $("[data-rmall]"); if (all) all.onclick = () => vdelAsk(oldVersions());
+      // A delete queued earlier (another tab, or before a reload) is still shown as queued.
+      if (!vdelLoaded) { vdelLoaded = true; window.call("/api/versions-delete").then(r => { if (r.versions_delete?.state === "pending") { vdelApply(r.versions_delete); if (mode === "space") rerender(); } }).catch(() => { vdelLoaded = false; }); }
     }
     if (mode === "path" && window.Lessons) window.Lessons.wire(lessonCtx()); else window.Lessons?.kill();
     // Animate only what is near the top; everything else is visible at rest.
@@ -709,7 +747,7 @@
   .m-panel p{margin:0} .m-panel a{color:var(--accent)}
   .m-old{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:10px;background:var(--panel);padding:14px 16px;margin:0 0 16px}
   .m-old-head{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
-  .m-old-head b{font:600 14px "IBM Plex Mono",monospace}.m-old-head p{margin:4px 0 0;max-width:70ch}
+  .m-old-head b{font:600 14px "IBM Plex Mono",monospace}.m-old-note{color:var(--ink)}.m-old .btn[disabled]{opacity:.5;cursor:default}.m-old-head p{margin:4px 0 0;max-width:70ch}
   .m-old ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
   .m-old li{display:grid;grid-template-columns:minmax(0,1fr) 70px minmax(0,160px) auto;gap:10px;align-items:center;font-size:13px}
   .m-old li code{overflow-wrap:anywhere}.m-old li span{font:600 12.5px "IBM Plex Mono",monospace;text-align:right}.m-old li small{color:var(--mute);overflow-wrap:anywhere}
