@@ -951,6 +951,36 @@ async function api(req, env, url, ctx) {
     await kvSet(env, "drive_request", dr);
     return json({ ok: true, drive_request: dr });
   }
+  // "Delete" on the Drive map's old versions. The Mac's heartbeat carries it out once no run is going (within a
+  // minute when idle); the agent re-checks every path itself and only removes an old version whose current copy is verified.
+  if (p === "/api/versions-delete" && req.method === "GET") return json({ versions_delete: await kvGet(env, "versions_delete") });
+  if (p === "/api/versions-delete" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const paths = [...new Set(Array.isArray(body.paths) ? body.paths : [])];
+    const okPath = v => typeof v === "string" && v.length < 400 && /^versions\/[^@]+@[0-9a-f]{4,40}$/.test(v) && !v.split("/").some(seg => seg === ".." || seg === "." || seg === "");
+    if (!paths.length || paths.length > 200 || !paths.every(okPath)) return json({ ok: false, error: "paths must be old versions, like versions/models/mlx/Name@815b83c" }, 400);
+    const known = new Set((((await kvGet(env, "catalog")) || {}).categories || []).find(c => c.id === "versions")?.items?.map(i => i.path) || []);
+    if (!paths.every(v => known.has(v))) return json({ ok: false, error: "That old version isn't on the Drive map any more. Reload and try again." }, 409);
+    const presence = await kvGet(env, "presence");
+    const fresh = presence?.at && Date.now() - Date.parse(presence.at) < 4 * 60e3;
+    if (!fresh || !presence.present) return json({ ok: false, error: "The A1 isn't plugged in, or the Mac hasn't checked in for a few minutes." }, 409);
+    const vd = { state: "pending", paths, at: now(), waiting_for_run: !!presence.busy };
+    await kvSet(env, "versions_delete", vd);
+    return json({ ok: true, versions_delete: vd });
+  }
+  if (p === "/api/versions-delete/ack" && req.method === "POST") {
+    const { state, note, results, freed_bytes, free_bytes } = await req.json();
+    const vd = await kvGet(env, "versions_delete");
+    const res = (Array.isArray(results) ? results : []).slice(0, 200).map(r => ({ path: String(r.path), outcome: r.outcome === "deleted" ? "deleted" : "skipped", why: r.why ? String(r.why).slice(0, 200) : null }));
+    if (vd) await kvSet(env, "versions_delete", { ...vd, state: ["done", "failed"].includes(state) ? state : "failed", note: note || null, results: res,
+      freed_bytes: Number(freed_bytes) || 0, free_bytes: Number(free_bytes) || null, acked_at: now() });
+    // Take what was deleted off the stored Drive map, so the panel is right before the next full catalog push.
+    const gone = new Set(res.filter(r => r.outcome === "deleted").map(r => r.path));
+    const cat = gone.size ? await kvGet(env, "catalog") : null;
+    const vcat = cat?.categories?.find(c => c.id === "versions");
+    if (vcat) { vcat.items = (vcat.items || []).filter(i => !gone.has(i.path)); await kvSet(env, "catalog", cat); }
+    return json({ ok: true });
+  }
   if (p === "/api/drive-request/ack" && req.method === "POST") {
     const { state, note } = await req.json();
     const dr = await kvGet(env, "drive_request");
@@ -1001,7 +1031,9 @@ async function api(req, env, url, ctx) {
         const pendingLd = Object.fromEntries(Object.entries(ld).filter(([, d]) => d.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3));
         const dr = await kvGet(env, "drive_request");
         const drLive = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
-        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null, sessions });
+        const vd = await kvGet(env, "versions_delete");
+        const vdLive = vd?.state === "pending" && Date.now() - Date.parse(vd.at) < 24 * 3600e3;   // waits out a long run
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null, versions_delete: vdLive ? vd : null, sessions });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });

@@ -8,7 +8,7 @@ When the A1 drive (matched by volume UUID, not just name) is present it:
      (the old copy moves to stash/versions/<path>@<old sha>; nothing is overwritten or deleted),
   3. looks for newer releases in the same model families (Qwen3.8 -> Qwen3.9, same size and quant),
   4. runs a Hub scan for new complementary picks (on every mount; at most once an hour),
-  5. downloads approved picks into /Volumes/A1/stash (never deletes, never writes outside it),
+  5. downloads approved picks into /Volumes/A1/stash (never writes outside it; the only delete is an old version you ask for from the Drive map),
   6. rebuilds the drive catalog behind the map view, and
   7. shows a macOS notification with what changed.
 When the A1 is not present on the weekly timer, it only reminds you to plug it in.
@@ -304,6 +304,45 @@ def drive_request(dr, present, busy):
         log(f"mount requested from the dashboard: {'mounted' if ok else 'failed ' + (r.stderr or r.stdout or '')[-200:]}")
         return ack("done" if ok else "failed", None if ok else (r.stderr or r.stdout or "")[-200:].strip())
     return ack("failed", f"unknown action {action!r}")
+
+
+OLD_VERSION_RE = re.compile(r"^versions/[^@]+@[0-9a-f]{4,40}$")
+
+
+def delete_old_version(rel):
+    """Remove one kept old version, stash/versions/<path>@<sha>, if and only if its current copy is on the drive with
+    the agent's .verified stamp. Returns (deleted, why not, bytes freed). The one place the agent deletes on the A1."""
+    rel = str(rel)
+    if not OLD_VERSION_RE.match(rel) or any(seg in ("", ".", "..") for seg in rel.split("/")):
+        return False, "not an old-version path", 0
+    old = STASH / rel
+    cur = STASH / rel[len("versions/"):].rsplit("@", 1)[0]
+    vroot = os.path.realpath(STASH / "versions") + os.sep
+    if old.is_symlink() or not os.path.realpath(old).startswith(vroot) or not inside_stash(old):
+        return False, "outside stash/versions", 0
+    if not old.is_dir():
+        return False, "old copy missing", 0
+    if cur.is_symlink() or not cur.is_dir() or not (cur / ".verified").is_file():
+        return False, "current copy not verified", 0
+    size = walk_size(old)[0]
+    try:
+        shutil.rmtree(old)
+    except OSError as e:
+        return False, f"could not delete: {e}"[:200], 0
+    return True, None, size
+
+
+def versions_delete(vd, present, busy):
+    """"Delete" on the Drive map's old versions. Waits (stays pending) while a run is going or the A1 is away."""
+    if not present or busy:
+        return
+    results, freed = [], 0
+    for rel in (vd.get("paths") or [])[:200]:
+        ok, why, size = delete_old_version(rel)
+        freed += size
+        results.append({"path": rel, "outcome": "deleted" if ok else "skipped", "why": why})
+        log(f"old version {'deleted' if ok else 'skipped'}: {rel}" + (f" ({why})" if why else f" ({size/1e9:.2f} GB)"))
+    api("/api/versions-delete/ack", "POST", {"state": "done", "results": results, "freed_bytes": freed, "free_bytes": free_bytes()})
 
 
 def a1_present():
@@ -800,6 +839,7 @@ def hf_download(args, dest: Path, total: int):
         stop.set()
     for t in readers:
         t.join(timeout=10)
+    proc.stdout.close(); proc.stderr.close()
     return subprocess.CompletedProcess(args, proc.returncode, "".join(out), err[0])
 
 
@@ -1926,6 +1966,9 @@ def main():
                 ok, err = start_mount_run()
                 log(f"run requested from the dashboard: {'started' if ok else 'failed ' + err[-160:]}")
                 api("/api/run-request/ack", "POST", {"state": "started" if ok else "failed", "note": None if ok else err[-200:]})
+        vd = (resp or {}).get("versions_delete")
+        if vd and vd.get("state") == "pending":
+            versions_delete(vd, present, busy)
         license_heartbeat(resp, present, busy)
         return
     lock = open(LOCK, "w")
