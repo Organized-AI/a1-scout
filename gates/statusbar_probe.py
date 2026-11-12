@@ -46,11 +46,35 @@ def hf_downloads(ps_text=None):
     return out
 
 
-def disk_bytes(path):
-    # Apparent size (-A), the same measure the agent reports: exFAT's 128 KB clusters make allocated size
-    # run ~20% higher on folders of small files, which would look like a wrong bar when it isn't.
-    r = subprocess.run(["du", "-sk", "--apparent-size", path] if sys.platform.startswith("linux") else ["du", "-skA", path], capture_output=True, text=True)
-    return int(r.stdout.split()[0]) * 1024 if r.returncode == 0 and r.stdout else None
+MANY_FILES = 2000    # past this the bar counts files (hf's own counter) and the drive is not walked to check it
+WALK_BUDGET_S = 20
+
+
+def disk_bytes(path, budget_s=WALK_BUDGET_S):
+    """Bytes of the files under path, the same measure the agent reports; None if the walk runs past budget_s.
+    Folders are left out: exFAT gives each one a whole 128 KB cluster, which `du -A` counts as downloaded data
+    (a dataset with 70,000 folders showed 7.4 GB on a 3.7 GB download)."""
+    import os, time
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    t0, total, stack = time.time(), 0, [path]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    if e.is_dir(follow_symlinks=False):
+                        if e.name not in (".cache", ".git"):
+                            stack.append(e.path)
+                    elif not e.name.startswith("._"):
+                        try:
+                            total += e.stat(follow_symlinks=False).st_size
+                        except OSError:
+                            pass
+        except OSError:
+            pass
+        if time.time() - t0 > budget_s:
+            return None
+    return total
 
 
 def probe(A=None, data=None, procs=None, present=None, disk=disk_bytes, now=None):
@@ -78,7 +102,11 @@ def probe(A=None, data=None, procs=None, present=None, disk=disk_bytes, now=None
         checks["bar_shows_running_download"] = cur.get("repo") == dl["repo"]
         checks["phase_is_transfer"] = view.get("phase") in TRANSFER_PHASES
         checks["live_posts_flowing"] = live
-        if live and cur.get("done_bytes") is not None and dl.get("dest"):
+        by_files = (cur.get("total_files") or 0) >= MANY_FILES
+        if by_files:
+            checks["files_within_total"] = (cur.get("done_files") or 0) <= cur["total_files"]
+            notes.append(f"{dl['repo']}: {cur.get('done_files') or 0:,} of {cur['total_files']:,} files")
+        if live and cur.get("done_bytes") is not None and dl.get("dest") and not by_files:
             on_disk = disk(dl["dest"])
             if on_disk is not None:
                 gap = abs(on_disk - cur["done_bytes"])
