@@ -152,6 +152,34 @@ class HfDownload(unittest.TestCase):
         cur = self.posts[-1]["current"]
         self.assertEqual((cur["done_files"], cur["total_files"], cur["done_bytes"]), (1000, 4000, 2_000_000))
 
+    def test_a_network_timeout_resumes_instead_of_failing_the_item(self):
+        import subprocess
+        outs = [subprocess.CompletedProcess([], 1, "", "httpx.ReadTimeout: The read operation timed out"),
+                subprocess.CompletedProcess([], 0, "/dest", "")]
+        tries, logs, orig = [], [], A.log
+        A.log = logs.append
+        try:
+            r = A.hf_download(["hf"], Path(self.tmp.name), 1000, once=lambda *a: tries.append(a) or outs[len(tries) - 1], pause=0)
+        finally:
+            A.log = orig
+        self.assertEqual((r.returncode, len(tries)), (0, 2))
+        self.assertIn("resuming, try 2 of 4", logs[0])
+
+    def test_gives_up_after_the_last_try_and_never_retries_a_refusal(self):
+        import subprocess
+        orig = A.log; A.log = lambda m: None
+        try:
+            tries = []
+            fail = lambda *a: tries.append(1) or subprocess.CompletedProcess([], 1, "", "httpx.ReadTimeout")
+            self.assertEqual(A.hf_download(["hf"], Path(self.tmp.name), 1, once=fail, pause=0).returncode, 1)
+            self.assertEqual(len(tries), A.HF_TRIES)
+            tries.clear()
+            gone = lambda *a: tries.append(1) or subprocess.CompletedProcess([], 1, "", "Error: Dataset 'x/y' not found.")
+            A.hf_download(["hf"], Path(self.tmp.name), 1, once=gone, pause=0)
+            self.assertEqual(len(tries), 1)
+        finally:
+            A.log = orig
+
     def test_failure_keeps_the_error_text(self):
         hf = fake_hf("echo 'GatedRepoError: 403 Client Error' >&2\nexit 1\n")
         r = A.hf_download([hf], Path(self.tmp.name), 1000, count_files=lambda args: None)
