@@ -373,7 +373,7 @@
     });
   }
 
-  window.Lessons = { html, wire, kill: () => { triggers.forEach(t => t.kill()); triggers = []; }, chapters: CHAPTERS };
+  window.Lessons = { html, wire, kill: () => { triggers.forEach(t => t.kill()); triggers = []; }, chapters: CHAPTERS, sections: L };
 
   const css = document.createElement("style");
   css.textContent = `

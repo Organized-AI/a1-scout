@@ -475,7 +475,7 @@ def discover_models(A, suite, ram_bytes, limit=None):
                     continue
                 size = A.walk_size(d)[0] + (2 * A.walk_size(base)[0] if base else 0)   # an adapter is merged into a copy of its base
                 if size * 1.2 <= ram_bytes * 0.75:
-                    found.append((size, Path(os.path.realpath(d))))
+                    found.append((size, A.STASH / d.resolve().relative_to(A.STASH.resolve())))
         return [d for _, d in sorted(found)][:limit]
     for root in roots:
         if not root.is_dir():
@@ -485,7 +485,7 @@ def discover_models(A, suite, ram_bytes, limit=None):
                 continue                                     # a symlink out of the stash is never loaded
             if not ((d / "config.json").exists() or any(d.glob("*.safetensors")) or any(d.glob("*.npz"))):
                 continue
-            typ, _, _ = A.describe_model(d, str(d.relative_to(A.STASH)))
+            typ, _, _ = A.describe_model(d, str(d.resolve().relative_to(A.STASH.resolve())))
             if suite == "asr":
                 if typ != "asr":
                     continue
@@ -493,7 +493,7 @@ def discover_models(A, suite, ram_bytes, limit=None):
                 continue
             size = A.walk_size(d)[0]
             if size * 1.2 <= ram_bytes * 0.75:
-                found.append((size, Path(os.path.realpath(d))))
+                found.append((size, A.STASH / d.resolve().relative_to(A.STASH.resolve())))
     return [d for _, d in sorted(found)][:limit]
 
 
@@ -607,7 +607,7 @@ def make_row(suite, model: Path, stash: Path, machine, parts):
     """One leaderboard row from one or more run_tasks parts (a finalist's screen plus the rest of the bank)."""
     results = [r for part in parts for r in part["results"]]
     return {
-        "uid": uuid.uuid4().hex, "suite": suite, "machine": machine, "model": model.name, "model_path": str(model.relative_to(stash)),
+        "uid": uuid.uuid4().hex, "suite": suite, "machine": machine, "model": model.name, "model_path": str(model.resolve().relative_to(stash.resolve())),
         "runtime": next((p["runtime"] for p in parts if p["runtime"]), None), "bank": bank_hash(suite), "started": parts[0]["started"],
         "finished": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "load_s": parts[0]["load_s"], "peak_rss": max((p["peak_rss"] or 0 for p in parts), default=0) or None,
@@ -673,7 +673,7 @@ def find_best(suite, tasks, models, A, machine, runner_cmd, cache, env, fresh=Fa
     finalists_n = int(env.get("BENCH_FINALISTS", "3"))
     bank = bank_hash(suite)
     known = {} if fresh else known_runs(A.api, suite, machine, bank)
-    rel = lambda m: str(m.relative_to(A.STASH))
+    rel = lambda m: str(m.resolve().relative_to(A.STASH.resolve()))
     todo = [m for m in models if rel(m) not in known]
     reused = [known[rel(m)] for m in models if rel(m) in known]
     full, screened_out = [], []

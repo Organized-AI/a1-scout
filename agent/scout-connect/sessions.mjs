@@ -17,7 +17,7 @@ try { ext = JSON.parse(readFileSync(join(homedir(), ".scout", "settings.json"), 
 const base = loadSettings();
 const settings = {
   ...base,
-  sources: [ext.claude !== false && "claude", ext.codex !== false && "codex"].filter(Boolean),
+  sources: base.sources.filter(source => source === "cowork" ? (ext.cowork ?? ext.claude !== false) : ext[source] !== false),
   exclude: [...new Set([...base.exclude, ...(ext.exclude || [])])],
 };
 const { rows, files, seen, skipped, filesScanned } = collect({ onlyChanged: !all, settings, limit: all ? Infinity : 5000 });

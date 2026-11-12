@@ -5,7 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import worker from "../src/index.js";
-import { workBoost, workIndex, weekOf, tokensOfName } from "../src/sessions.js";
+import { workBoost, workIndex, weekOf, tokensOfName, appGroup } from "../src/sessions.js";
+
+test("Desktop Code and Cowork share a distinct application group", () => {
+  assert.equal(appGroup("claude-desktop"), "Claude Desktop");
+  assert.equal(appGroup("claude-cowork"), "Claude Desktop");
+  assert.equal(appGroup("claude-code"), "Claude Code");
+  assert.equal(appGroup("codex-cli"), "Codex");
+});
 
 function d1() {
   const db = new DatabaseSync(":memory:");

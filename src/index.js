@@ -1,4 +1,5 @@
 import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
+import { mintPhoneLink, burnPhoneLink } from "./phone-link.js";
 import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
@@ -768,6 +769,11 @@ async function api(req, env, url, ctx) {
   const pub = await waitlistApi(req, env, url, ctx); // public: docs waitlist + survey
   if (pub) return pub;
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
+  if (p === "/api/phone-link" && req.method === "POST") {
+    if (!env.SCOUT_TOKEN) return json({ error: "Phone sign-in is not configured" }, 503);
+    if (req.headers.get("origin") && req.headers.get("origin") !== url.origin) return json({ error: "Wrong origin" }, 403);
+    return json(await mintPhoneLink(env, url.origin, await sessionValue(env)));
+  }
   if (p === "/api/waitlist" && req.method === "GET") return waitlistList(env);
   if (p.startsWith("/api/waitlist/")) { const o = await waitlistOwner(req, env, url, ctx); if (o) return o; }
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
@@ -1121,6 +1127,13 @@ export default {
       const h = new Headers(r.headers);
       h.set("cache-control", "public, max-age=300");
       return new Response(r.body, { status: r.status, headers: h });
+    }
+    if (url.pathname === "/login/link") {
+      if (req.method !== "GET") return withPrivate(new Response("Method not allowed", { status: 405 }));
+      if (!env.SCOUT_TOKEN || !await burnPhoneLink(env, url.searchParams.get("code"), await sessionValue(env))) return loginPage("That link expired or was already used. Make a new link on your desktop.");
+      const secure = url.protocol === "https:" ? "; Secure" : "";
+      return withPrivate(new Response(null, { status: 303, headers: { location: "/m", "referrer-policy": "no-referrer",
+        "set-cookie": `${SESSION}=${await sessionValue(env)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${secure}` } }));
     }
     if (url.pathname === "/login") return login(req, env);
     if (url.pathname === "/logout") return logout();

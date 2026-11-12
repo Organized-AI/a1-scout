@@ -85,6 +85,7 @@ h2{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spaci
 @media (min-width:600px){body{max-width:520px;margin:0 auto}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
+<link rel="stylesheet" href="/m/dashboard.css">
 </head>
 <body>
 <header>
@@ -92,15 +93,17 @@ h2{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spaci
   <h1>A1 <small id="updated">connecting…</small></h1>
   <button class="iconbtn" id="refresh" aria-label="Refresh">↻</button>
 </header>
+<nav id="phone-nav" aria-label="Dashboard views"></nav>
 <main id="app" aria-live="polite"></main>
+<main id="phone-panel" hidden aria-live="polite"></main>
 <section class="card install" id="install"><h2>Put it on your home screen</h2><p id="installtext"></p></section>
-<div class="foot"><span>Organized AI · A1 Scout</span><a href="/">Full dashboard →</a></div>
+<div class="foot"><span>Organized AI · A1 Scout</span><a href="/">Full dashboard →</a><a href="/logout">Sign out</a></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
 // A1 on your phone: the same /api the desktop dashboard uses, reduced to what you check from a pocket.
 const $ = s => document.querySelector(s);
-const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const RM = () => !window.gsap || matchMedia("(prefers-reduced-motion: reduce)").matches;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const gb = b => b == null ? "?" : b >= 1e12 ? (b / 1e12).toFixed(2) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(0) + " MB" : (b / 1e3).toFixed(0) + " KB";
 const short = r => String(r || "").split("/").pop();
@@ -114,7 +117,9 @@ let A = null, state = null, bench = null, timer = null, prev = {}, ringTween = n
 async function call(p, opts = {}) {
   const r = await fetch(p, { ...opts, credentials: "same-origin", headers: { ...(token ? { authorization: "Bearer " + token } : {}), "content-type": "application/json" } });
   if (r.status === 401) throw Object.assign(new Error("Not signed in."), { auth: true });
-  return r.json();
+  const result = await r.json();
+  if (!r.ok || result.ok === false || result.error) throw new Error(result.error || "The request could not be completed.");
+  return result;
 }
 
 function stateOf() {
@@ -149,6 +154,7 @@ function runOf() {
 }
 
 function render(first) {
+  if (window.PhoneView?.active && window.PhoneView.active !== "home") return;
   loops.forEach(t => t.kill()); loops = [];
   const st = stateOf(), run = (st.k === "busy" || st.k === "warn") ? runOf() : null, p = A?.presence || {}, a = A?.activity || {};
   const next = (A?.next || []).filter(q => q.when === "next plug-in");
@@ -259,11 +265,7 @@ async function refresh(first) {
   } catch (e) {
     $("#updated").textContent = e.auth ? "not signed in" : "offline · retrying"; $("#updated").classList.add("stale");
     if (e.auth && !A) {
-      // A home-screen app keeps its own storage on iPhone, so it asks for the token once, here.
-      $("#app").innerHTML = `<section class="card"><h2>Sign in</h2><p class="empty">Paste the scout token from <code>~/.nvme-stash/scout.env</code>. It stays on this phone.</p>
-        <input id="tok" type="password" autocomplete="off" placeholder="SCOUT_TOKEN" style="width:100%;margin:12px 0;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:15px 'IBM Plex Mono',monospace">
-        <div class="actions"><button class="btn primary" id="savetok">Open</button></div></section>`;
-      $("#savetok").onclick = () => { token = $("#tok").value.trim(); try { localStorage.setItem("a1-scout-token", token); } catch {} refresh(true); };
+      $("#app").innerHTML = `<section class="card"><h2>Sign in</h2><p>On your signed-in desktop, choose “Sign in on your phone” and scan the QR code. Token sign-in is still available.</p><a class="btn" href="/login">Fallback sign-in</a></section>`;
     }
   }
   const busy = A?.presence?.busy || A?.activity?.state === "running" || A?.run_request?.state === "pending" || A?.drive_request?.state === "pending";
@@ -271,7 +273,7 @@ async function refresh(first) {
 }
 function schedule(ms) { clearTimeout(timer); if (!document.hidden) timer = setTimeout(() => refresh(false), ms); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(false); });
-$("#refresh").onclick = () => { if (!RM()) gsap.fromTo("#refresh", { rotation: 0 }, { rotation: 360, duration: .6, ease: "power2.out" }); state = null; refresh(false); };
+$("#refresh").onclick = () => { if (!RM()) gsap.fromTo("#refresh", { rotation: 0 }, { rotation: 360, duration: .6, ease: "power2.out" }); state = null; refresh(false); window.PhoneView?.reload(); };
 
 // install hint, once, only in the browser (not when already opened from the home screen)
 (function installHint() {
@@ -286,5 +288,9 @@ $("#refresh").onclick = () => { if (!RM()) gsap.fromTo("#refresh", { rotation: 0
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/m/sw.js", { scope: "/m/" }).catch(() => {});
 refresh(true);
 </script>
+<script src="/explain.js"></script>
+<script src="/map.js"></script>
+<script src="/lessons.js"></script>
+<script src="/m/dashboard.js"></script>
 </body>
 </html>
