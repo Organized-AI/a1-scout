@@ -35,6 +35,20 @@ class FetchCounter(unittest.TestCase):
     def test_reads_the_latest_count(self):
         self.assertEqual(A.fetch_progress(HF_ERR), (106065, 133850))
 
+    def test_big_repos_report_a_count_without_a_total(self):
+        # hf 1.8 on DTap-Bench: "Number of files in the repo is unreliable. Using `list_repo_tree`..."
+        self.assertEqual(A.fetch_progress("Fetching ... files: 0it [00:00, ?it/s]\nFetching ... files: 4812it [03:10, 25.3it/s]"), (4812, None))
+
+    def test_file_count_comes_from_the_hub_and_respects_include(self):
+        orig = A.hub_tree
+        A.hub_tree = lambda kind, repo, rev: {"a/1.json": ("x", 1), "a/2.json": ("x", 1), "b/3.json": ("x", 1)} if (kind, repo, rev) == ("dataset", "org/r", "abc") else {}
+        try:
+            cmd = ["caffeinate", "-i", "hf", "download", "org/r", "--repo-type", "dataset", "--local-dir", "/x", "--revision", "abc"]
+            self.assertEqual(A.repo_file_count(cmd), 3)
+            self.assertEqual(A.repo_file_count(cmd + ["--include", "a/*"]), 2)
+        finally:
+            A.hub_tree = orig
+
     def test_none_before_hf_reports(self):
         self.assertIsNone(A.fetch_progress("Warning: You are sending unauthenticated requests\n"))
 
@@ -131,9 +145,16 @@ class HfDownload(unittest.TestCase):
         self.assertEqual(walked, [])
         self.assertEqual(A.last_progress(DTAP["repo"])["done_files"], 1000)
 
+    def test_uncounted_repo_gets_its_total_from_the_hub(self):
+        hf = fake_hf("printf 'Fetching ... files: 0it [00:00, ?it/s]\n' >&2\nsleep 1\nprintf 'Fetching ... files: 1000it [00:01, 9it/s]\n' >&2\nsleep 17\n")
+        r = A.hf_download([hf], Path(self.tmp.name), 8_000_000, count_files=lambda args: 4000)
+        self.assertEqual(r.returncode, 0)
+        cur = self.posts[-1]["current"]
+        self.assertEqual((cur["done_files"], cur["total_files"], cur["done_bytes"]), (1000, 4000, 2_000_000))
+
     def test_failure_keeps_the_error_text(self):
         hf = fake_hf("echo 'GatedRepoError: 403 Client Error' >&2\nexit 1\n")
-        r = A.hf_download([hf], Path(self.tmp.name), 1000)
+        r = A.hf_download([hf], Path(self.tmp.name), 1000, count_files=lambda args: None)
         self.assertEqual(r.returncode, 1)
         self.assertIn("403", r.stderr)
 
