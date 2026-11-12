@@ -675,51 +675,130 @@ def activity(force=False, **kw):
         pass  # the status bar is nice-to-have; never let it break a run
 
 
-def disk_size(p: Path):
-    """Apparent bytes under p. `du -A` is far faster than a Python walk on exFAT folders with tens of thousands of files."""
+MANY_FILES = 2000       # from here on a repo is tracked by hf's own file counter, not by measuring the drive
+PROGRESS = STATE_DIR / "scout-progress.json"   # the running download's latest numbers, for the heartbeat to read
+FETCH_RE = re.compile(r"Fetching (\d+) files:[^\r\n]*?(\d+)/(\d+)")
+
+
+def files_size(p: Path, budget_s=None):
+    """Bytes of the files under p; None when the walk runs past budget_s.
+    Folders and hf's .cache bookkeeping are left out on purpose: exFAT gives every folder a whole 128 KB cluster,
+    so `du -A` on a dataset with 70,000 folders reports ~9 GB that was never downloaded."""
     if not p.exists():
         return 0
-    try:
-        r = subprocess.run(["du", "-sk", "--apparent-size", str(p)] if LINUX else ["du", "-skA", str(p)], capture_output=True, text=True, timeout=300)
-        if r.returncode == 0 and r.stdout:
-            return int(r.stdout.split()[0]) * 1024
-    except Exception:
+    if p.is_file():
+        return p.stat().st_size
+    t0, total, stack = time.time(), 0, [str(p)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    if e.is_dir(follow_symlinks=False):
+                        if e.name not in (".cache", ".git"):
+                            stack.append(e.path)
+                    elif not e.name.startswith("._"):
+                        try:
+                            total += e.stat(follow_symlinks=False).st_size
+                        except OSError:
+                            pass
+        except OSError:
+            pass
+        if budget_s is not None and time.time() - t0 > budget_s:
+            return None
+    return total
+
+
+def disk_size(p: Path, budget_s=None):
+    """Downloaded bytes under p (files only, see files_size)."""
+    return files_size(p, budget_s)
+
+
+def fetch_progress(text):
+    """(files done, files in all) from the last "Fetching N files: ... done/N" line `hf download` printed, or None."""
+    m = None
+    for m in FETCH_RE.finditer(text):
         pass
-    return walk_size(p)[0]
+    return (int(m.group(2)), int(m.group(3))) if m and int(m.group(3)) else None
+
+
+def save_progress(cur):
+    try:
+        PROGRESS.write_text(json.dumps({**cur, "at": time.time()}))
+    except OSError:
+        pass
+
+
+def last_progress(repo, max_age_s=120):
+    """What the running download last reported for repo, if that was recent; else None."""
+    try:
+        d = json.loads(PROGRESS.read_text())
+        return d if d.get("repo") == repo and time.time() - d.get("at", 0) < max_age_s else None
+    except (OSError, ValueError):
+        return None
 
 
 def hf_download(args, dest: Path, total: int):
-    """Run `hf download` and report bytes on disk, speed and time left while it runs.
-    Disk is measured in a background thread; the main loop posts every 15 s with the latest sample, so the
-    dashboard stays live even when one measurement takes longer than its 90-second freshness window."""
+    """Run `hf download` and report progress, speed and time left while it runs.
+
+    Progress comes from hf's own "Fetching N files" counter, which costs nothing. The drive is only measured for
+    repos of a few large files, where a file count says little, and then no more than a fifth of the time: on a
+    dataset of 100,000+ small files, walking the folder every 15 s took longer than 15 s, so the walk ran
+    non-stop against the download on the same USB drive and the numbers it produced were stale or wrong."""
     e = dict(os.environ, PATH=PATH_EXTRA + ":" + os.environ.get("PATH", ""))
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=e)
-    samples, stop = [], threading.Event()
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=e)
+    out, err, files, stop = [], [""], [None], threading.Event()
+
+    def read_err():
+        for chunk in iter(lambda: os.read(proc.stderr.fileno(), 65536), b""):
+            err[0] = (err[0] + chunk.decode("utf-8", "replace"))[-8000:]
+            files[0] = fetch_progress(err[0]) or files[0]
+
+    def read_out():
+        out.append(proc.stdout.read().decode("utf-8", "replace"))
+
+    many = lambda: bool(files[0]) and files[0][1] >= MANY_FILES
+    disk = []                                   # (time, bytes) measured on the drive
 
     def sampler():
-        while not stop.is_set():
-            samples.append((time.time(), disk_size(dest)))
-            del samples[:-8]
-            stop.wait(15)
+        wait = 5                                # give hf a moment to say how many files there are
+        while not stop.wait(wait) and not many():
+            t0 = time.time()
+            b = disk_size(dest)
+            if b is not None:
+                disk.append((time.time(), b)); del disk[:-8]
+            wait = max(15, 5 * (time.time() - t0))
 
-    threading.Thread(target=sampler, daemon=True).start()
+    readers = [threading.Thread(target=f, daemon=True) for f in (read_err, read_out)]
+    for t in readers + [threading.Thread(target=sampler, daemon=True)]:
+        t.start()
+    est = []                                    # (time, bytes) worked out from the file counter
     try:
         while True:
             try:
-                out, err = proc.communicate(timeout=15)
+                proc.wait(timeout=15)
                 break
             except subprocess.TimeoutExpired:
+                extra = {"done_files": files[0][0], "total_files": files[0][1]} if files[0] else {}
+                if many():
+                    est.append((time.time(), total * files[0][0] / files[0][1])); del est[:-8]
+                    samples = est
+                else:
+                    samples = disk
                 if not samples:
-                    activity(force=True); continue          # still measuring: keep the bar marked live
+                    activity(force=True, current={**(ACT.get("current") or {}), **extra}); continue   # keep the bar marked live
                 cur = samples[-1][1]
                 dt = samples[-1][0] - samples[0][0]
-                rate = (samples[-1][1] - samples[0][1]) / dt if dt > 0 else 0
+                rate = max(0, (samples[-1][1] - samples[0][1]) / dt) if dt > 0 else 0
                 eta = (total - cur) / rate if rate > 0 and total > cur else None
-                activity(force=True, current={**(ACT.get("current") or {}), "done_bytes": cur, "rate": rate, "eta_s": eta,
-                                              "sampled_at": datetime.fromtimestamp(samples[-1][0], timezone.utc).isoformat(timespec="seconds")})
+                now = {**(ACT.get("current") or {}), **extra, "done_bytes": cur, "rate": rate, "eta_s": eta,
+                       "sampled_at": datetime.fromtimestamp(samples[-1][0], timezone.utc).isoformat(timespec="seconds")}
+                save_progress(now)
+                activity(force=True, current=now)
     finally:
         stop.set()
-    return subprocess.CompletedProcess(args, proc.returncode, out, err)
+    for t in readers:
+        t.join(timeout=10)
+    return subprocess.CompletedProcess(args, proc.returncode, "".join(out), err[0])
 
 
 HF_SITE = "https://huggingface.co"
@@ -1028,8 +1107,14 @@ def run_from_log(busy, procs=None, disk=None):
     c = run["current"]
     disk = disk or disk_size
     if c and busy:
-        if c.get("dest"):
-            c["done_bytes"] = disk(STASH / c["dest"])
+        live = last_progress(c["repo"]) if disk is disk_size else None
+        if live and live.get("done_bytes") is not None:
+            # The run itself reported moments ago: use that instead of walking the folder under the download.
+            c.update({k: live[k] for k in ("done_bytes", "done_files", "total_files") if live.get(k) is not None})
+        elif c.get("dest"):
+            b = disk(STASH / c["dest"], 20) if disk is disk_size else disk(STASH / c["dest"])
+            if b is not None:
+                c["done_bytes"] = b
         else:
             # Updates download into a hidden staging folder; read it off the running `hf download`.
             try:

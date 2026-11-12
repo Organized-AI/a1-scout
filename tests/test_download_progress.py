@@ -1,0 +1,116 @@
+"""Tests for download progress on repos of many small files (the DTap-Bench run of 2026-11-12:
+133,850 files in 69,774 folders, 3.75 GB, onto the exFAT A1).
+
+    cd ~/nvme-stash/a1-scout && python3 -m unittest discover -s tests -v
+"""
+import os, stat, sys, tempfile, unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "agent"))
+sys.path.insert(0, str(ROOT / "gates"))
+import agent as A                 # noqa: E402
+import statusbar_probe as P       # noqa: E402
+
+NOW = datetime(2026, 11, 12, 22, 0, 0, tzinfo=timezone.utc)
+DTAP = {"pid": 1, "repo": "AI-Secure/DTap-Bench-Agent-Trajectories", "dest": "/Volumes/A1/stash/datasets/raw/DTap-Bench-Agent-Trajectories"}
+# What hf 1.8 writes to stderr when it is not on a terminal.
+HF_ERR = ("Still waiting to acquire lock on x.lock (elapsed: 0.1 seconds)\n"
+          "Fetching 133850 files:   0%|          | 0/133850 [00:00<?, ?it/s]\n"
+          "Fetching 133850 files:  10%|█         | 13385/133850 [12:01<1:40:14, 20.03it/s]\r"
+          "Fetching 133850 files:  79%|███████▉  | 106065/133850 [2:03:10<1:38:02,  4.72it/s]")
+
+
+def fake_hf(body):
+    """An executable that stands in for `hf download`."""
+    d = tempfile.mkdtemp()
+    f = Path(d) / "hf"
+    f.write_text("#!/bin/sh\n" + body)
+    f.chmod(f.stat().st_mode | stat.S_IEXEC)
+    return str(f)
+
+
+class FetchCounter(unittest.TestCase):
+    def test_reads_the_latest_count(self):
+        self.assertEqual(A.fetch_progress(HF_ERR), (106065, 133850))
+
+    def test_none_before_hf_reports(self):
+        self.assertIsNone(A.fetch_progress("Warning: You are sending unauthenticated requests\n"))
+
+
+class FilesSize(unittest.TestCase):
+    def test_counts_files_not_folders_or_hf_bookkeeping(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "a/b").mkdir(parents=True)
+            (root / "a/b/t.json").write_bytes(b"x" * 700)
+            (root / "README.md").write_bytes(b"y" * 300)
+            (root / ".cache/huggingface/download").mkdir(parents=True)
+            (root / ".cache/huggingface/download/t.json.metadata").write_bytes(b"z" * 5000)
+            self.assertEqual(A.files_size(root), 1000)
+            self.assertEqual(P.disk_bytes(str(root)), 1000)
+
+    def test_gives_up_past_its_budget(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "a").mkdir()
+            self.assertIsNone(A.files_size(Path(d), budget_s=-1))
+
+
+class HfDownload(unittest.TestCase):
+    def setUp(self):
+        self.posts, self._activity, self._progress = [], A.activity, A.PROGRESS
+        self.tmp = tempfile.TemporaryDirectory()
+        A.PROGRESS = Path(self.tmp.name) / "scout-progress.json"
+        A.ACT.clear(); A.ACT["current"] = {"repo": DTAP["repo"]}
+        A.activity = lambda force=False, **kw: (A.ACT.update(kw), self.posts.append(kw))
+
+    def tearDown(self):
+        A.activity, A.PROGRESS = self._activity, self._progress
+        A.ACT.clear(); self.tmp.cleanup()
+
+    def test_many_file_repo_is_tracked_by_file_count_without_walking_the_drive(self):
+        hf = fake_hf("printf 'Fetching 4000 files:  25%%|##  | 1000/4000 [00:01<00:03]\\n' >&2\nsleep 17\necho done-path\n")
+        walked = []
+        orig = A.disk_size
+        A.disk_size = lambda p, budget_s=None: walked.append(p) or 0
+        try:
+            r = A.hf_download([hf], Path(self.tmp.name), 8_000_000)
+        finally:
+            A.disk_size = orig
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("done-path", r.stdout)
+        cur = self.posts[-1]["current"]
+        self.assertEqual((cur["done_files"], cur["total_files"], cur["done_bytes"]), (1000, 4000, 2_000_000))
+        self.assertGreaterEqual(cur["rate"], 0)
+        self.assertEqual(walked, [])
+        self.assertEqual(A.last_progress(DTAP["repo"])["done_files"], 1000)
+
+    def test_failure_keeps_the_error_text(self):
+        hf = fake_hf("echo 'GatedRepoError: 403 Client Error' >&2\nexit 1\n")
+        r = A.hf_download([hf], Path(self.tmp.name), 1000)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("403", r.stderr)
+
+
+class Probe(unittest.TestCase):
+    def data(self, **cur):
+        iso = lambda s: (NOW - timedelta(seconds=s)).isoformat()
+        return {"activity": {"state": "running", "phase": "Downloading approved picks", "updated_at": iso(5),
+                             "current": {"repo": DTAP["repo"], "action": "Downloading", "total_bytes": 3.75e9, **cur}, "queue": []},
+                "presence": {"present": True, "busy": True, "at": iso(30), "logrun": {}}, "next": []}
+
+    def test_many_file_download_is_checked_by_count_not_by_walking(self):
+        def no_walk(_p):
+            raise AssertionError("the drive must not be walked for a many-file download")
+        r = P.probe(data=self.data(done_bytes=2.97e9, done_files=106065, total_files=133850), procs=[DTAP], present=True, disk=no_walk, now=NOW)
+        self.assertTrue(r["ok"], r)
+        self.assertIn("files_within_total", r["checks"])
+
+    def test_a_walk_that_ran_out_of_time_is_not_a_failure(self):
+        r = P.probe(data=self.data(done_bytes=1e9), procs=[DTAP], present=True, disk=lambda _p: None, now=NOW)
+        self.assertTrue(r["ok"], r)
+
+
+if __name__ == "__main__":
+    unittest.main()
