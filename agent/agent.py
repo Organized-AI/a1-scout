@@ -1333,16 +1333,28 @@ DOCS_ONLY = re.compile(r"(\.(md|txt|png|jpe?g|gif|svg|webp)$|^\.gitattributes$|(
 KIND_OF = {"models": "model", "datasets": "dataset", "spaces": "space"}
 
 
+COMMIT_SAMPLE = 25      # .metadata files read to learn a folder's revision
+
+
 def cached_commit(d: Path):
-    """The commit `hf download --local-dir` recorded for this folder (first line of each .metadata file)."""
-    seen = {}
-    for m in (d / ".cache/huggingface/download").rglob("*.metadata") if (d / ".cache/huggingface/download").is_dir() else []:
-        try:
-            c = m.read_text().splitlines()[0].strip()
-            if re.fullmatch(r"[0-9a-f]{40}", c):
-                seen[c] = seen.get(c, 0) + 1
-        except Exception:
-            pass
+    """The commit `hf download --local-dir` recorded for this folder (first line of a .metadata file).
+    Reads a sample and stops: every file of one download records the same commit, and a dataset of 100,000+
+    files has as many .metadata files, which took the update check over ten minutes to read on the exFAT A1."""
+    seen, read = {}, 0
+    root = d / ".cache/huggingface/download"
+    for r, _, fs in os.walk(root) if root.is_dir() else []:
+        for f in fs:
+            if not f.endswith(".metadata"):
+                continue
+            try:
+                c = (Path(r) / f).read_text().splitlines()[0].strip()
+                if re.fullmatch(r"[0-9a-f]{40}", c):
+                    seen[c] = seen.get(c, 0) + 1
+            except Exception:
+                pass
+            read += 1
+            if read >= COMMIT_SAMPLE:
+                return max(seen, key=seen.get) if seen else None
     return max(seen, key=seen.get) if seen else None
 
 
