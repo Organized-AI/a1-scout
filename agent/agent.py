@@ -678,6 +678,7 @@ def activity(force=False, **kw):
 MANY_FILES = 2000       # from here on a repo is tracked by hf's own file counter, not by measuring the drive
 PROGRESS = STATE_DIR / "scout-progress.json"   # the running download's latest numbers, for the heartbeat to read
 FETCH_RE = re.compile(r"Fetching (\d+) files:[^\r\n]*?(\d+)/(\d+)")
+FETCH_OPEN_RE = re.compile(r"Fetching \.\.\. files:\s*(\d+)it")   # big repos: hf lists the tree as it goes, so no total
 
 
 def files_size(p: Path, budget_s=None):
@@ -714,11 +715,28 @@ def disk_size(p: Path, budget_s=None):
 
 
 def fetch_progress(text):
-    """(files done, files in all) from the last "Fetching N files: ... done/N" line `hf download` printed, or None."""
-    m = None
+    """(files done, files in all or None) from the last "Fetching ..." line `hf download` printed, or None.
+    Small repos print "Fetching 10 files: ... 3/10"; repos too big for the Hub to count print "Fetching ... files: 812it"."""
+    m = o = None
     for m in FETCH_RE.finditer(text):
         pass
-    return (int(m.group(2)), int(m.group(3))) if m and int(m.group(3)) else None
+    for o in FETCH_OPEN_RE.finditer(text):
+        pass
+    if m and int(m.group(3)) and (not o or m.start() > o.start()):
+        return int(m.group(2)), int(m.group(3))
+    return (int(o.group(1)), None) if o else None
+
+
+def repo_file_count(args):
+    """How many files the `hf download` command in args will fetch, counted from the Hub's file list (None if unknown)."""
+    try:
+        a = args[args.index("download") + 1:]
+        opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
+        inc = [a[i + 1] for i, v in enumerate(a[:-1]) if v == "--include"]
+        files = hub_tree(opt("--repo-type", "model"), a[0], opt("--revision", "main"))
+        return sum(1 for f in files if not inc or any(fnmatch.fnmatch(f, g) for g in inc)) or None
+    except Exception:
+        return None
 
 
 def save_progress(cur):
@@ -737,7 +755,7 @@ def last_progress(repo, max_age_s=120):
         return None
 
 
-def hf_download(args, dest: Path, total: int):
+def hf_download(args, dest: Path, total: int, count_files=repo_file_count):
     """Run `hf download` and report progress, speed and time left while it runs.
 
     Progress comes from hf's own "Fetching N files" counter, which costs nothing. The drive is only measured for
@@ -748,15 +766,23 @@ def hf_download(args, dest: Path, total: int):
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=e)
     out, err, files, stop = [], [""], [None], threading.Event()
 
+    counted = []                                # the repo's file count, once looked up for a repo hf could not count
+
     def read_err():
         for chunk in iter(lambda: os.read(proc.stderr.fileno(), 65536), b""):
             err[0] = (err[0] + chunk.decode("utf-8", "replace"))[-8000:]
-            files[0] = fetch_progress(err[0]) or files[0]
+            got = fetch_progress(err[0])
+            if got and got[1] is None:
+                if not counted:
+                    counted.append(None)
+                    threading.Thread(target=lambda: counted.__setitem__(0, count_files(args)), daemon=True).start()
+                got = (got[0], max(counted[0], got[0])) if counted[0] else got
+            files[0] = got or files[0]
 
     def read_out():
         out.append(proc.stdout.read().decode("utf-8", "replace"))
 
-    many = lambda: bool(files[0]) and files[0][1] >= MANY_FILES
+    many = lambda: bool(files[0]) and (files[0][1] or 0) >= MANY_FILES
     disk = []                                   # (time, bytes) measured on the drive
 
     def sampler():
@@ -778,7 +804,7 @@ def hf_download(args, dest: Path, total: int):
                 proc.wait(timeout=15)
                 break
             except subprocess.TimeoutExpired:
-                extra = {"done_files": files[0][0], "total_files": files[0][1]} if files[0] else {}
+                extra = {"done_files": files[0][0], **({"total_files": files[0][1]} if files[0][1] else {})} if files[0] else {}
                 if many():
                     est.append((time.time(), total * files[0][0] / files[0][1])); del est[:-8]
                     samples = est
