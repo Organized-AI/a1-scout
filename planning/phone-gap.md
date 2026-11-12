@@ -95,6 +95,8 @@ Internal agent ingestion and acknowledgment routes are not phone UI actions; pho
 
 ## Phase status
 
+- Phase 3: phone Picks reuse the deployed status/kind filters and exact counts with 20-card paging, license links, reasons and approve/skip/stash controls. Stash queues `approved` through the existing endpoint; only the agent may mark a completed download `stashed`. This intentionally preserves license and download checks rather than claiming a queued item is already on disk.
+
 - Phase 1: committed safe Cowork collection, scheduled Desktop tasks, settings and Desktop grouping. Local Mac preview found 26 Cowork transcripts; bundles pass privacy validation. SDK actor classification unchanged.
 - Phase 2: single-use phone links are hashed in D1, expire after ten minutes, burn atomically and invalidate on token rotation. Desktop generates QR locally; token login remains the fallback. Tests cover reuse races, expiry, wrong codes, rotation and cross-origin mint rejection.
 
