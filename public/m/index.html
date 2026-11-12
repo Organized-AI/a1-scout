@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>A1 · Organized AI</title>
-<link rel="stylesheet" href="/m/dashboard.css">
 <meta name="description" content="The A1 drive from your phone: live run progress, Run now, eject and mount.">
 <link rel="manifest" href="/m/manifest.webmanifest" crossorigin="use-credentials">
 <meta name="theme-color" content="#0b0b0a">
@@ -86,6 +85,7 @@ h2{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spaci
 @media (min-width:600px){body{max-width:520px;margin:0 auto}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
+<link rel="stylesheet" href="/m/dashboard.css">
 </head>
 <body>
 <header>
@@ -97,7 +97,7 @@ h2{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spaci
 <main id="app" aria-live="polite"></main>
 <main id="phone-panel" hidden aria-live="polite"></main>
 <section class="card install" id="install"><h2>Put it on your home screen</h2><p id="installtext"></p></section>
-<div class="foot"><span>Organized AI · A1 Scout</span><a href="/">Full dashboard →</a></div>
+<div class="foot"><span>Organized AI · A1 Scout</span><a href="/">Full dashboard →</a><a href="/logout">Sign out</a></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
@@ -288,6 +288,9 @@ $("#refresh").onclick = () => { if (!RM()) gsap.fromTo("#refresh", { rotation: 0
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/m/sw.js", { scope: "/m/" }).catch(() => {});
 refresh(true);
 </script>
+<script src="/explain.js"></script>
+<script src="/map.js"></script>
+<script src="/lessons.js"></script>
 <script src="/m/dashboard.js"></script>
 </body>
 </html>

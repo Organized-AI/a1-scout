@@ -767,5 +767,5 @@
   `;
   document.head.appendChild(css);
 
-  window.MapView = { html, wire, pickCard };
+  window.MapView = { html, wire, pickCard, steps: STEPS };
 })();

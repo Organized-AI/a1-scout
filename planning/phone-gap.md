@@ -36,7 +36,7 @@
 | Waitlist owner tools | No | Explicit dashboard link; public signup/survey remains separate |
 | Install / theme | Yes | Keep standalone styling; 44px targets and safe-area gutters |
 
-## API inventory
+## API inventory (baseline before this branch)
 
 Internal agent ingestion and acknowledgment routes are not phone UI actions; phone users operate their matching request/status controls. Public waitlist webhooks are not dashboard features.
 
@@ -88,12 +88,16 @@ Internal agent ingestion and acknowledgment routes are not phone UI actions; pho
 
 ## Security and layout
 
-- Service worker currently caches /m/ despite private, no-store: remove private-page caching and clear old caches.
-- Manifest start_url must be /m. Verify 375px width, 16px gutters, 44px taps, standalone safe areas.
+- Service worker is now network-only: no fetch interception or cache writes; activation removes legacy a1-shell caches without deleting unrelated caches.
+- Manifest start_url is /m. WebKit verified 375px width, 16px gutters, 44px taps and simulated standalone mode. Physical iPhone installation remains a manual check.
 - Cowork metadata allowlist only; no titles, prompts, emails, URLs or folder names in bundles.
 - Open question: T3 Claude SDK entrypoints sdk-ts/sdk-cli remain headless actor agent. Do not reclassify in this thread.
 
 ## Phase status
+
+- Phase 4: Coding cards include actor/app/time filters, paging, sync, collection and transcript consent. Catalog has local search and add-pick; Notes has create/edit/delete; Jobs exposes activity, updates, leaderboard and blind battles; More has scan and license check/decisions. All use existing authenticated APIs. Lessons and Explain use responsive reading/quiz layouts from the existing content. Lab's visual stack editor and Map's spatial treemap retain an explicit full-dashboard/desktop link, with Catalog and learning as phone alternatives. Waitlist owner tools remain on the linked full dashboard; public signup/webhooks are not mobile actions. No agent ingestion/ACK route was duplicated as a phone action.
+- Phase 4 verification: 90 Node tests and 99 Python tests pass (plus the Python subtests). WebKit iPhone 15 simulation passed all seven tabs and 26 result screenshots, with no page errors, overflow or visible targets below 44px. Add-pick and scan success responses are synthetic UI fixtures, not upstream service/physical-agent verification. The local Worker handled the other tested actions. Service-worker cleanup/network-only behavior is independently unit tested; browser routing tests block workers so fixtures cannot escape to upstream services.
+- Next: publish a version preview, verify private access/mobile rendering there, and open the feature PR. Production deployment and Mac installation must wait for human merge.
 
 - Phase 3: phone Picks reuse the deployed status/kind filters and exact counts with 20-card paging, license links, reasons and approve/skip/stash controls. Stash queues `approved` through the existing endpoint; only the agent may mark a completed download `stashed`. This intentionally preserves license and download checks rather than claiming a queued item is already on disk.
 
