@@ -95,6 +95,9 @@ Internal agent ingestion and acknowledgment routes are not phone UI actions; pho
 
 ## Phase status
 
+- Phase 1: committed safe Cowork collection, scheduled Desktop tasks, settings and Desktop grouping. Local Mac preview found 26 Cowork transcripts; bundles pass privacy validation. SDK actor classification unchanged.
+- Phase 2: single-use phone links are hashed in D1, expire after ten minutes, burn atomically and invalidate on token rotation. Desktop generates QR locally; token login remains the fallback. Tests cover reuse races, expiry, wrong codes, rotation and cross-origin mint rejection.
+
 - Phase 0: baseline green after the isolated bench fix; plan copied and route/feature audit recorded. Next: sync PR and Claude Desktop collection.
 - Deployment and Mac agent updates have not been performed. Sync PR must not be merged by this agent. Feature PR targets deployed base until sync merges.
 

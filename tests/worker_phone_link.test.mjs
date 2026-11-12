@@ -1,0 +1,30 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import worker from "../src/index.js";
+
+test("phone links are private, hashed, single-use, expiring, and rotation bound", async () => {
+  const database = new DatabaseSync(":memory:");
+  const statement = (sql, args = []) => ({ bind: (...values) => statement(sql, values), run: async () => database.prepare(sql).run(...args), first: async () => database.prepare(sql).get(...args) });
+  const env = { SCOUT_TOKEN: "test-only-token", DB: { prepare: sql => statement(sql) }, ASSETS: { fetch: () => new Response("phone") } };
+  const mint = (headers = { authorization: "Bearer test-only-token" }) => worker.fetch(new Request("https://scout.test/api/phone-link", { method: "POST", headers }), env);
+  const redeem = url => worker.fetch(new Request(url), env);
+  assert.equal((await mint({})).status, 401);
+  assert.equal((await mint({ authorization: "Bearer test-only-token", origin: "https://evil.test" })).status, 403);
+  const minted = await mint();
+  assert.equal(minted.headers.get("cache-control"), "private, no-store");
+  const { url } = await minted.json();
+  assert.ok(!JSON.stringify(database.prepare("SELECT * FROM phone_links").all()).includes(new URL(url).searchParams.get("code")));
+  const results = await Promise.all([redeem(url), redeem(url)]);
+  assert.deepEqual(results.map(result => result.status).sort(), [303, 401]);
+  const valid = results.find(result => result.status === 303);
+  assert.equal(valid.headers.get("location"), "/m");
+  assert.match(valid.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
+  assert.match(valid.headers.get("set-cookie"), /Secure/);
+  assert.equal((await redeem("https://scout.test/login/link?code=" + "f".repeat(64))).status, 401);
+  const expired = await (await mint()).json();
+  database.exec("UPDATE phone_links SET expires=1");
+  assert.equal((await redeem(expired.url)).status, 401);
+  const rotated = await (await mint()).json(); env.SCOUT_TOKEN = "rotated";
+  assert.equal((await redeem(rotated.url)).status, 401);
+});
