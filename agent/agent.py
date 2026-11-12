@@ -757,7 +757,24 @@ def last_progress(repo, max_age_s=120):
         return None
 
 
-def hf_download(args, dest: Path, total: int, count_files=repo_file_count):
+TRANSIENT_RE = re.compile(r"ReadTimeout|ConnectTimeout|ConnectError|RemoteProtocolError|ConnectionError|Connection reset|"
+                          r"Temporary failure in name resolution|50[234] (?:Server Error|Bad Gateway|Service Unavailable)|IncompleteRead", re.I)
+HF_TRIES = 4            # one dropped connection must not end a 100,000-file download; hf resumes where it stopped
+
+
+def hf_download(args, dest: Path, total: int, count_files=repo_file_count, once=None, pause=30):
+    """hf_download_once, tried again (up to HF_TRIES) when it dies of a network hiccup. Each try resumes the last."""
+    once = once or hf_download_once
+    for n in range(1, HF_TRIES + 1):
+        r = once(args, dest, total, count_files)
+        said = (r.stderr or "") + (r.stdout or "")
+        if r.returncode == 0 or n == HF_TRIES or not TRANSIENT_RE.search(said) or LICENSE_RE.search(said) or GONE_RE.search(said):
+            return r
+        log(f"  hf download hit a network error ({TRANSIENT_RE.search(said).group(0)}); resuming, try {n + 1} of {HF_TRIES}")
+        time.sleep(pause)
+
+
+def hf_download_once(args, dest: Path, total: int, count_files=repo_file_count):
     """Run `hf download` and report progress, speed and time left while it runs.
 
     Progress comes from hf's own "Fetching N files" counter, which costs nothing. The drive is only measured for
@@ -765,6 +782,8 @@ def hf_download(args, dest: Path, total: int, count_files=repo_file_count):
     dataset of 100,000+ small files, walking the folder every 15 s took longer than 15 s, so the walk ran
     non-stop against the download on the same USB drive and the numbers it produced were stale or wrong."""
     e = dict(os.environ, PATH=PATH_EXTRA + ":" + os.environ.get("PATH", ""))
+    e.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")   # hf's default is 10 s per read; one slow response ended a two-hour download
+    e.setdefault("HF_HUB_ETAG_TIMEOUT", "30")
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=e)
     out, err, files, stop = [], [""], [None], threading.Event()
 
