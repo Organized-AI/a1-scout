@@ -39,6 +39,7 @@ await page.addInitScript(() => {
 });
 let number = 0;
 const capture = async name => {
+  await page.getByText("Loading…", { exact: true }).waitFor({ state: "hidden" });
   await page.screenshot({ path: `${destination}/${String(++number).padStart(2, "0")}-${name}.png`, fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: horizontal overflow`);
   const small = await page.locator('button:visible, input:visible, select:visible, summary:visible, a:visible').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().height < 44).map(element => element.textContent));
@@ -65,6 +66,7 @@ try {
   await page.getByRole("button", { name: "Approve", exact: true }).first().click();
   await page.getByRole("status").filter({ hasText: "Pick updated" }).waitFor(); await capture("pick-approved");
   await page.getByRole("button", { name: "Skip", exact: true }).first().click();
+  await page.getByRole("button", { name: "skipped (1)", exact: true }).waitFor();
   await page.getByRole("status").filter({ hasText: "Pick updated" }).waitFor(); await capture("pick-skipped");
   await page.getByRole("button", { name: "Stash on A1", exact: true }).first().click();
   await page.getByRole("status").filter({ hasText: "Queued" }).waitFor(); await capture("pick-stash-queued");

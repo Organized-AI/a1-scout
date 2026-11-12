@@ -8,7 +8,7 @@
   // Private dashboard lives on workers.dev, where the agents post (SCOUT_URL). scout.organizedai.vip belongs to the
   // public site (repo a1-scout-docs); claiming it here would take the domain back on deploy and break pairing.
   "workers_dev": true,
-  "preview_urls": false,
+  "preview_urls": true,
   "d1_databases": [
     { "binding": "DB", "database_name": "a1-scout", "database_id": "b4d37b4f-f34c-46af-b02d-b1633ec8e67b" }
   ],
