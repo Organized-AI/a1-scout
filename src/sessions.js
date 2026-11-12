@@ -14,6 +14,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), { status
 const now = () => new Date().toISOString();
 const DAY = 864e5;
 export const SYNC_EVERY_MIN = 15;
+export const appGroup = app => ["claude-desktop", "claude-cowork"].includes(app) ? "Claude Desktop" : String(app).startsWith("codex") ? "Codex" : app === "claude-code" ? "Claude Code" : app || "Other";
 const AE_MAX_POINTS = 250;
 const okHost = v => typeof v === "string" && /^[\w-]{1,40}$/.test(v);
 const okRun = v => typeof v === "string" && /^[\w-]{6,64}$/.test(v);
@@ -257,12 +258,12 @@ async function overview(env, kvGet) {
     lite.push([Date.parse(r.first_event), h, projIx.get(r.project_fp), r.turns || 0, r.edits || 0, r.errors || 0, r.active_minutes || 0,
       r.tokens_in || 0, r.tokens_out || 0, r.tokens_cache_read || 0, r.tokens_cache_write || 0, calls,
       Object.entries(o.tools || {}).map(([n, c]) => { if (!toolIx.has(n)) toolIx.set(n, toolIx.size); return [toolIx.get(n), c]; }),
-      { a: nm(r.app || "unknown"), l: Object.entries(o.languages || {}).map(([n, c]) => [nm(n), c]), i: [...new Set(o.imports || [])].filter(isLib).map(nm),
+      { a: nm(appGroup(r.app)), l: Object.entries(o.languages || {}).map(([n, c]) => [nm(n), c]), i: [...new Set(o.imports || [])].filter(isLib).map(nm),
         p: [...new Set(o.packages || [])].map(nm), m: [...new Set(o.models || [])].map(nm),
         g: Object.entries(o.llms || (r.model ? { [r.model]: 1 } : {})).map(([n, c]) => [nm(n), c]) }]);
     if (r.first_event >= since) addToWeek(weeks[weekOf(r.first_event)] ||= emptyWeek(), r, o);
     if (Date.parse(r.first_event) < recent) continue;
-    add(agg.apps, r.app);
+    add(agg.apps, appGroup(r.app));
     for (const [n, c] of Object.entries(o.llms || (r.model ? { [r.model]: 1 } : {}))) add(agg.llms, n, c);
     for (const [n, c] of Object.entries(o.tools || {})) add(agg.tools, n, c);
     for (const [n, c] of Object.entries(o.languages || {})) add(agg.languages, n, c);

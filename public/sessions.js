@@ -9,6 +9,20 @@ const SessionsView = (() => {
   const ago = iso => { if (!iso) return "never"; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
   const pct = v => v == null ? "—" : Math.round(v * 100) + "%";
   const RM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let appFilter = "All";
+  const appRows = () => (data.lite?.rows || []).filter(row => appFilter === "All" || data.lite.names[row[13]?.a] === appFilter);
+  function appSeries() {
+    const range = periodRange(tfAll), groups = ["Claude Code", "Claude Desktop", "Codex"];
+    const colors = ["var(--c-models)", "var(--c-spaces)", "var(--c-code)"];
+    const values = groups.map(group => Array.from({ length: 14 }, () => 0));
+    for (const row of data.lite?.rows || []) {
+      if (row[0] < range.start || row[0] >= range.end) continue;
+      const group = groups.indexOf(data.lite.names[row[13]?.a]);
+      if (group >= 0) values[group][Math.min(13, Math.floor((row[0] - range.start) / Math.max(1, range.end - range.start) * 14))]++;
+    }
+    const maximum = Math.max(1, ...values.flat());
+    return `<div class="st-hint">${groups.map((group, index) => `<span style="color:${colors[index]}">${group}</span>`).join(" · ")}</div><svg viewBox="0 0 600 90" role="img" aria-label="Sessions over time by application">${values.map((counts, index) => `<polyline fill="none" stroke="${colors[index]}" stroke-width="2" points="${counts.map((count, slot) => `${slot * 600 / 13},${85 - count / maximum * 80}`).join(" ")}"/>`).join("")}</svg>`;
+  }
 
   const METRICS = {
     tokens: { label: "Tokens", stack: [["tokens_cache_read", "cache read", "var(--c-datasets)"], ["tokens_cache_write", "cache write", "var(--c-code)"], ["tokens_in", "input", "var(--c-models)"], ["tokens_out", "output", "var(--c-spaces)"]], fmt: big },
@@ -71,7 +85,7 @@ const SessionsView = (() => {
   }
   function sumRange(from, to) {
     const a = { n: 0, turns: 0, active: 0, tin: 0, tout: 0, tcr: 0, tcw: 0, hosts: new Set(), projects: new Set() };
-    for (const r of data.lite?.rows || []) {
+    for (const r of appRows()) {
       if (r[0] < from || r[0] >= to) continue;
       a.n++; a.hosts.add(r[1]); a.projects.add(r[2]); a.turns += r[3]; a.active += r[6]; a.tin += r[7]; a.tout += r[8]; a.tcr += r[9]; a.tcw += r[10];
     }
@@ -209,7 +223,7 @@ const SessionsView = (() => {
     return { label: d.toLocaleDateString([], { month: "short" }) + (d.getMonth() === 0 ? ` '${String(d.getFullYear()).slice(2)}` : ""), title: d.toLocaleDateString([], { month: "long", year: "numeric" }) };
   }
   function buckets() {
-    const tf = tfAll, g = GRAIN[tf], now = Date.now(), rows = data.lite?.rows || [], names = data.lite?.tools || [];
+    const tf = tfAll, g = GRAIN[tf], now = Date.now(), rows = appRows(), names = data.lite?.tools || [];
     const rg = periodRange(tf, now);
     const from = floorTo(g, tf === "all" ? (rows[0]?.[0] ?? now) : rg.start);
     // Today, this week, month and quarter show the whole period (later slots stay empty); YTD and all time stop at now;
@@ -239,6 +253,7 @@ const SessionsView = (() => {
   const gridTitle = () => `Tool use <small class="st-hint">${esc(TF[tfAll])} by ${GRAIN[tfAll]} · darker = bigger share of that ${GRAIN[tfAll]}'s calls</small>`;
   function repaintCharts() {
     const bk = buckets(), c = document.querySelector("[data-chart]"), g = document.querySelector("[data-grid]");
+    const apps = document.querySelector("[data-app-series]"); if (apps) apps.innerHTML = appSeries();
     if (c) { c.innerHTML = trendSvg(bk.list); grow(c, .5); }
     if (g) { g.innerHTML = toolGrid(bk.list); if (!RM()) gsap.fromTo(g.querySelectorAll(".st-cell"), { opacity: 0 }, { opacity: 1, duration: .25, stagger: { amount: .35 } }); }
     document.querySelectorAll("[data-ctitle]").forEach(e => e.innerHTML = chartTitle());
@@ -385,7 +400,7 @@ const SessionsView = (() => {
 
   // Your work for the cards' time frame: languages and LLMs by count, libraries, packages, models and apps by sessions, tools by calls.
   function profileFor() {
-    const rows = data.lite?.rows || [], names = data.lite?.names || [], tools = data.lite?.tools || [];
+    const rows = appRows(), names = data.lite?.names || [], tools = data.lite?.tools || [];
     const rg = periodRange(tfAll), m = { languages: {}, libraries: {}, packages: {}, models: {}, tools: {}, llms: {}, apps: {} };
     const add = (k, i, n = 1) => { const name = names[i]; if (name) m[k][name] = (m[k][name] || 0) + n; };
     for (const r of rows) {
@@ -462,7 +477,9 @@ const SessionsView = (() => {
     ${hosts.length ? `<div class="a1-macs">${hosts.map(h => { const s = h.last_sync; const cls = !s ? "" : s.state === "failed" ? "stale" : "on";
       return `<span class="a1-mac ${cls}" title="${esc(s?.note || h.label)}"><i></i>${esc(String(h.label).split(" · ")[0])} · ${s ? `${s.state === "failed" ? "failed" : "synced"} ${esc(ago(s.finished))}${s.sessions ? ` · ${s.sessions} sessions` : ""}` : "waiting for first sync"}</span>`; }).join("")}</div>` : ""}
     ${t.sessions ? `
+    <div class="tabs">${["All", "Claude Code", "Claude Desktop", "Codex"].map(app => `<button class="tab" data-session-app="${app}" aria-pressed="${appFilter === app}">${app}</button>`).join("")}</div>
     ${cardsHtml()}
+    <div data-app-series>${appSeries()}</div>
     <div class="section" data-ctitle>${chartTitle()}</div>
     <div class="tabs st-metrics">${Object.entries(METRICS).map(([k, m]) => `<button class="tab" data-metric="${k}" aria-pressed="${k === metric}">${esc(m.label)}</button>`).join("")}</div>
     <div class="st-chart" data-chart>${trendSvg(buckets().list)}</div>
@@ -514,6 +531,7 @@ const SessionsView = (() => {
     grow(document, first ? .9 : .4);
     document.querySelectorAll(".st-row u").forEach(u => gsap.fromTo(u, { width: 0 }, { width: (u.dataset.w * 100) + "%", duration: RM() ? 0 : .8, ease: "power3.out", delay: RM() ? 0 : .1 }));
     wireCards(first);
+    document.querySelectorAll("[data-session-app]").forEach(button => button.onclick = () => { appFilter = button.dataset.sessionApp; rerender(); });
     if (first && !RM()) gsap.fromTo(".st-ag", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: .35, stagger: .06, ease: "power2.out", clearProps: "all" });
     animateAlerts(first);
     if (first && !RM()) gsap.fromTo(".st-list, .st-cell, .st-lr", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .3, stagger: { amount: .6 }, ease: "power2.out", clearProps: "all" });

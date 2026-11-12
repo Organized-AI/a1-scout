@@ -1,5 +1,12 @@
 # Phone parity audit
 
+## Phase 1 status
+
+- Cowork discovery reads only allowlisted metadata, excludes audit logs, keeps folder fingerprints local, and keys subagents separately. Desktop Code scheduled-task metadata now classifies scheduled runs without changing SDK rules.
+- Cowork setting follows Claude unless overridden; both Desktop apps group as Claude Desktop, with desktop filter and series.
+- Synthetic privacy/layout fixtures pass. Real local Mac preview found 26 Cowork transcripts (names/counts only; no bundles or prompts printed).
+- Verification: 87 Node tests and 99 Python tests passed before final chart addition; full suites rerun before commit. Next: single-use phone sign-in.
+
 ## Scope and baseline
 
 - Private dashboard only; a1-scout-docs and phone chat capture are out of scope.
