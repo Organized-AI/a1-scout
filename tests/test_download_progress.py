@@ -180,6 +180,20 @@ class HfDownload(unittest.TestCase):
         finally:
             A.log = orig
 
+    def test_a_rate_limit_waits_then_resumes(self):
+        import subprocess
+        # 2026-11-12 18:00: the run died on this with 124,062 of 133,850 files down.
+        limited = subprocess.CompletedProcess([], 1, "", "429 Client Error: Too Many Requests for url: https://huggingface.co/api/resolve-cache/datasets/x/y/judge_result.json.\nWe had to rate limit your IP")
+        outs, tries, logs, orig = [limited, limited, subprocess.CompletedProcess([], 0, "/dest", "")], [], [], A.log
+        A.log = logs.append
+        try:
+            r = A.hf_download(["hf"], Path(self.tmp.name), 1000, once=lambda *a: tries.append(a) or outs[len(tries) - 1], pause=0, rate_pause=0)
+        finally:
+            A.log = orig
+        self.assertEqual((r.returncode, len(tries)), (0, 3))
+        self.assertIn("rate limit", logs[0])
+        self.assertIn("hf auth login", logs[0])
+
     def test_failure_keeps_the_error_text(self):
         hf = fake_hf("echo 'GatedRepoError: 403 Client Error' >&2\nexit 1\n")
         r = A.hf_download([hf], Path(self.tmp.name), 1000, count_files=lambda args: None)
