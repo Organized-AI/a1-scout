@@ -1,0 +1,40 @@
+branches:
+  defaultBase: main
+
+pr:
+  merge:
+    method: squash
+
+reviews:
+  automated:
+    enabled: true
+  routing:
+    rules:
+      - name: Auth, routing and config
+        match:
+          - src/index.js
+          - src/mcp.js
+          - wrangler.jsonc
+          - schema.sql
+        mode: specialized
+        reviewers:
+          - type: security
+          - type: general
+      - name: Mac agent
+        match:
+          - agent/**
+        mode: specialized
+        reviewers:
+          - type: general
+      - name: Docs only
+        match:
+          - docs/**
+        mode: none
+      - name: Catch-all
+        match:
+          - "**"
+        mode: single
+
+qa:
+  guidePaths:
+    - .obvious/QA.md
