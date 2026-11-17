@@ -150,7 +150,11 @@ function withPrivate(r) {
   for (const [k, v] of Object.entries(PRIVATE_HEADERS)) h.set(k, v);
   return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });
 }
-const LOGIN_HTML = (msg = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+// RAM Scout's "Test in A1 Scout" link carries Macs after the # (ram-scout-macs.js). The fragment survives the redirect
+// to /login but not the form post, so the page copies it into a field and a good sign-in returns to Bench with it.
+// Only this exact shape is accepted, and only ever as a same-site path.
+const RAM_SCOUT_HASH = /^#ram-scout-macs=[A-Za-z0-9_-]{1,200000}$/;
+const LOGIN_HTML = (msg = "", next = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>A1 Scout</title><style>
 :root{--bg:#f4f3ef;--fg:#1d2021;--muted:#666d70;--line:#d6d4cd;--accent:#1f1f1f;--bad:#a8362c;color-scheme:light}
 @media (prefers-color-scheme:dark){:root{--bg:#131516;--fg:#e7e8e6;--muted:#9da4a7;--line:#2f3437;--accent:#e7e8e6;--bad:#f08b80;color-scheme:dark}}
@@ -162,18 +166,22 @@ code{font-size:.85em}.bad{color:var(--bad);min-height:1.2em}</style></head><body
 <form method="post" action="/login"><h1>A1 Scout</h1><p>Private. Sign in with the scout token from <code>~/.nvme-stash/scout.env</code>.</p>
 <label for="token" style="position:absolute;left:-9999px">Scout token</label>
 <input id="token" name="token" type="password" autocomplete="current-password" placeholder="SCOUT_TOKEN" required autofocus>
-<button type="submit">Sign in</button><div class="bad">${msg}</div></form></body></html>`;
-const loginPage = (msg, status = 401) => withPrivate(new Response(LOGIN_HTML(msg), { status, headers: { "content-type": "text/html; charset=utf-8" } }));
+<input type="hidden" name="next" value="${RAM_SCOUT_HASH.test(next) ? next : ""}"><p id="rs" ${RAM_SCOUT_HASH.test(next) ? "" : "hidden"}>Signing in opens Bench with the Macs from RAM Scout.</p>
+<button type="submit">Sign in</button><div class="bad">${msg}</div></form>
+<script>(function(){var h=location.hash,f=document.querySelector('input[name=next]');if(f&&/^#ram-scout-macs=[A-Za-z0-9_-]+$/.test(h)){f.value=h;document.getElementById('rs').hidden=false;}})();</script></body></html>`;
+const loginPage = (msg, status = 401, next = "") => withPrivate(new Response(LOGIN_HTML(msg, next), { status, headers: { "content-type": "text/html; charset=utf-8" } }));
 
 async function login(req, env) {
   if (req.method === "GET") return loginPage("", 200);
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
   const form = await req.formData().catch(() => null);
   const t = String(form?.get("token") || "").trim();
-  if (!env.SCOUT_TOKEN || t !== env.SCOUT_TOKEN) return loginPage("That token didn't work.");
+  const next = String(form?.get("next") || "");
+  if (!env.SCOUT_TOKEN || t !== env.SCOUT_TOKEN) return loginPage("That token didn't work.", 401, next);
   const secure = new URL(req.url).protocol === "https:" ? "; Secure" : "";
   return withPrivate(new Response(null, { status: 303, headers: {
-    location: "/", "set-cookie": `${SESSION}=${await sessionValue(env)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${secure}` } }));
+    location: RAM_SCOUT_HASH.test(next) ? "/?view=bench" + next : "/",
+    "set-cookie": `${SESSION}=${await sessionValue(env)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${secure}` } }));
 }
 function logout() {
   return withPrivate(new Response(null, { status: 303, headers: { location: "/login", "set-cookie": `${SESSION}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` } }));
