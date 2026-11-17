@@ -237,7 +237,9 @@
   }
 
   const runCount = s => (data?.suites || []).find(x => x.id === s)?.models || 0;
-  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel, setSuite, runCount };
+  // Lab machine ids with bench runs: the Macs you own (a Mac you're weighing has none).
+  const ownedMachines = () => (data?.machines || []).filter(m => m.n > 0).map(m => m.machine);
+  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel, setSuite, runCount, ownedMachines, loaded: () => !!data };
 
   const css = document.createElement("style");
   css.textContent = `
