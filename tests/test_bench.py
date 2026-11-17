@@ -205,6 +205,9 @@ class Machine(unittest.TestCase):
         self.assertEqual(B.machine_id({}, "Apple M5 Pro", 64 * 2 ** 30), "m5p")
         self.assertEqual(B.machine_id({}, "Raspberry Pi 5 Model B Rev 1.1", 16 * 2 ** 30), "pi5-16gb")
         self.assertEqual(B.machine_id({}, "Apple M3 Max", 36 * 2 ** 30), "m3-max-36gb")
+        # RAM Scout's watched Macs use these same ids (ram-scout-macs.js), so a bench run lands on the watched Mac
+        self.assertEqual(B.machine_id({}, "Apple M4 Pro", 48 * 2 ** 30), "m4-pro-48gb")
+        self.assertEqual(B.machine_id({}, "Apple M5 Max", 128 * 2 ** 30), "m5-max-128gb")
         self.assertEqual(B.machine_id({"BENCH_MACHINE": "studio"}, "Apple M1 Pro", 16 * 2 ** 30), "studio")
 
 
