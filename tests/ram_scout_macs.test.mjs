@@ -127,3 +127,17 @@ test("other hashes are left alone, and removing the list keeps the Lab's Macs", 
   assert.deepEqual(plain(w.MachineFit(1, "").map(m => m.id)), ["m1", "m4", "m6", "m5p"]);
   assert.match(w.RamScoutMacs.noteHtml(), /Test in A1 Scout/);
 });
+
+test("?view= in the address opens that tab; simulate opens Bench → Simulate (RAM Scout's link lands there)", () => {
+  const html = read("public/index.html");
+  const iife = html.match(/const START_VIEW = (\(\(\) => \{[\s\S]*?\}\)\(\));/);
+  assert.ok(iife, "START_VIEW not found in public/index.html");
+  assert.match(html, /let view = START_VIEW,/);
+  assert.match(html, /if \(view === "lab"\) \{ JobsView\.openLab\(\); view = "bench"; \}/);
+  const start = search => vm.runInNewContext(iife[1], { location: { search }, URLSearchParams });
+  assert.equal(start("?view=simulate"), "lab");
+  assert.equal(start("?view=bench"), "bench");
+  assert.equal(start("?view=scout"), "scout");
+  assert.equal(start(""), "map");
+  assert.equal(start("?view=admin"), "map");
+});
