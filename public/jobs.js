@@ -31,6 +31,7 @@
       <header class="jb-hero"><span class="bn-kick">Bench · measured and simulated</span>
         <h2>Which model does the job, and what would the whole stack cost?</h2>
         <p>Pick a job. <b>Measured</b> shows real runs off the A1 on your Macs: the leaderboard, the bench's pick for each Mac, and blind battles. <b>Simulate</b> builds the whole stack around it and estimates memory, speed and load time on any Mac, using the measured numbers wherever a part has been benchmarked.</p></header>
+      ${window.ConsiderView ? window.ConsiderView.html(catalog, picks) : ""}
       <div class="jb-jobs" role="tablist" aria-label="Jobs">${J.map(x => `
         <button type="button" class="jb-job" role="tab" data-job="${esc(x.id)}" aria-selected="${x.id === j.id}">
           <span class="lab-ic">${esc(x.icon)}</span><b>${esc(x.title)}</b>
@@ -48,6 +49,8 @@
     const root = $(".jb"); if (!root) return;
     $$("[data-job]", root).forEach(b => b.onclick = () => { job = b.dataset.job; store.set("a1-job", job); rerender(); });
     $$("[data-mode]", root).forEach(b => b.onclick = () => { if (b.disabled) return; mode = b.dataset.mode; store.set("a1-job-mode", mode); rerender(); });
+    // Considering a Mac (consider.js): a workflow row opens that job in Simulate with the weighed Mac selected.
+    window.ConsiderView?.wire(root, rerender, id => { job = id; mode = "simulate"; store.set("a1-job", job); store.set("a1-job-mode", mode); rerender(); });
     if ($(".bn", root)) window.BenchView.wire(first, rerender, call); else window.LabView.wire(first, rerender);
     if (first && window.gsap && !RM()) gsap.from($$(".jb-hero > *, .jb-job", root), { y: 12, opacity: .2, duration: .4, stagger: .025, ease: "power2.out", clearProps: "transform,opacity" });
   }

@@ -97,7 +97,7 @@
   if (notice && typeof addEventListener === "function") addEventListener("DOMContentLoaded", () => {
     const t = document.createElement("div");
     t.className = "rsm-toast" + (notice.ok ? "" : " bad"); t.setAttribute("role", "status");
-    t.innerHTML = `<button type="button" aria-label="Dismiss">✕</button>${esc(notice.text)}${notice.ok && list().length ? " They now show in model fit chips and in Bench → Simulate." : ""}`;
+    t.innerHTML = `<button type="button" aria-label="Dismiss">✕</button>${esc(notice.text)}${notice.ok && list().length ? " Bench compares them with your Macs on every workflow; they also show in model fit chips and in Simulate." : ""}`;
     t.querySelector("button").onclick = () => t.remove();
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 12000);

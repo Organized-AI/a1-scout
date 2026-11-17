@@ -151,8 +151,27 @@
   const SUITE_SLOT = { rag: "llm", voice: "asr", scan: "ext", screen: "vis", sql: "sqlm", loop: "gate", skills: "sel" };
   // The model the bench picked for this job on this Mac (it searched every model that fits), for that template's main slot.
   const benchPick = (tplId, slotId, mid) => (SUITE_SLOT[tplId] === slotId && window.BenchView?.best?.(SUITE_FOR[tplId], mid)?.model_path) || null;
+  // Macs with A1 Bench runs are the ones you own; any other Mac (M6, M5 Pro, a Mac from RAM Scout) is one you're weighing.
+  const ownedIds = () => {
+    const known = new Set(machines().map(m => m.id));
+    const ran = (window.BenchView?.ownedMachines?.() || []).filter(id => known.has(id));
+    return ran.length ? ran : ["m1", "m4"].filter(id => known.has(id));
+  };
+  // A Mac you're weighing has no runs, so scale what this model measured on a Mac you own by the ratio of memory
+  // bandwidth (local generation is memory-bound). Uses the owned Mac nearest in chip generation that has a run.
+  // Chip generation from a Lab id (m1, m4, m5p, m4-max-64gb): the owned Mac closest in generation is the fairest base.
+  const genOf = id => Number((String(id).match(/^m(\d+)/) || [])[1]) || 0;
+  // borrow: also for a Mac you own that has no run of this model (Considering a Mac compares like with like).
+  function scaled(i, mid, borrow = false) {
+    if (!i?.path || !bw(mid) || (ownedIds().includes(mid) && !borrow)) return null;
+    const g = genOf(mid);
+    const from = ownedIds().filter(m => m !== mid && bw(m) && measured(i, m)?.tok_s)
+      .sort((a, b) => Math.abs(genOf(a) - g) - Math.abs(genOf(b) - g) || genOf(b) - genOf(a) || bw(b).gbs - bw(a).gbs)[0];
+    if (!from) return null;
+    return { rate: measured(i, from).tok_s * bw(mid).gbs / bw(from).gbs, from, label: machines().find(m => m.id === from)?.label || from };
+  }
 
-  function stageTime(slotId, i, sc, mid) {
+  function stageTime(slotId, i, sc, mid, borrow = false) {
     const scale = Math.max(i.bytes, 1e8) / 0.35e9;
     switch (i.kind) {
       case "embedding": return sc.chunks === 0 ? { s: 0, what: "skipped (no shortlist in this scenario)" } : { s: (sc.chunks || 20) * 0.012 * scale, what: `embed ${sc.chunks || 20} chunks` };
@@ -161,8 +180,9 @@
       case "tts": return sc.audioOut ? { s: sc.audioOut * (0.25 + 0.1 * i.bytes / 1e9), what: `speak ${secs(sc.audioOut)}` } : { s: 0, what: "skipped (no audio out)" };
       case "decision": case "guard": {
         // decision-model bench runs report questions per second as tok_s; scale it to this scenario's question count
-        const qps = i.kind === "decision" ? measured(i, mid)?.tok_s : null;
-        return qps ? { s: (sc.questions || 1) / qps, what: `${sc.questions || 1} typed question(s) at ${qps.toFixed(1)}/s, measured`, measured: true }
+        const real = i.kind === "decision" ? measured(i, mid)?.tok_s : null, sca = i.kind === "decision" && !real ? scaled(i, mid, borrow) : null;
+        const qps = real || sca?.rate;
+        return qps ? { s: (sc.questions || 1) / qps, what: `${sc.questions || 1} typed question(s) at ${qps.toFixed(1)}/s, ${real ? "measured" : `scaled from ${sca.label}'s measured run`}`, measured: !!real, scaled: !!sca }
                    : { s: (sc.questions || 1) * 0.18 * Math.max(1, i.bytes / 1e9), what: `${sc.questions || 1} typed question(s)` };
       }
       case "pii": return sc.piiKB ? { s: sc.piiKB * 0.02 * Math.max(1, i.bytes / 1e9), what: `scan ${sc.piiKB} KB for personal data` } : { s: 0, what: "skipped (nothing to scan)" };
@@ -171,13 +191,13 @@
       case "sae": return { s: (sc.passes || 1) * 0.3, what: "encode activations" };
       case "interp-model": return { s: (sc.passes || 1) * (0.4 + i.bytes / 1e9), what: `${sc.passes || 1} forward pass(es) with cache, CPU` };
       default: {
-        const real = measured(i, mid)?.tok_s;
-        const t = real || tps(i, mid);
+        const real = measured(i, mid)?.tok_s, sca = real ? null : scaled(i, mid, borrow);
+        const t = real || sca?.rate || tps(i, mid);
         if (!t) return { s: 0, what: "no speed estimate on this Mac (no published memory bandwidth); an A1 Bench run on it measures one", noSpeed: true };
         const prompt = sc.prompt || (sc.htmlKB ? sc.htmlKB * 250 : 0) + (sc.patches || 0);
-        if (slotId === "rtr") return { s: prompt / (t * 8) + 8 / t, what: "pick a route", measured: !!real };
+        if (slotId === "rtr") return { s: prompt / (t * 8) + 8 / t, what: "pick a route", measured: !!real, scaled: !!sca };
         if (!sc.gen && !prompt) return { s: 0, what: "skipped" };
-        return { s: prompt / (t * 8) + (sc.gen || 0) / t, what: `${prompt} prompt + ${sc.gen || 0} new tokens at ${real ? "" : "~"}${t.toFixed(0)} tok/s${real ? " (measured)" : ""}`, tps: t, measured: !!real };
+        return { s: prompt / (t * 8) + (sc.gen || 0) / t, what: `${prompt} prompt + ${sc.gen || 0} new tokens at ${real ? "" : "~"}${t.toFixed(0)} tok/s${real ? " (measured)" : sca ? ` (scaled from ${sca.label}'s measured run by memory bandwidth)` : ""}`, tps: t, measured: !!real, scaled: !!sca };
       }
     }
   }
@@ -194,7 +214,7 @@
     const peak = filled.reduce((t, c) => t + memNeed(c.item), 0) + overhead.length * 0.4e9;
     const budget = mach.gb * 2 ** 30 * 0.75;
     const stages = filled.map(c => { const m = measured(c.item, mach.id);
-      return { ...c, ...stageTime(c.slot.id, c.item, sc, mach.id), load: isModel(c.item) ? m?.load_s ?? c.item.bytes / A1_READ : 0, loadMeasured: m?.load_s != null }; });
+      return { ...c, ...stageTime(c.slot.id, c.item, sc, mach.id, !!st.borrow), load: isModel(c.item) ? m?.load_s ?? c.item.bytes / A1_READ : 0, loadMeasured: m?.load_s != null }; });
     const total = stages.reduce((t, s) => t + s.s, 0), firstLoad = stages.reduce((t, s) => t + s.load, 0);
     const wheels = all.filter(i => i.cat === "wheels").map(i => i.name);
     const code = all.filter(i => i.cat === "code").map(i => i.name.toLowerCase());
@@ -514,7 +534,58 @@
     if (first && window.gsap && !RM()) gsap.from($$(".lab-hero > *, .lab-tpl, .lab-panel", root), { y: 14, opacity: .2, duration: .45, stagger: .03, ease: "power2.out", clearProps: "transform,opacity" });
   }
 
-  window.LabView = { html, wire, evaluate: s => evaluate(s), templates: T, suiteFor: SUITE_FOR, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id), grade: e => grade(e), missions: MISSIONS, levelOf };
+  // ---------- considering a Mac ----------
+  // Every simulated workflow, run as a hypothetical on a Mac you're weighing (from RAM Scout) next to the Macs you
+  // own, with the stack Simulate starts from. Also the biggest model for the workflow's main part that the weighed
+  // Mac runs within the workflow's time target, and whether any Mac you own could load it at all.
+  const testOf = (e, id) => e.tests.find(t => t.id === id)?.st;
+  const paramsOf = i => { const m = String(i?.name || "").match(/(\d+(?:\.\d+)?)\s*[bB](?![a-zA-Z])/); return m ? Number(m[1]) : null; };
+  const fitsOk = e => testOf(e, "fit") === "pass";
+  const mainSlotOf = tplId => {
+    const tpl = T[tplId];
+    return SUITE_SLOT[tplId] && tpl.slots.some(s => s.id === SUITE_SLOT[tplId]) ? SUITE_SLOT[tplId]
+      : (tpl.slots.find(s => s.kinds.some(k => k === "llm" || k === "vlm")) || {}).id || null;
+  };
+  function consider(cat, pk, candId, owned = ownedIds()) {
+    if (cat) { catalog = cat; picks = pk || []; }
+    const all = items();
+    return Object.keys(T).map(tplId => {
+      const tpl = T[tplId], base = defaults(tplId), on = mach => evaluate({ ...base, mach, borrow: true });
+      const mine = owned.map(on);
+      const usable = mine.filter(e => fitsOk(e) && !e.noSpeed && e.stages.length);
+      const bestOwned = usable.sort((a, b) => a.total - b.total)[0] || mine.find(fitsOk) || null;
+      const cand = on(candId);
+      const slotId = mainSlotOf(tplId), slot = tpl.slots.find(s => s.id === slotId);
+      const now = all.find(i => i.path === base.pick[slotId]) || null;
+      let bigger = null;
+      if (slot) {
+        // Most parameters first (from the name: 27B, 30B-A3B, 0.6B), then higher precision; size stands in when a name has none.
+        // An embedder-named model never stands in for an answer model.
+        const size = i => paramsOf(i) ?? memNeed(i) / 2e9;
+        const embedName = i => !slot.kinds.includes("embedding") && /(^|[-_/])(e5|bge|gte|embed|embedding|rerank|reranker)([-_/]|$)/i.test(i.name);
+        const bigFirst = candidates(slot).filter(i => isModel(i) && !embedName(i) && (!now || size(i) > size(now)))
+          .sort((a, b) => size(b) - size(a) || b.bytes - a.bytes);
+        for (const i of bigFirst) {
+          const st2 = { ...base, pick: { ...base.pick, [slotId]: i.path } };
+          const e = evaluate({ ...st2, mach: candId, borrow: true });
+          if (!fitsOk(e) || (!e.noSpeed && testOf(e, "budget") !== "pass")) continue;
+          bigger = { item: { name: i.name, path: i.path, bytes: i.bytes }, need: memNeed(i), slot: slot.label, e,
+                     fitsOwned: owned.filter(m => fitsOk(evaluate({ ...st2, mach: m }))) };
+          break;
+        }
+      }
+      return { tplId, title: tpl.title, icon: tpl.icon, scenario: base.sc, budget: (tpl.scenarios.find(x => x.id === base.sc) || tpl.scenarios[0]).budget,
+               now: now ? { name: now.name, path: now.path } : null, mine, bestOwned, cand, bigger };
+    });
+  }
+  // Open Simulate on this workflow with a given Mac selected.
+  function focus(tplId, mach) {
+    if (!T[tplId]) return;
+    st = st && st.tpl === tplId ? { ...st, mach } : { ...defaults(tplId), mach };
+    save();
+  }
+
+  window.LabView = { html, wire, consider, focus, ownedIds, mainSlotOf, paramsOf, evaluate: s => evaluate(s), templates: T, suiteFor: SUITE_FOR, _setCatalog: (c, p) => { catalog = c; picks = p || []; }, _defaults: id => defaults(id), grade: e => grade(e), missions: MISSIONS, levelOf };
 
   const css = document.createElement("style");
   css.textContent = `
