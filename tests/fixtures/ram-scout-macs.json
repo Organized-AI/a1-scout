@@ -1,0 +1,94 @@
+{
+  "schema": "ram-scout-a1-macs/v1",
+  "source": "ram-scout",
+  "generated_at": "2026-11-16T20:00:00.000Z",
+  "macs": [
+    {
+      "id": "m4",
+      "label": "M4 16GB",
+      "chip": "M4",
+      "gb": 16,
+      "bandwidth_gbs": 120,
+      "bandwidth_basis": "Apple spec",
+      "bandwidth_source": "https://support.apple.com/en-us/121555",
+      "variants": [
+        {
+          "storage_gb": 512,
+          "condition_class": "used"
+        }
+      ],
+      "lowest_observed": null
+    },
+    {
+      "id": "m6-24gb",
+      "label": "M6 24GB",
+      "chip": "M6",
+      "gb": 24,
+      "bandwidth_gbs": 170,
+      "bandwidth_basis": "Apple spec",
+      "bandwidth_source": "https://www.apple.com/mac-mini/specs/",
+      "variants": [
+        {
+          "storage_gb": 512,
+          "condition_class": "new"
+        }
+      ],
+      "lowest_observed": null
+    },
+    {
+      "id": "m2-pro-32gb",
+      "label": "M2 Pro 32GB",
+      "chip": "M2 Pro",
+      "gb": 32,
+      "bandwidth_gbs": null,
+      "bandwidth_basis": null,
+      "bandwidth_source": null,
+      "variants": [
+        {
+          "storage_gb": 1024,
+          "condition_class": "used"
+        }
+      ],
+      "lowest_observed": null
+    },
+    {
+      "id": "m4-pro-48gb",
+      "label": "M4 Pro 48GB",
+      "chip": "M4 Pro",
+      "gb": 48,
+      "bandwidth_gbs": 273,
+      "bandwidth_basis": "Apple spec",
+      "bandwidth_source": "https://support.apple.com/en-us/121555",
+      "variants": [
+        {
+          "storage_gb": 1024,
+          "condition_class": "refurbished"
+        }
+      ],
+      "lowest_observed": {
+        "price": 1749,
+        "price_basis": "retail_asking_price",
+        "observed_at": "2026-11-16T12:00:00Z",
+        "item_url": "https://buy.itsworthmore.com/products/example-m4-pro-48gb",
+        "storage_gb": 1024,
+        "condition_class": "refurbished"
+      }
+    },
+    {
+      "id": "m5-max-128gb",
+      "label": "M5 Max 128GB",
+      "chip": "M5 Max",
+      "gb": 128,
+      "bandwidth_gbs": 614,
+      "bandwidth_basis": "Apple spec",
+      "bandwidth_source": "https://www.apple.com/mac-studio/specs/",
+      "variants": [
+        {
+          "storage_gb": 4096,
+          "condition_class": "new"
+        }
+      ],
+      "lowest_observed": null
+    }
+  ]
+}
