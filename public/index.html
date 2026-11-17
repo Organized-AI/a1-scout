@@ -287,7 +287,10 @@ details.st-m pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.45 "IBM
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
-let view = "map", state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
+// ?view= opens a tab directly: map, scout, bench, or simulate (Bench → Simulate, where RAM Scout's
+// "Test in A1 Scout" link lands with the watched Macs after the #).
+const START_VIEW = (() => { try { const v = new URLSearchParams(location.search).get("view"); return v === "simulate" ? "lab" : ["map","scout","bench"].includes(v) ? v : "map"; } catch { return "map"; } })();
+let view = START_VIEW, state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
 const gb = b => b == null ? "size ?" : b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(1)+" GB" : b >= 1e6 ? (b/1e6).toFixed(0)+" MB" : (b/1e3).toFixed(0)+" KB";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const color = id => `var(--c-${id in CATEGORY_INTRO ? id : "other"})`;
