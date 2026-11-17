@@ -1,3 +1,5 @@
+import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
+import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
 // actually building, stores picks in D1, serves them to the Mac agent that fills the
@@ -479,7 +481,7 @@ async function scan(env, trigger) {
   const invBase = new Set(inv.map(baseName));
   const invExact = new Set(inv.map(s => s.toLowerCase()));
   const { w, hits } = themeWeights(profile);
-  const { candidates, errors } = await collect(env, w);
+  const [{ candidates, errors }, work] = await Promise.all([collect(env, w), workIndex(env)]);
   const maxBytes = Number(env.MAX_PICK_GB || 40) * 1e9;
 
   const QUOTA = { model: 6, dataset: 5, space: 3, paper: 3, collection: 2 };
@@ -489,7 +491,10 @@ async function scan(env, trigger) {
     if (invExact.has(c.repo.toLowerCase()) || invBase.has(baseName(c.repo))) continue;
     if (c.size_bytes && c.size_bytes > maxBytes) continue;
     if (c.kind === "dataset" && c.size_bytes !== null && c.size_bytes < 50_000) continue; // empty stubs
-    const { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
+    let { score, reasons, flags } = scoreCandidate(c, w[c.theme] ?? 0);
+    // Ranked against your coding sessions: what you actually install, import and pull.
+    const wb = workBoost(c, work);
+    if (wb) { score = Math.round(Math.min(100, score + wb.points) * 10) / 10; reasons.unshift(wb.reason); }
     if (score < 35 && !c.extra?.watched) continue;  // a watched author's uploads always count
     scored.push({ c, score, reasons, flags });
   }
@@ -755,11 +760,17 @@ async function benchApi(req, env, url, p) {
   return json({ error: "not found" }, 404);
 }
 
-async function api(req, env, url) {
+async function api(req, env, url, ctx) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
+  const pub = await waitlistApi(req, env, url, ctx); // public: docs waitlist + survey
+  if (pub) return pub;
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
+  if (p === "/api/waitlist" && req.method === "GET") return waitlistList(env);
+  if (p.startsWith("/api/waitlist/")) { const o = await waitlistOwner(req, env, url, ctx); if (o) return o; }
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
+  const sess = await sessionsApi(req, env, url, p, { kvGet, kvSet });
+  if (sess) return sess;
 
   if (p === "/api/state" && req.method === "GET") {
     const profile = await kvGet(env, "profile");
@@ -818,7 +829,9 @@ async function api(req, env, url) {
       mlx: info.library_name === "mlx" || (info.tags || []).includes("mlx") || repo.startsWith("mlx-community/"),
       theme: THEMES.some(t => t.id === theme) ? theme : "agents",
     };
-    const { score, reasons, flags } = scoreCandidate(c, 1);
+    let { score, reasons, flags } = scoreCandidate(c, 1);
+    const wb = workBoost(c, await workIndex(env));
+    if (wb) { score = Math.round(Math.min(100, score + wb.points) * 10) / 10; reasons.unshift(wb.reason); }
     reasons.unshift(source || "added from chat");
     if (note) reasons.push(note);
     await upsertPick(env, c, score, reasons, [], flags, now()).run();
@@ -953,7 +966,9 @@ async function api(req, env, url) {
         const all = (await Promise.all(Object.keys(index).map(k => kvGet(env, `presence:${k}`)))).filter(Boolean);
         const active = activePresence(all);
         await kvSet(env, "presence", active);
-        if (active.machine !== m) return json({ ok: true, active: active.machine, run_request: null, license_check: null, license_decisions: {}, drive_request: null });
+        // Coding-session sync goes to every Mac, not only the one with the A1.
+        const sessions = await sessionOrders(env, kvGet).catch(() => ({ on: false }));
+        if (active.machine !== m) return json({ ok: true, active: active.machine, run_request: null, license_check: null, license_decisions: {}, drive_request: null, sessions });
         // hand a pending dashboard request to the heartbeat (ignored after 10 minutes)
         const rr = await kvGet(env, "run_request");
         const live = rr?.state === "pending" && Date.now() - Date.parse(rr.at) < 10 * 60e3;
@@ -963,7 +978,7 @@ async function api(req, env, url) {
         const pendingLd = Object.fromEntries(Object.entries(ld).filter(([, d]) => d.state === "pending" && Date.now() - Date.parse(d.at) < 60 * 60e3));
         const dr = await kvGet(env, "drive_request");
         const drLive = dr?.state === "pending" && Date.now() - Date.parse(dr.at) < 10 * 60e3;
-        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null });
+        return json({ ok: true, run_request: live ? rr : null, license_check: lcLive ? lc : null, license_decisions: pendingLd, drive_request: drLive ? dr : null, sessions });
       }
       await kvSet(env, "activity", { ...body, at: now() });
       return json({ ok: true });
@@ -1038,12 +1053,20 @@ async function api(req, env, url) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/api/")) {
-      try { return withPrivate(await api(req, env, url)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
+      try { return withPrivate(await api(req, env, url, ctx)); } catch (e) { return withPrivate(json({ error: e.message }, 500)); }
     }
-    if (url.pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
+    if (url.pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /docs\nDisallow: /\n", { headers: { "content-type": "text/plain" } });
+    // Public product docs. Everything else below stays behind sign-in.
+    if (url.pathname === "/docs" || url.pathname.startsWith("/docs/")) {
+      if (url.pathname !== "/docs") return Response.redirect(new URL("/docs", url).toString(), 301);
+      const r = await env.ASSETS.fetch(new Request(new URL("/docs/", url), req));
+      const h = new Headers(r.headers);
+      h.set("cache-control", "public, max-age=300");
+      return new Response(r.body, { status: r.status, headers: h });
+    }
     if (url.pathname === "/login") return login(req, env);
     if (url.pathname === "/logout") return logout();
     if (!(await signedIn(req, env))) {
@@ -1052,5 +1075,10 @@ export default {
     }
     return withPrivate(await env.ASSETS.fetch(req));
   },
-  async scheduled(_evt, env, ctx) { ctx.waitUntil(scan(env, "cron")); },
+  // Monday: the weekly scan, and last week's coding-session alerts against the 4 weeks before it.
+  // Tuesday: alerts again (same week, replaced), so Macs that were off at the weekend still count.
+  async scheduled(evt, env, ctx) {
+    if (evt.cron !== "0 13 * * 2") ctx.waitUntil(scan(env, "cron"));
+    ctx.waitUntil(sessionAlerts(env).catch(e => console.log(JSON.stringify({ event: "sessions.alerts_failed", error: e.message }))));
+  },
 };
