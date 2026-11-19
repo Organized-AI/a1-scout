@@ -31,27 +31,17 @@
     return { kind: "same", text: `About the same as your ${o.mach.label}`, x };
   }
 
-  // The whole set: does it open up work your Macs can't do, only speed it up, or change little?
-  function summary(rows) {
-    const vs = rows.map(verdict).filter(v => v.kind !== "na");
-    const n = vs.length, k = kind => vs.filter(v => v.kind === kind).length;
-    const opens = k("unlock") + k("budget"), faster = k("faster"), worse = k("worse") + k("slower");
-    const xs = vs.filter(v => v.kind === "faster").map(v => v.x).sort((a, b) => a - b);
-    const mid = xs.length ? xs[(xs.length - 1) >> 1] : null;
-    if (!n) return { tone: "none", n, opens, faster, worse, head: "No workflow could be simulated yet", sub: "Bench needs the drive catalog. Plug in the A1 and refresh." };
-    if (opens) return { tone: "good", n, opens, faster, worse, head: `Worth a look: it opens up ${opens} of ${n} workflows`,
-      sub: `${opens === 1 ? "One workflow gets" : `${opens} workflows get`} a model or a response time your Macs can't reach${faster ? `, and ${faster} more run faster` : ""}.` };
-    if (faster * 2 >= n) return { tone: "mixed", n, opens, faster, worse, head: `Faster, nothing new: about ${mid.toFixed(1)}× on ${faster} of ${n} workflows`,
-      sub: "Every workflow already runs on a Mac you own; this one would run them sooner." };
-    return { tone: "bad", n, opens, faster, worse, head: worse ? `Not a step up for your workflows` : `Little gain for your workflows`,
-      sub: worse ? `${worse} of ${n} workflows would run slower or not fit; the rest about the same.` : "Your Macs already run these about as well." };
-  }
+  // The whole set: does it open up work your Macs can't do, only speed it up, or change little? The math and wording
+  // are the shared core's (public/consider-core.js), so the Worker's headline is the same sentence.
+  const summary = rows => window.ConsiderCore.summaryOf(rows.map(verdict));
 
   let rowsCache = null, cacheKey = "";
   function candidates() { return window.RamScoutMacs ? window.RamScoutMacs.list() : []; }
   function chosen() {
     const cs = candidates();
-    return cs.find(m => m.id === store.get("a1-consider", "")) || cs[0] || null;
+    // ?consider=<machine_id> wins for this visit, then the Mac you last picked, then the first one.
+    const want = window.__a1ConsiderOpen || store.get("a1-consider", "");
+    return cs.find(m => m.id === want) || cs[0] || null;
   }
   function rowsFor(cand, catalog, picks) {
     const owned = window.LabView.ownedIds();

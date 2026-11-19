@@ -1,4 +1,5 @@
 import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
+import { considerApi, recordConsiderCheck } from "./consider.js";
 import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
@@ -669,6 +670,7 @@ async function benchApi(req, env, url, p) {
       passed, total, score, error, results, started, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`)
       .bind(uid, b.suite, machine, model, str(b.model_path, 300), str(b.runtime, 40), str(b.bank, 40), num(b.ttft_ms), num(b.tok_s),
         num(b.peak_rss), num(b.load_s), passed, total, score, str(b.error, 500), JSON.stringify(results), str(b.started, 40), now()).first();
+    await recordConsiderCheck(env, { machine, model, suite: b.suite, tok_s: num(b.tok_s) });
     return json({ ok: true, id: row.id });
   }
   // The agent's recommendation after it searched every model that fits a Mac: best[suite][machine].
@@ -765,6 +767,8 @@ async function benchApi(req, env, url, p) {
 async function api(req, env, url, ctx) {
   const p = url.pathname;
   if (p === "/api/health") return json({ ok: true });
+  // Considering a Mac: its own Bearer token (bench:consider), checked inside; it cannot reach any other route.
+  if (p === "/api/bench/consider") return considerApi(req, env, { json, kvGet });
   const pub = await waitlistApi(req, env, url, ctx); // public: docs waitlist + survey
   if (pub) return pub;
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);

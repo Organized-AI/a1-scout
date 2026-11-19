@@ -25,7 +25,7 @@ function page({ hash = "", stored = null } = {}) {
   ctx.window.window = ctx.window; ctx.window.addEventListener = () => {};
   Object.assign(ctx, ctx.window);
   vm.createContext(ctx);
-  for (const f of ["public/ram-scout-macs.js", "public/map.js", "public/bench.js", "public/lab.js"]) vm.runInContext(read(f), ctx);
+  for (const f of ["public/consider-core.js", "public/ram-scout-macs.js", "public/map.js", "public/bench.js", "public/lab.js"]) vm.runInContext(read(f), ctx);
   return { w: ctx.window, ls, replaced, ctx };
 }
 

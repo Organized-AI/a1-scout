@@ -1,0 +1,61 @@
+{
+ "source": "agent/bench.py machine_id(chip=<brand>, mem=<GiB bytes>)",
+ "cases": [
+  {
+   "brand": "Apple M1 Pro",
+   "chip": "M1 Pro",
+   "variant": null,
+   "memory_gb": 16,
+   "machine_id": "m1"
+  },
+  {
+   "brand": "Apple M1",
+   "chip": "M1",
+   "variant": null,
+   "memory_gb": 16,
+   "machine_id": "m1"
+  },
+  {
+   "brand": "Apple M4",
+   "chip": "M4",
+   "variant": null,
+   "memory_gb": 16,
+   "machine_id": "m4"
+  },
+  {
+   "brand": "Apple M6",
+   "chip": "M6",
+   "variant": null,
+   "memory_gb": 32,
+   "machine_id": "m6"
+  },
+  {
+   "brand": "Apple M5 Pro",
+   "chip": "M5 Pro",
+   "variant": null,
+   "memory_gb": 64,
+   "machine_id": "m5p"
+  },
+  {
+   "brand": "Apple M4 Max",
+   "chip": "M4 Max",
+   "variant": null,
+   "memory_gb": 64,
+   "machine_id": "m4-max-64gb"
+  },
+  {
+   "brand": "Apple M5 Pro",
+   "chip": "M5 Pro",
+   "variant": null,
+   "memory_gb": 48,
+   "machine_id": "m5-pro-48gb"
+  },
+  {
+   "brand": "Apple M4 Pro",
+   "chip": "M4 Pro",
+   "variant": null,
+   "memory_gb": 48,
+   "machine_id": "m4-pro-48gb"
+  }
+ ]
+}

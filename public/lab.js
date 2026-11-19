@@ -12,9 +12,10 @@
   // Memory bandwidth drives local generation speed. All four are Apple's published figures (M6 with 24 or 32 GB
   // and M5 Pro: Mac mini tech specs). Macs from RAM Scout bring Apple's figure when RAM Scout has one; a Mac
   // without one gets fit and memory checks but no speed estimate.
-  const BW = { m1: { gbs: 200, note: "M1 Pro, published" }, m4: { gbs: 120, note: "M4, published" },
-               m6: { gbs: 170, note: "Apple spec" }, m5p: { gbs: 307, note: "Apple spec" } };
-  const bw = id => BW[id] || window.RamScoutMacs?.bandwidth(id) || null;
+  // The Lab's own four Macs read the shared Apple-spec table (public/consider-core.js), so M6 is 153 or 170 by memory,
+  // not a fixed 170. Macs from RAM Scout keep the figure RAM Scout captured.
+  const bw = id => { const c = window.ConsiderCore?.bandwidthForMachine(id);
+    return c?.gbs ? { gbs: c.gbs, note: c.basis } : (window.RamScoutMacs?.bandwidth(id) || null); };
   const A1_READ = 0.9e9;          // bytes/s off the A1 over USB on a first (uncached) load
   const PERMISSIVE = /^(apache-2\.0|mit|bsd.*|cc-by-4\.0|cc0.*|odc-by|openrail.*)$/i;
 

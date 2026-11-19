@@ -80,3 +80,12 @@ CREATE TABLE IF NOT EXISTS companies (
 -- 4 before it. One row per (week, metric); detail is a JSON list of names for new_tools / new_llms.
 CREATE TABLE IF NOT EXISTS session_alerts (week TEXT NOT NULL, metric TEXT NOT NULL, value REAL, baseline REAL, change REAL,
   baseline_weeks INTEGER NOT NULL, flag INTEGER NOT NULL, tone TEXT NOT NULL, detail TEXT, created TEXT NOT NULL, PRIMARY KEY (week, metric));
+
+-- Considering a Mac (POST /api/bench/consider, src/consider.js). Both are append-only: rows are never updated or deleted.
+-- bench_considers: one row per answer (the request spec, the result, the bank hash it was computed from).
+CREATE TABLE IF NOT EXISTS bench_considers (id INTEGER PRIMARY KEY AUTOINCREMENT, machine_id TEXT NOT NULL,
+  bank_hash TEXT NOT NULL, request TEXT NOT NULL, result TEXT NOT NULL, created TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS bench_considers_machine ON bench_considers(machine_id, id);
+-- bench_consider_checks: when a real bench run arrives for a considered Mac, how far the estimate was from it.
+CREATE TABLE IF NOT EXISTS bench_consider_checks (id INTEGER PRIMARY KEY AUTOINCREMENT, consider_id INTEGER NOT NULL,
+  machine_id TEXT NOT NULL, suite TEXT NOT NULL, model TEXT NOT NULL, est_tok_s REAL, measured_tok_s REAL, error_pct REAL, created TEXT NOT NULL);
