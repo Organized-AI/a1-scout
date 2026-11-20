@@ -249,3 +249,31 @@ test("C3 · approving a collection queues its model, dataset and Space as new pi
     assert.deepEqual(unexpected, []);
   } finally { globalThis.fetch = real; }
 });
+
+// Sort by type: ?sort=type groups models, datasets, Spaces, code, collections, then papers; score desc (id ties) in each.
+const KIND_ORDER = ["model", "dataset", "space", "code", "collection", "paper"];
+const byType = (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
+
+test("sort=type groups a status by type, papers last, and pages without overlap", async () => {
+  const { env, rows } = seeded();
+  const expect = rows.filter(r => r.status === "new").sort((a, b) => byType(a, b) || byScore(a, b));
+  const pages = [];
+  for (let off = 0; off < expect.length; off += 200) pages.push(...await get(env, `/api/picks?status=new&sort=type&include_ok=1&limit=200&offset=${off}`));
+  assert.deepEqual(ids(pages), ids(expect));
+  const runs = pages.map(r => r.kind).filter((k, i, a) => k !== a[i - 1]);
+  assert.deepEqual(runs, ["model", "dataset", "space", "collection", "paper"]);
+});
+
+test("sort=type without a status keeps approved, new, stashed order inside each type", async () => {
+  const { env, rows } = seeded();
+  const got = await get(env, "/api/picks?sort=type&include_ok=1&limit=1000");
+  assert.deepEqual(ids(got), ids([...rows].sort((a, b) => byType(a, b) || byStatus(a, b)).slice(0, 1000)));
+});
+
+test("sort=score is the default order, and an unknown sort is a 400", async () => {
+  const { env } = seeded();
+  assert.deepEqual(ids(await get(env, "/api/picks?status=new&sort=score&limit=50")), ids(await get(env, "/api/picks?status=new&limit=50")));
+  const r = await req(env, "/api/picks?sort=kind;drop");
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /score\|type/);
+});

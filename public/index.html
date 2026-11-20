@@ -80,7 +80,14 @@ button.chip:hover{border-color:var(--accent)}
 .theme .bar i{display:block;height:100%;background:var(--accent);width:0}
 .theme small{color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:11px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
-.kchips{display:flex;gap:5px;flex-wrap:wrap;margin:-4px 0 12px}
+.krow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 14px;margin:-4px 0 12px}
+.kchips{display:flex;gap:5px;flex-wrap:wrap;margin:0;flex:1 1 auto}
+.ksort{display:flex;gap:5px;align-items:center;color:var(--mute);font:500 12px "IBM Plex Mono",monospace;margin-left:auto}
+.ksort[hidden]{display:none}
+.ksort button{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit}
+.ksort button:hover{border-color:var(--accent)} .ksort button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.kgroup{display:flex;gap:8px;align-items:baseline;font:500 12px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px}
+.kgroup:first-child{margin-top:4px} .kgroup b{font-weight:500;font-variant-numeric:tabular-nums}
 .kchip{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer;font:500 12px "IBM Plex Mono",monospace}
 .kchip b{font-weight:500;color:var(--mute);font-variant-numeric:tabular-nums} .kchip b:empty{display:none}
 .kchip:hover{border-color:var(--accent)}
@@ -301,6 +308,8 @@ const START_VIEW = (() => { try { const v = new URLSearchParams(location.search)
 let view = START_VIEW, state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
 // Scout's list is its own server query (status x type, paged); `picks` stays the all-status list for Bench and the Lab.
 // scoutPicks is null until loaded; pickCounts is the last /api/picks/counts; the seq numbers drop superseded responses.
+// pickSort "type" groups the all-types list by type (?sort=type); the choice is remembered in this browser.
+let pickSort = (() => { try { return localStorage.getItem("a1-scout-pick-sort") === "type" ? "type" : "score"; } catch { return "score"; } })();
 let kindFilter = "all", scoutPicks = null, scoutErr = "", scoutFull = false, pickCounts = null, scoutSeq = 0, countsSeq = 0;
 const gb = b => b == null ? "size ?" : b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(1)+" GB" : b >= 1e6 ? (b/1e6).toFixed(0)+" MB" : (b/1e3).toFixed(0)+" KB";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -785,7 +794,8 @@ function scoutView() {
     <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
   <div class="section">Picks</div>
   <div class="tabs">${PICK_STATUSES.map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?` <span class="tn">${+c[f]||0}</span>`:""}</button>`).join("")}</div>
-  <div class="kchips" id="kchips" role="group" aria-label="Asset type">${Object.keys(KIND_CHIP).filter(showKind).map(chipHtml).join("")}</div>
+  <div class="krow"><div class="kchips" id="kchips" role="group" aria-label="Asset type">${Object.keys(KIND_CHIP).filter(showKind).map(chipHtml).join("")}</div>
+   <span class="ksort" id="ksort" role="group" aria-label="Sort picks"${kindFilter === "all" ? "" : " hidden"}>sort ${["score", "type"].map(s => `<button type="button" data-sort="${s}" aria-pressed="${s === pickSort}">${s}</button>`).join("")}</span></div>
   <div id="list">${listHtml()}</div>`;
 }
 // A type chip's count for the selected status: status "all" reads by_kind and total. Null until the first counts arrive.
@@ -802,7 +812,15 @@ const scoutLabel = () => { const n = +(state?.counts || {}).new || 0; return n ?
 function listHtml() {
   if (!scoutPicks) return `<div class="empty">Loading picks…</div>`;
   if (!scoutPicks.length && scoutErr) return `<div class="empty" role="alert" style="color:var(--bad)">${esc(scoutErr)}</div>`;
-  return (scoutPicks.length ? scoutPicks.map(row).join("") : `<div class="empty">Nothing here.</div>`) + moreHtml();
+  return (scoutPicks.length ? rowsHtml(scoutPicks) : `<div class="empty">Nothing here.</div>`) + moreHtml();
+}
+// Sorted by type, a heading opens each type's run of rows with its exact count for the status tab.
+// prev is the kind of the row just above (for an appended page), so a type split across pages isn't headed twice.
+const grouped = () => pickSort === "type" && kindFilter === "all";
+const groupHead = k => `<div class="kgroup" data-kg="${esc(k)}"><span>${esc(KIND_CHIP[k] || k)}</span><b>${kindCount(k) ?? ""}</b></div>`;
+function rowsHtml(rows, prev = null) {
+  if (!grouped()) return rows.map(row).join("");
+  return rows.map(p => { const h = p.kind !== prev ? groupHead(p.kind) : ""; prev = p.kind; return h + row(p); }).join("");
 }
 // Never a silent undercount: fewer rows loaded than the selection's chip count (or, without counts, a full last page)
 // ends the list with "Showing X of Y" and the next page's size. A failed page shows its error here too.
@@ -818,6 +836,7 @@ function picksUrl(offset) {
   const q = new URLSearchParams();
   if (filter !== "all") q.set("status", filter);
   if (kindFilter !== "all") q.set("kind", kindFilter);
+  if (grouped()) q.set("sort", "type");
   q.set("include_ok", "1"); q.set("limit", PICKS_PAGE); q.set("offset", offset);
   return `/api/picks?${q}`;
 }
@@ -858,7 +877,7 @@ async function refreshList() {
 function paintList(animate) {
   const list = $("#list"); if (!list) return;
   list.innerHTML = listHtml(); dimList(false); wireList();
-  if (animate) riseIn(list.querySelectorAll(".pick"));
+  if (animate) riseIn(list.querySelectorAll(".kgroup, .pick"));
 }
 function paintMore() {
   const list = $("#list"); if (!list || !scoutPicks || list.hasAttribute("aria-busy")) return;
@@ -872,10 +891,13 @@ function paintCounts() {
   $$(".tabs .tab").forEach(b => tweenNum(b.querySelector(".tn"), +c[b.dataset.f] || 0));
   $$(".stats [data-s]").forEach(el => { el.dataset.n = +c[el.dataset.s] || 0; tweenNum(el, +el.dataset.n); });
   const nav = $('.nav [data-view="scout"]'); if (nav) nav.textContent = scoutLabel();
+  $$("#list .kgroup").forEach(h => { const n = kindCount(h.dataset.kg), next = h.nextElementSibling;
+    if (n === 0 || !next?.classList.contains("pick")) h.remove(); else tweenNum(h.querySelector("b"), n); });
   paintChips();
 }
 function paintChips() {
   const box = $("#kchips"); if (!box) return;
+  const ks = $("#ksort"); if (ks) { ks.hidden = kindFilter !== "all"; ks.querySelectorAll("[data-sort]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sort === pickSort)); }
   const code = box.querySelector('[data-kf="code"]');
   if (!code && showKind("code")) {
     box.insertAdjacentHTML("beforeend", chipHtml("code")); wireChips();
@@ -909,6 +931,13 @@ function selectPicks(f, k, btn) {
   $$(".tabs .tab").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === filter));
   paintChips(); syncUrl(); refreshList();
 }
+// Sort by score or by type: remembered in this browser, kept in the URL while Scout shows, fetched from the server.
+function selectSort(s, btn) {
+  if (btn && !RM()) gsap.fromTo(btn, { scale: 1 }, { scale: 1.06, duration: .15, yoyo: true, repeat: 1, clearProps: "transform" });
+  if (s === pickSort) return;
+  pickSort = s; try { localStorage.setItem("a1-scout-pick-sort", s); } catch {}
+  paintChips(); syncUrl(); refreshList();
+}
 // The next page (offset = rows loaded) is appended; focus moves to its first row since the button it replaces is gone.
 async function showMore(btn) {
   btn.disabled = true; btn.textContent = "Loading…";
@@ -919,7 +948,7 @@ async function showMore(btn) {
   scoutPicks = scoutPicks.concat(add); scoutErr = ""; scoutFull = rows.length >= PICKS_PAGE;
   const list = $("#list"); if (!list) return;
   if (add.length) list.querySelector(":scope > .empty")?.remove();
-  const html = add.map(row).join(""), foot = list.querySelector(".pk-more");
+  const html = rowsHtml(add, scoutPicks[scoutPicks.length - add.length - 1]?.kind ?? null), foot = list.querySelector(".pk-more");
   foot ? foot.insertAdjacentHTML("beforebegin", html) : list.insertAdjacentHTML("beforeend", html);
   const els = add.length ? [...list.querySelectorAll(".pick")].slice(-add.length) : [];
   paintMore(); wireList(); riseIn(els);
@@ -928,8 +957,8 @@ async function showMore(btn) {
 // The Scout selection is in the URL only while Scout shows (replaceState, no history entries); other params and the hash stay.
 function syncUrl() {
   const q = new URLSearchParams(location.search), on = view === "scout";
-  const want = { status: on ? filter : null, kind: on && kindFilter !== "all" ? kindFilter : null };
-  if (q.get("status") === want.status && q.get("kind") === want.kind) return;
+  const want = { status: on ? filter : null, kind: on && kindFilter !== "all" ? kindFilter : null, sort: on && grouped() ? "type" : null };
+  if (q.get("status") === want.status && q.get("kind") === want.kind && q.get("sort") === want.sort) return;
   for (const [k, v] of Object.entries(want)) v == null ? q.delete(k) : q.set(k, v);
   const s = q.toString();
   history.replaceState(history.state, "", location.pathname + (s ? `?${s}` : "") + location.hash);
@@ -939,6 +968,7 @@ function selectionFromUrl() {
   const q = new URLSearchParams(location.search), s = q.get("status"), k = q.get("kind");
   if (PICK_STATUSES.includes(s)) { filter = s; view = "scout"; }
   if (Object.hasOwn(KIND_CHIP, k)) { kindFilter = k; view = "scout"; }
+  if (["score", "type"].includes(q.get("sort"))) { pickSort = q.get("sort"); view = "scout"; }
 }
 // The agent's last check of stashed items against the Hub (runs on every A1 mount).
 function updatesBlock(u) {
@@ -985,7 +1015,8 @@ function wireScout(first) {
   }
   if (scoutPicks) riseIn($$("#list .pick")); else refreshList();
 }
-const wireChips = () => $$("#kchips .kchip").forEach(b => b.onclick = () => selectPicks(filter, b.dataset.kf, b));
+const wireChips = () => { $$("#kchips .kchip").forEach(b => b.onclick = () => selectPicks(filter, b.dataset.kf, b));
+  $$("#ksort [data-sort]").forEach(b => b.onclick = () => selectSort(b.dataset.sort, b)); };
 // Row buttons, the info card and Show more: re-applied after every list swap, append or row change.
 function wireList() {
   const list = $("#list"); if (!list) return;
