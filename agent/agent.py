@@ -18,7 +18,7 @@ Usage: agent.py [mount|weekly|now|catalog|status|heartbeat|sessions [loop|now|al
 once "Connect coding sessions" is on; see sync_sessions).
 `bench` runs the A1 Bench task banks (tests/bench) against stash models, one model at a time (see bench.py).
 """
-import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request
+import fcntl, fnmatch, hashlib, json, os, re, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request, zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -368,10 +368,17 @@ def inside_stash(p: Path):
 
 # ---------------------------------------------------------------- catalog
 
-def walk_size(p: Path):
+DATA_EXTS = ("parquet", "jsonl", "json", "arrow", "csv", "tsv", "txt", "zst", "gz")
+
+
+def walk_stats(p: Path, tick=None):
+    """Bytes, file count and data-file formats under p, in one pass. Every file costs a stat, which on the A1's exFAT is
+    slow: ~400k files took 25+ minutes, so build_catalog only calls this for items that changed (see Sizes).
+    tick(files) is called every 5,000 files, so a long walk keeps the dashboard's status moving."""
     total = files = 0
+    exts = {}
     if p.is_file():
-        return p.stat().st_size, 1
+        return p.stat().st_size, 1, {}
     for root, dirs, fs in os.walk(p):
         dirs[:] = [d for d in dirs if d not in (".git",)]
         for f in fs:
@@ -381,8 +388,89 @@ def walk_size(p: Path):
                 total += os.lstat(os.path.join(root, f)).st_size
                 files += 1
             except OSError:
-                pass
-    return total, files
+                continue
+            if tick and files % 5000 == 0:
+                tick(files)
+            e = f.rsplit(".", 1)[1].lower() if "." in f else ""
+            if e in DATA_EXTS:
+                exts[e] = exts.get(e, 0) + 1
+    return total, files, exts
+
+
+def walk_size(p: Path):
+    return walk_stats(p)[:2]
+
+
+SIZE_CACHE_DAYS = 7     # every cached item is measured again 7-10 days after it last was (spread by path), for changes deep inside
+
+
+class Sizes:
+    """Item sizes kept on the A1 itself (stash/.a1scout/sizes.json), so the cache travels with the drive between Macs and
+    the Pi. An item is measured again when its folder's mtime or its .verified stamp changed (every download and update
+    rewrites .verified), when it's new, or when its entry is older than SIZE_CACHE_DAYS (+0-3 days). Items not seen in a
+    read drop out on save, so deleted folders don't linger. full=True ignores the cache and measures everything."""
+
+    def __init__(self, path: Path, full=False, now=time.time):
+        self.path, self.now = path, now
+        self.old = {} if full else self._load()
+        self.new, self.measured, self.cached = {}, 0, 0
+        self.tick = None    # passed to walk_stats for items that are measured
+
+    def _load(self):
+        try:
+            d = json.loads(self.path.read_text())
+            return d["items"] if d.get("v") == 1 and isinstance(d.get("items"), dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def fingerprint(p: Path):
+        st = p.stat()
+        try:
+            v = (p / ".verified").stat()
+            stamp = [v.st_mtime_ns, v.st_size]
+        except OSError:
+            stamp = None
+        return [st.st_mtime_ns, stamp]
+
+    def ttl(self, rel):
+        return SIZE_CACHE_DAYS * 86400 + zlib.crc32(rel.encode()) % (3 * 86400)
+
+    def get(self, rel, p: Path, cache=True):
+        """(bytes, files, formats) for one item. Files are a single stat, so they're never cached."""
+        if rel in self.new:
+            e = self.new[rel]
+            return e["bytes"], e["files"], e.get("formats") or {}
+        if not p.is_dir():
+            return walk_stats(p)
+        fp = self.fingerprint(p)
+        e = self.old.get(rel)
+        if cache and e and e.get("fp") == fp and self.now() - e.get("at", 0) < self.ttl(rel):
+            self.cached += 1
+            self.new[rel] = e
+            return e["bytes"], e["files"], e.get("formats") or {}
+        b, f, ex = walk_stats(p, self.tick)
+        self.measured += 1
+        self.new[rel] = {"fp": fp, "bytes": b, "files": f, "formats": ex, "at": self.now()}
+        return b, f, ex
+
+    def save(self):
+        """Best effort: a read-only or full drive still gets a catalog, just without a cache for next time."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_name(self.path.name + ".tmp")
+            tmp.write_text(json.dumps({"v": 1, "items": self.new}))
+            os.replace(tmp, self.path)
+        except OSError as e:
+            log(f"size cache not saved: {e}")
+
+
+_SIZES = [None]         # the Sizes in use while build_catalog runs
+
+
+def measure(rel, d: Path, cache=True):
+    s = _SIZES[0]
+    return s.get(rel, d, cache) if s else walk_stats(d)
 
 
 def front_matter(readme: Path):
@@ -480,23 +568,18 @@ def describe_model(d: Path, rel):
     return model_type_of(d.name, cfg, d), {k: v for k, v in meta.items() if v not in (None, [], "")}, para
 
 
-def describe_dataset(d: Path):
+def describe_dataset(d: Path, exts=None):
+    """exts: the formats from the item's measurement, so the dataset isn't walked a second time just to count them."""
     fm, para = front_matter(d / "README.md")
-    exts = {}
-    for root, _, fs in os.walk(d):
-        for f in fs:
-            if f.startswith("._") or "." not in f:
-                continue
-            e = f.rsplit(".", 1)[1].lower()
-            if e in ("parquet", "jsonl", "json", "arrow", "csv", "tsv", "txt", "zst", "gz"):
-                exts[e] = exts.get(e, 0) + 1
+    if exts is None:
+        exts = walk_stats(d)[2]
     meta = {"formats": exts, "license": fm.get("license"), "tasks": fm.get("task_categories"),
             "size_category": fm.get("size_categories"), "pretty_name": fm.get("pretty_name")}
     return {k: v for k, v in meta.items() if v not in (None, [], "", {})}, para
 
 
-def item(name, rel, typ, d, meta=None, summary="", group=None, prov=None):
-    size, files = walk_size(d)
+def item(name, rel, typ, d, meta=None, summary="", group=None, prov=None, cache=True):
+    size, files, _ = measure(rel, d, cache)
     it = {"name": name, "path": rel, "type": typ, "bytes": size, "files": files, "meta": meta or {}, "summary": summary}
     if group:
         it["group"] = group
@@ -506,45 +589,74 @@ def item(name, rel, typ, d, meta=None, summary="", group=None, prov=None):
     return it
 
 
-def build_catalog():
+def build_catalog(progress=None, full=False):
+    """The drive map. Sizes come from the on-drive cache (Sizes) unless an item changed; progress(section, i, n) is told
+    where the read is, and progress(section, i, n, files) every 5,000 files of an item being measured. full=True measures
+    every item again."""
+    t0, sizes = time.time(), Sizes(STASH / ".a1scout" / "sizes.json", full=full)
+    prog, at = progress or (lambda *a: None), [None]
+
+    def step(section, i, n):
+        at[0] = (section, i, n)
+        prog(section, i, n, None)
+    sizes.tick = lambda files: at[0] and prog(*at[0], files)
+    _SIZES[0] = sizes
+    try:
+        c = _build_catalog(step)
+    finally:
+        _SIZES[0] = None
+    sizes.save()
+    c["read"] = {"measured": sizes.measured, "cached": sizes.cached, "seconds": round(time.time() - t0, 1), "full": bool(full)}
+    return c
+
+
+def _build_catalog(progress):
     prov = provenance()
     cats = []
+
+    def each(section, seq):
+        seq = list(seq)
+        for i, x in enumerate(seq, 1):
+            progress(section, i, len(seq))
+            yield x
 
     def cat(cid, label, items):
         items = [i for i in items if i]
         cats.append({"id": cid, "label": label, "path": cid, "bytes": sum(i["bytes"] for i in items), "items": sorted(items, key=lambda i: -i["bytes"])})
 
     # Models: loose model folders plus the mlx/ gguf/ hf/ groups.
-    models = []
+    models, mdirs = [], []
     mroot = STASH / "models"
     for d in sorted(p for p in mroot.iterdir() if p.is_dir() and not p.name.startswith(".")) if mroot.is_dir() else []:
         if (d / "config.json").exists() or any(d.glob("*.gguf")) or any(d.glob("*.safetensors")):
-            typ, meta, para = describe_model(d, f"models/{d.name}")
-            models.append(item(d.name, f"models/{d.name}", typ, d, meta, para, "models", prov))
+            mdirs.append((d, f"models/{d.name}", "models"))
         else:
-            for m in sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith(".")):
-                typ, meta, para = describe_model(m, f"models/{d.name}/{m.name}")
-                models.append(item(m.name, f"models/{d.name}/{m.name}", typ, m, meta, para, d.name, prov))
+            mdirs += [(m, f"models/{d.name}/{m.name}", d.name) for m in sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith("."))]
+    for m, rel, group in each("models", mdirs):
+        typ, meta, para = describe_model(m, rel)
+        models.append(item(m.name, rel, typ, m, meta, para, group, prov))
     cat("models", "Models", models)
 
     ds = []
     droot = STASH / "datasets"
-    for g in sorted(p for p in droot.iterdir() if p.is_dir()) if droot.is_dir() else []:
-        for d in sorted(p for p in g.iterdir() if p.is_dir() and not p.name.startswith(".")):
-            meta, para = describe_dataset(d)
-            typ = "dataset-analytics" if "ga4" in (g.name + d.name).lower() else "dataset"
-            ds.append(item(d.name, f"datasets/{g.name}/{d.name}", typ, d, meta, para, g.name, prov))
+    dsets = [(g, d) for g in (sorted(p for p in droot.iterdir() if p.is_dir()) if droot.is_dir() else [])
+             for d in sorted(p for p in g.iterdir() if p.is_dir() and not p.name.startswith("."))]
+    for g, d in each("datasets", dsets):
+        rel = f"datasets/{g.name}/{d.name}"
+        meta, para = describe_dataset(d, measure(rel, d)[2])     # one walk gives size, files and formats
+        typ = "dataset-analytics" if "ga4" in (g.name + d.name).lower() else "dataset"
+        ds.append(item(d.name, rel, typ, d, meta, para, g.name, prov))
     cat("datasets", "Datasets", ds)
 
     sp = []
-    for d in sorted(x for x in (STASH / "spaces").glob("*/") if not x.name.startswith(".")) if (STASH / "spaces").is_dir() else []:
+    for d in each("spaces", sorted(x for x in (STASH / "spaces").glob("*/") if not x.name.startswith(".")) if (STASH / "spaces").is_dir() else []):
         fm, para = front_matter(d / "README.md")
         sp.append(item(d.name, f"spaces/{d.name}", "space", d, {k: fm.get(k) for k in ("sdk", "title", "license", "app_file") if fm.get(k)}, para, None, prov))
     cat("spaces", "Spaces (apps)", sp)
 
     code = []
     croot = STASH / "code"
-    for d in sorted(p for p in croot.iterdir() if p.is_dir() and not p.name.startswith(".")) if croot.is_dir() else []:
+    for d in each("code", sorted(p for p in croot.iterdir() if p.is_dir() and not p.name.startswith(".")) if croot.is_dir() else []):
         commit = (croot / f"{d.name}.commit").read_text().strip() if (croot / f"{d.name}.commit").exists() else None
         lang = next((l for f, l in (("pyproject.toml", "Python"), ("setup.py", "Python"), ("package.json", "JavaScript/TypeScript"),
                                     ("go.mod", "Go"), ("CMakeLists.txt", "C/C++"), ("Cargo.toml", "Rust")) if (d / f).exists()), None)
@@ -586,20 +698,19 @@ def build_catalog():
         corp.append(item(d.name, f"corpora/{d.parent.name}/{d.name}", "private-corpus", d, {}, ""))  # names and sizes only
     cat("corpora", "Your own corpora (private)", corp)
 
-    vers = []
+    vers, vdirs = [], []
     vroot = STASH / "versions"
     for root, dirs, _ in os.walk(vroot) if vroot.is_dir() else []:
-        for d in [x for x in dirs if "@" in x and not x.startswith(".")]:
-            full = Path(root) / d
-            rel = str(full.relative_to(STASH))
-            vers.append(item(d, rel, "folder", full, {"replaced_by": str(full.relative_to(vroot)).rsplit("@", 1)[0]},
-                             "Previous version, kept when a newer revision was downloaded.", full.relative_to(vroot).parts[0]))
+        vdirs += [Path(root) / x for x in dirs if "@" in x and not x.startswith(".")]
         dirs[:] = [x for x in dirs if "@" not in x]
+    for full in each("old versions", vdirs):
+        vers.append(item(full.name, str(full.relative_to(STASH)), "folder", full, {"replaced_by": str(full.relative_to(vroot)).rsplit("@", 1)[0]},
+                         "Previous version, kept when a newer revision was downloaded.", full.relative_to(vroot).parts[0]))
     cat("versions", "Previous versions", vers)
 
     misc = []
     if (STASH / "manifests").is_dir():
-        misc.append(item("manifests", "manifests", "manifests", STASH / "manifests", {}, ""))
+        misc.append(item("manifests", "manifests", "manifests", STASH / "manifests", {}, "", cache=False))  # appended to in place
     scripts = [f for f in list((STASH / "scripts").glob("*.py")) + list(STASH.glob("*.py")) if not f.name.startswith(".")]
     for f in scripts:
         misc.append(item(f.name, str(f.relative_to(STASH)), "script", f, {}, ""))
@@ -1720,6 +1831,12 @@ def push_profile(catalog):
     log(f"profile pushed: {res.get('repos')} repos, {res.get('inventory')} inventory names")
 
 
+def log_read(catalog):
+    r = catalog.get("read") or {}
+    log(f"drive read in {r.get('seconds')} s: {r.get('measured')} items measured, {r.get('cached')} from the size cache"
+        + (" (full re-measure)" if r.get("full") else ""))
+
+
 def push_catalog(catalog):
     res = api("/api/catalog", "POST", json.dumps(catalog), raw=True)
     log(f"catalog pushed: {sum(len(c['items']) for c in catalog['categories'])} items, {res.get('bytes')} bytes")
@@ -1782,7 +1899,9 @@ def run_mounted(trigger):
     activity(force=True, state="running", trigger=trigger, started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
              phase="Reading the drive", current=None, queue=[], done=[], waiting=[], summary=None, blocked=None)
     wait_for_drive()
-    catalog = build_catalog()
+    catalog = build_catalog(progress=lambda section, i, n, files: activity(
+        phase=f"Reading the drive · {section} {i} of {n}" + (f" · {files:,} files" if files else "")))
+    log_read(catalog)
     push_catalog(catalog)
     push_profile(catalog)
     activity(force=True, phase="Checking stashed items for updates", needs_license=sorted(needs_license()))
@@ -2095,7 +2214,8 @@ def main():
     if mode == "catalog":
         if not present:
             print("A1 not present"); return
-        c = build_catalog(); push_catalog(c); print(json.dumps({c_["id"]: len(c_["items"]) for c_ in c["categories"]})); return
+        c = build_catalog(full="--full" in sys.argv); log_read(c); push_catalog(c)
+        print(json.dumps({**{c_["id"]: len(c_["items"]) for c_ in c["categories"]}, "read": c["read"]})); return
     if mode == "mount":
         # launchd fires this on every volume mount; only act for the A1, and not twice in 10 minutes.
         if not present:

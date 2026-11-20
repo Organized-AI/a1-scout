@@ -749,7 +749,7 @@ function animateBar(el, st, live, o) {
   if (o.prevKey && o.prevKey !== st.key) {
     gsap.from(el.querySelector(".a1-label"), { rotationX: -90, opacity: 0, transformOrigin: "50% 50% -8px", duration: .6, ease: "back.out(1.6)", clearProps: "transform,opacity" });
     gsap.fromTo(el, { backgroundColor: "var(--chip)" }, { backgroundColor: "var(--panel)", duration: 1, clearProps: "backgroundColor" });
-  } else if (o.prevPhase && o.phase && o.prevPhase !== o.phase) {
+  } else if (o.prevPhase && o.phase && o.prevPhase.split(" · ")[0] !== o.phase.split(" · ")[0]) {   // "Reading the drive · datasets 12 of 63": counts update quietly
     gsap.from(el.querySelector(".a1-phase"), { y: 8, opacity: 0, duration: .4, ease: "power2.out", clearProps: "transform,opacity" });
   }
   // 4. an item just finished: pop its chip, spark, bump the counter
