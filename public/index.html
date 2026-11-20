@@ -80,6 +80,9 @@ button.chip:hover{border-color:var(--accent)}
 .theme .bar i{display:block;height:100%;background:var(--accent);width:0}
 .theme small{color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:11px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+.tabs.kinds{margin-top:-4px;align-items:center}.tabs.kinds .tab{padding:4px 10px;font-size:12px}
+.sortby{margin-left:auto;display:flex;gap:6px;align-items:center;color:var(--mute);font:500 12px "IBM Plex Mono",monospace}
+.kgroup{font:500 12px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px}
 .pick{display:grid;grid-template-columns:58px 1fr auto;gap:14px;align-items:start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:8px}
 .score{font:600 20px "IBM Plex Mono",monospace;text-align:center;border:1px solid var(--line);border-radius:8px;padding:8px 0}
 .repo{font:600 15px "IBM Plex Mono",monospace;word-break:break-all}
@@ -227,13 +230,16 @@ button.chip:hover{border-color:var(--accent)}
 <script src="lab.js"></script>
 <script src="jobs.js"></script>
 <script src="bench.js"></script>
+<script src="pick-types.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
 // ?view= opens a tab directly: map, scout, bench, or simulate (Bench → Simulate, where RAM Scout's
 // "Test in A1 Scout" link lands with the watched Macs after the #).
-const START_VIEW = (() => { try { const v = new URLSearchParams(location.search).get("view"); return v === "simulate" ? "lab" : ["map","scout","bench"].includes(v) ? v : "map"; } catch { return "map"; } })();
+const START_VIEW = (() => { try { const q = new URLSearchParams(location.search), v = q.get("view"); return v === "simulate" ? "lab" : ["map","scout","bench"].includes(v) ? v : !v && (q.has("type") || q.has("sort")) ? "scout" : "map"; } catch { return "map"; } })();
 let view = START_VIEW, state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
+// Picks by type (?type=dataset, ?sort=type): which type chip is on and whether the list is grouped by type. See pick-types.js.
+let pickView = PickTypes.load(location.search);
 const gb = b => b == null ? "size ?" : b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(1)+" GB" : b >= 1e6 ? (b/1e6).toFixed(0)+" MB" : (b/1e3).toFixed(0)+" KB";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const color = id => `var(--c-${id in CATEGORY_INTRO ? id : "other"})`;
@@ -693,7 +699,9 @@ function animateBar(el, st, live, o) {
 const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection", code: "code (GitHub)" };
 function scoutView() {
   const c = state.counts || {}, lr = state.last_run;
-  const shown = picks.filter(p => filter === "all" || p.status === filter);
+  // Status chip counts follow the type chip; the server's counts cover every type.
+  const sc = pickView.type === "all" ? c : PickTypes.statusCounts(picks, pickView.type);
+  const { rows: shown, groups } = PickTypes.view(picks, { status: filter, type: pickView.type, sort: pickView.sort });
   return `<div class="sub">Hugging Face models, datasets, Spaces, papers and collections scored against ${state.repos} Organized-AI repos. Approved picks download to the A1 the next time it's plugged in. Approving a collection queues each of its items here for review.</div>
   <div class="stats">
     <div class="stat"><b data-n="${c.new||0}">0</b><span>to review</span></div>
@@ -708,8 +716,11 @@ function scoutView() {
   <div class="themes">${state.themes.slice().sort((a,b)=>b.weight-a.weight).map(t=>`<div class="theme"><div>${esc(t.label)}</div>
     <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
   <div class="section">Picks</div>
-  <div class="tabs">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(c[f]||0):""}</button>`).join("")}</div>
-  <div id="list">${shown.length? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>`;
+  <div class="tabs" role="group" aria-label="Status">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(sc[f]||0):""}</button>`).join("")}</div>
+  <div class="tabs kinds" role="group" aria-label="Type">${PickTypes.chips(picks, filter, pickView.type).map(t=>`<button class="tab" data-k="${t.type}" aria-pressed="${t.type===pickView.type}">${esc(t.label)} ${t.n}</button>`).join("")}
+   ${pickView.type === "all" ? `<span class="sortby">sort ${PickTypes.SORTS.map(s=>`<button class="tab" data-sort="${s}" aria-pressed="${s===pickView.sort}">${s}</button>`).join("")}</span>` : ""}</div>
+  <div id="list">${!shown.length ? `<div class="empty">${pickView.type === "all" ? "Nothing here." : `No ${esc(PickTypes.LABEL[pickView.type])} ${filter === "all" ? "in picks" : filter} yet.`}</div>`
+    : groups ? groups.map(g => `<div class="kgroup">${esc(g.label)} · ${g.rows.length}</div>${g.rows.map(row).join("")}`).join("") : shown.map(row).join("")}</div>`;
 }
 // The agent's last check of stashed items against the Hub (runs on every A1 mount).
 function updatesBlock(u) {
@@ -744,7 +755,9 @@ function row(p) {
    <div class="acts">${btns}</div></div>`;
 }
 function wireScout(first) {
-  $$(".tabs .tab").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
+  $$(".tabs [data-f]").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
+  $$(".tabs [data-k]").forEach(b => b.onclick = () => { pickView.type = b.dataset.k; PickTypes.save(pickView); render(); });
+  $$(".tabs [data-sort]").forEach(b => b.onclick = () => { pickView.sort = b.dataset.sort; PickTypes.save(pickView); render(); });
   $$("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); act(b.dataset.id, b.dataset.act, b.closest(".pick")); });
   // Clicking a pick (anywhere but its buttons and links) opens an info card that flips over.
   const openPick = el => { const p = picks.find(x => x.id === el.dataset.pick); if (p) MapView.pickCard({ ...p, hub: hubUrl(p) }, el, status => act(p.id, status, el)); };
@@ -755,7 +768,7 @@ function wireScout(first) {
   $("#scan").onclick = async e => { e.target.textContent = "Scanning…"; await call("/api/scan?trigger=page", { method: "POST" }); await load(); view = "scout"; render(); };
   $$(".bar i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : .3, ease: "power3.out" }));
   $$("[data-n]").forEach(el => { const o = { v: first ? 0 : +el.dataset.n }; gsap.to(o, { v: +el.dataset.n, duration: first ? .9 : 0, onUpdate: () => el.textContent = Math.round(o.v) }); });
-  gsap.fromTo(".pick", { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: { each: .02, amount: .5 }, ease: "power2.out", clearProps: "all" });
+  gsap.fromTo(".pick, .kgroup", { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: { each: .02, amount: .5 }, ease: "power2.out", clearProps: "all" });
   if (first) gsap.fromTo(".stat,.theme", { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: .03, clearProps: "all" });
 }
 async function act(id, status, el) {
