@@ -80,6 +80,20 @@ button.chip:hover{border-color:var(--accent)}
 .theme .bar i{display:block;height:100%;background:var(--accent);width:0}
 .theme small{color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:11px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+.krow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 14px;margin:-4px 0 12px}
+.kchips{display:flex;gap:5px;flex-wrap:wrap;margin:0;flex:1 1 auto}
+.ksort{display:flex;gap:5px;align-items:center;color:var(--mute);font:500 12px "IBM Plex Mono",monospace;margin-left:auto}
+.ksort[hidden]{display:none}
+.ksort button{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit}
+.ksort button:hover{border-color:var(--accent)} .ksort button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.kgroup{display:flex;gap:8px;align-items:baseline;font:500 12px "IBM Plex Mono",monospace;color:var(--mute);letter-spacing:.08em;text-transform:uppercase;margin:16px 0 8px}
+.kgroup:first-child{margin-top:4px} .kgroup b{font-weight:500;font-variant-numeric:tabular-nums}
+.kchip{background:var(--chip);border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer;font:500 12px "IBM Plex Mono",monospace}
+.kchip b{font-weight:500;color:var(--mute);font-variant-numeric:tabular-nums} .kchip b:empty{display:none}
+.kchip:hover{border-color:var(--accent)}
+.kchip.zero{opacity:.5}
+.kchip[aria-pressed=true]{border-color:var(--accent);color:var(--accent);opacity:1} .kchip[aria-pressed=true] b{color:inherit}
+.pk-more{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:14px 0;color:var(--mute);font:12px "IBM Plex Mono",monospace}
 .pick{display:grid;grid-template-columns:58px 1fr auto;gap:14px;align-items:start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:8px}
 .score{font:600 20px "IBM Plex Mono",monospace;text-align:center;border:1px solid var(--line);border-radius:8px;padding:8px 0}
 .repo{font:600 15px "IBM Plex Mono",monospace;word-break:break-all}
@@ -292,6 +306,11 @@ let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } ca
 // link uses ?view=bench with the watched Macs after the #, and Bench opens with them as Macs you're considering.
 const START_VIEW = (() => { try { const v = new URLSearchParams(location.search).get("view"); return v === "simulate" ? "lab" : ["map","scout","bench"].includes(v) ? v : "map"; } catch { return "map"; } })();
 let view = START_VIEW, state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
+// Scout's list is its own server query (status x type, paged); `picks` stays the all-status list for Bench and the Lab.
+// scoutPicks is null until loaded; pickCounts is the last /api/picks/counts; the seq numbers drop superseded responses.
+// pickSort "type" groups the all-types list by type (?sort=type); the choice is remembered in this browser.
+let pickSort = (() => { try { return localStorage.getItem("a1-scout-pick-sort") === "type" ? "type" : "score"; } catch { return "score"; } })();
+let kindFilter = "all", scoutPicks = null, scoutErr = "", scoutFull = false, pickCounts = null, scoutSeq = 0, countsSeq = 0;
 const gb = b => b == null ? "size ?" : b >= 1e12 ? (b/1e12).toFixed(2)+" TB" : b >= 1e9 ? (b/1e9).toFixed(1)+" GB" : b >= 1e6 ? (b/1e6).toFixed(0)+" MB" : (b/1e3).toFixed(0)+" KB";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const color = id => `var(--c-${id in CATEGORY_INTRO ? id : "other"})`;
@@ -311,7 +330,12 @@ function gate(msg = "") {
   gsap.fromTo(".gate", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: .4, ease: "power2.out", clearProps: "all" });
 }
 async function load() {
+  // On Scout, its list and counts load alongside (fetchPicks doesn't need `state`); elsewhere they're refetched when Scout opens.
+  if (view !== "scout") { scoutPicks = null; pickCounts = null; }
+  const scout = view === "scout" ? fetchPicks() : null;
   [state, picks, catalog] = await Promise.all([call("/api/state"), call("/api/picks"), call("/api/catalog")]);
+  await scout;
+  if (pickCounts) state.counts = { ...pickCounts.by_status };
   render(true);
   // measured bench numbers feed the Lab; repaint it if it's open when they arrive
   BenchView.load(call).then(() => { if (view === "bench") render(); });
@@ -319,7 +343,7 @@ async function load() {
 }
 function shell(inner) {
   return `<div class="top"><a class="brand" href="https://github.com/organized-ai" title="Organized AI"><img class="brand-icon" src="brand/icon.jpg" alt="" width="34" height="34"><img class="brand-wm brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="70" height="18"><img class="brand-wm brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="70" height="18"></a><span class="brand-sep"></span><span class="mark">A1</span><h1>${view === "map" ? "Drive map" : view === "bench" ? "Bench" : view === "sessions" ? "Coding sessions" : "Scout"}</h1>
-   <div class="nav">${["map","scout","sessions","bench"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="bench"?"Bench":v==="sessions"?"Sessions":"Scout"+((state.counts||{}).new?` · ${state.counts.new}`:"")}</button>`).join("")}</div></div>
+   <div class="nav">${["map","scout","sessions","bench"].map(v=>`<button class="tab" data-view="${v}" aria-pressed="${v===view}">${v==="map"?"Map":v==="bench"?"Bench":v==="sessions"?"Sessions":scoutLabel()}</button>`).join("")}</div></div>
    <section id="a1bar" class="a1bar" aria-live="polite"></section>${inner}
    <footer class="foot"><img class="brand-wm-light" src="brand/wordmark-yellow.png" alt="Organized AI" width="47" height="12"><img class="brand-wm-dark" src="brand/wordmark-black.png" alt="Organized AI" width="47" height="12"><span>· A1 Scout · an Organized AI asset · Austin, TX</span><a href="/m/">Phone app</a><a href="https://guide.organizedai.vip/local-compute/" target="_blank" rel="noopener">Local Compute guide</a><a href="https://github.com/organized-ai/a1-scout">source</a></footer>`;
 }
@@ -327,6 +351,7 @@ function render(first) {
   if (view === "lab") { JobsView.openLab(); view = "bench"; }          // the Lab is now Bench → Simulate
   $("#app").innerHTML = shell(view === "map" ? MapView.html(catalog) : view === "bench" ? JobsView.html(catalog, picks) : view === "sessions" ? SessionsView.html() : scoutView());
   $$("[data-view]").forEach(b => b.onclick = () => { view = b.dataset.view; if (view === "sessions") SessionsView.load(call).then(() => view === "sessions" && render()).catch(() => {}); render(true); });
+  syncUrl();                       // before wiring: a view that throws while wiring must not leave Scout's ?status=&kind= behind
   view === "map" ? MapView.wire(first, () => render())
     : view === "bench" ? JobsView.wire(first, () => render(), call) : view === "sessions" ? SessionsView.wire(first, () => render(), call) : wireScout(first);
   if (!render.introDone && !RM()) {
@@ -749,14 +774,16 @@ function animateBar(el, st, live, o) {
 }
 /* ---------------- scout ---------------- */
 const KIND_LABEL = { model: "model", dataset: "dataset", space: "Space (app)", paper: "paper", collection: "collection", code: "code (GitHub)" };
+const PICK_STATUSES = ["new", "approved", "stashed", "skipped", "all"];
+const KIND_CHIP = { all: "all types", model: "models", dataset: "datasets", space: "spaces", paper: "papers", collection: "collections", code: "code" };
+const PICKS_PAGE = 1000;                     // the server's max limit; more than this is "Show N more"
 function scoutView() {
   const c = state.counts || {}, lr = state.last_run;
-  const shown = picks.filter(p => filter === "all" || p.status === filter);
   return `<div class="sub">Hugging Face models, datasets, Spaces, papers and collections scored against ${state.repos} Organized-AI repos. Approved picks download to the A1 the next time it's plugged in. Approving a collection queues each of its items here for review.</div>
   <div class="stats">
-    <div class="stat"><b data-n="${c.new||0}">0</b><span>to review</span></div>
-    <div class="stat"><b data-n="${c.approved||0}">0</b><span>approved, waiting</span></div>
-    <div class="stat"><b data-n="${c.stashed||0}">0</b><span>on the A1</span></div>
+    <div class="stat"><b data-n="${+c.new||0}" data-s="new">0</b><span>to review</span></div>
+    <div class="stat"><b data-n="${+c.approved||0}" data-s="approved">0</b><span>approved, waiting</span></div>
+    <div class="stat"><b data-n="${+c.stashed||0}" data-s="stashed">0</b><span>on the A1</span></div>
     <div class="stat"><b>${state.free_bytes!=null? gb(state.free_bytes):"—"}</b><span>A1 free at last mount</span></div>
   </div>
   <div class="run">${lr ? `Last scan ${new Date(lr.started).toLocaleString()} (${esc(lr.trigger)}): ${lr.candidates} candidates, ${lr.new_picks} new, ${lr.auto_approved} auto-approved${lr.note? " · "+esc(lr.note):""}` : "No scan yet."}
@@ -766,8 +793,182 @@ function scoutView() {
   <div class="themes">${state.themes.slice().sort((a,b)=>b.weight-a.weight).map(t=>`<div class="theme"><div>${esc(t.label)}</div>
     <div class="bar"><i data-w="${t.weight}"></i></div><small>${t.repos.slice(0,6).map(esc).join(" · ")||"no matching repos"}</small></div>`).join("")}</div>
   <div class="section">Picks</div>
-  <div class="tabs">${["new","approved","stashed","skipped","all"].map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?" "+(c[f]||0):""}</button>`).join("")}</div>
-  <div id="list">${shown.length? shown.map(row).join("") : `<div class="empty">Nothing here.</div>`}</div>`;
+  <div class="tabs">${PICK_STATUSES.map(f=>`<button class="tab" data-f="${f}" aria-pressed="${f===filter}">${f}${f!=="all"?` <span class="tn">${+c[f]||0}</span>`:""}</button>`).join("")}</div>
+  <div class="krow"><div class="kchips" id="kchips" role="group" aria-label="Asset type">${Object.keys(KIND_CHIP).filter(showKind).map(chipHtml).join("")}</div>
+   <span class="ksort" id="ksort" role="group" aria-label="Sort picks"${kindFilter === "all" ? "" : " hidden"}>sort ${["score", "type"].map(s => `<button type="button" data-sort="${s}" aria-pressed="${s === pickSort}">${s}</button>`).join("")}</span></div>
+  <div id="list">${listHtml()}</div>`;
+}
+// A type chip's count for the selected status: status "all" reads by_kind and total. Null until the first counts arrive.
+function kindCount(k) {
+  const c = pickCounts; if (!c) return null;
+  const n = filter === "all" ? (k === "all" ? c.total : (c.by_kind || {})[k])
+    : k === "all" ? (c.by_status || {})[filter] : ((c.by_status_kind || {})[filter] || {})[k];
+  return +n || 0;
+}
+const showKind = k => k !== "code" || kindFilter === "code" || +(pickCounts?.by_kind?.code) > 0;
+const chipHtml = k => { const n = kindCount(k);
+  return `<button type="button" class="kchip${n === 0 ? " zero" : ""}" data-kf="${k}" aria-pressed="${k === kindFilter}">${KIND_CHIP[k]} <b>${n ?? ""}</b></button>`; };
+const scoutLabel = () => { const n = +(state?.counts || {}).new || 0; return n ? `Scout · ${n}` : "Scout"; };
+function listHtml() {
+  if (!scoutPicks) return `<div class="empty">Loading picks…</div>`;
+  if (!scoutPicks.length && scoutErr) return `<div class="empty" role="alert" style="color:var(--bad)">${esc(scoutErr)}</div>`;
+  return (scoutPicks.length ? rowsHtml(scoutPicks) : `<div class="empty">Nothing here.</div>`) + moreHtml();
+}
+// Sorted by type, a heading opens each type's run of rows with its exact count for the status tab.
+// prev is the kind of the row just above (for an appended page), so a type split across pages isn't headed twice.
+const grouped = () => pickSort === "type" && kindFilter === "all";
+const groupHead = k => `<div class="kgroup" data-kg="${esc(k)}"><span>${esc(KIND_CHIP[k] || k)}</span><b>${kindCount(k) ?? ""}</b></div>`;
+function rowsHtml(rows, prev = null) {
+  if (!grouped()) return rows.map(row).join("");
+  return rows.map(p => { const h = p.kind !== prev ? groupHead(p.kind) : ""; prev = p.kind; return h + row(p); }).join("");
+}
+// Never a silent undercount: fewer rows loaded than the selection's chip count (or, without counts, a full last page)
+// ends the list with "Showing X of Y" and the next page's size. A failed page shows its error here too.
+function moreHtml() {
+  if (!scoutPicks || (!scoutPicks.length && scoutErr)) return "";
+  const x = scoutPicks.length, y = kindCount(kindFilter), more = y == null ? scoutFull : x < y;
+  const err = scoutErr ? `<span role="alert" style="color:var(--bad)">${esc(scoutErr)}</span>` : "";
+  if (!more && !err) return "";
+  return `<div class="pk-more">${err}${more ? `<span>Showing ${x}${y == null ? "" : ` of ${y}`}</span><button type="button" class="btn" data-more>Show ${y == null ? "" : Math.min(y - x, PICKS_PAGE) + " "}more</button>` : ""}</div>`;
+}
+// include_ok=1: the dashboard shows every approved pick (the hold-back is for older agents), so lists match the counts.
+function picksUrl(offset) {
+  const q = new URLSearchParams();
+  if (filter !== "all") q.set("status", filter);
+  if (kindFilter !== "all") q.set("kind", kindFilter);
+  if (grouped()) q.set("sort", "type");
+  q.set("include_ok", "1"); q.set("limit", PICKS_PAGE); q.set("offset", offset);
+  return `/api/picks?${q}`;
+}
+const listError = r => r && r.error ? String(r.error) : "Couldn't load picks.";
+const fetchFailed = e => ({ error: `Couldn't load picks: ${e.message}` });
+function setCounts(c) {
+  if (!c || typeof c !== "object" || !c.by_status) return false;
+  pickCounts = c;
+  if (state) state.counts = { ...c.by_status };        // tabs, stats and the nav's Scout · N all read state.counts
+  return true;
+}
+// The first page for the current selection, with fresh counts. Stores only; callers paint. False if a newer request took over.
+async function fetchPicks() {
+  const seq = ++scoutSeq, cseq = ++countsSeq;
+  const [rows, c] = await Promise.all([call(picksUrl(0)).catch(fetchFailed), call("/api/picks/counts").catch(() => null)]);
+  if (cseq === countsSeq) setCounts(c);
+  if (seq !== scoutSeq) return false;
+  if (Array.isArray(rows)) { scoutPicks = rows; scoutErr = ""; scoutFull = rows.length >= PICKS_PAGE; }
+  else { scoutPicks = []; scoutErr = listError(rows); scoutFull = false; }
+  return true;
+}
+async function refreshCounts() {
+  const seq = ++countsSeq, c = await call("/api/picks/counts").catch(() => null);
+  if (seq === countsSeq && setCounts(c)) { paintCounts(); paintMore(); }
+}
+// While a selection loads, the old list dims and can't be clicked; reduced motion gets the same states without tweens.
+function dimList(on) {
+  const list = $("#list"); if (!list) return;
+  list.inert = on; on ? list.setAttribute("aria-busy", "true") : list.removeAttribute("aria-busy");
+  const v = on ? { opacity: .3 } : { opacity: 1, clearProps: "opacity" };
+  RM() ? gsap.set(list, v) : gsap.to(list, { ...v, duration: .2, overwrite: "auto" });
+}
+async function refreshList() {
+  if (scoutPicks) dimList(true);
+  if (!(await fetchPicks())) return;           // superseded: the newer selection paints
+  paintCounts(); paintList(true);
+}
+function paintList(animate) {
+  const list = $("#list"); if (!list) return;
+  list.innerHTML = listHtml(); dimList(false); wireList();
+  if (animate) riseIn(list.querySelectorAll(".kgroup, .pick"));
+}
+function paintMore() {
+  const list = $("#list"); if (!list || !scoutPicks || list.hasAttribute("aria-busy")) return;
+  list.querySelector(".pk-more")?.remove();
+  list.insertAdjacentHTML("beforeend", moreHtml());
+  const m = list.querySelector("[data-more]"); if (m) m.onclick = () => showMore(m);
+}
+// Counts changed: the status tabs, the type chips, the stats row and the nav's Scout · N update where they stand.
+function paintCounts() {
+  const c = state?.counts || {};
+  $$(".tabs .tab").forEach(b => tweenNum(b.querySelector(".tn"), +c[b.dataset.f] || 0));
+  $$(".stats [data-s]").forEach(el => { el.dataset.n = +c[el.dataset.s] || 0; tweenNum(el, +el.dataset.n); });
+  const nav = $('.nav [data-view="scout"]'); if (nav) nav.textContent = scoutLabel();
+  $$("#list .kgroup").forEach(h => { const n = kindCount(h.dataset.kg), next = h.nextElementSibling;
+    if (n === 0 || !next?.classList.contains("pick")) h.remove(); else tweenNum(h.querySelector("b"), n); });
+  paintChips();
+}
+function paintChips() {
+  const box = $("#kchips"); if (!box) return;
+  const ks = $("#ksort"); if (ks) { ks.hidden = kindFilter !== "all"; ks.querySelectorAll("[data-sort]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sort === pickSort)); }
+  const code = box.querySelector('[data-kf="code"]');
+  if (!code && showKind("code")) {
+    box.insertAdjacentHTML("beforeend", chipHtml("code")); wireChips();
+    if (!RM()) gsap.from(box.lastElementChild, { scale: .7, opacity: 0, duration: .35, ease: "back.out(2)", clearProps: "transform,opacity" });
+  } else if (code && !showKind("code")) code.remove();
+  box.querySelectorAll(".kchip").forEach(b => {
+    const n = kindCount(b.dataset.kf);
+    b.setAttribute("aria-pressed", b.dataset.kf === kindFilter);
+    b.classList.toggle("zero", n === 0);
+    tweenNum(b.querySelector("b"), n);
+  });
+}
+// A number on screen tweens from what it shows now to n (reduced motion: set it). A newer tween replaces a running one.
+function tweenNum(el, n, dur = .5) {
+  if (!el || n == null) return;
+  el._tw?.kill();
+  const o = { v: parseInt(el.textContent, 10) || 0 };
+  if (RM() || o.v === n) { el.textContent = n; return; }
+  el._tw = gsap.to(o, { v: n, duration: dur, ease: "power2.out", onUpdate: () => el.textContent = Math.round(o.v) });
+}
+// Rows rise in; only the first 24 of a list or of an appended page animate, so 600+ rows stay cheap.
+function riseIn(els) {
+  const top = [...els].slice(0, 24);
+  if (top.length && !RM()) gsap.fromTo(top, { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: .02, ease: "power2.out", clearProps: "transform,opacity" });
+}
+// A status tab or type chip: the picks section updates in place and that selection is fetched from the server.
+function selectPicks(f, k, btn) {
+  if (btn && !RM()) gsap.fromTo(btn, { scale: 1 }, { scale: 1.06, duration: .15, yoyo: true, repeat: 1, clearProps: "transform" });
+  if (f === filter && k === kindFilter) return;
+  filter = f; kindFilter = k;
+  $$(".tabs .tab").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === filter));
+  paintChips(); syncUrl(); refreshList();
+}
+// Sort by score or by type: remembered in this browser, kept in the URL while Scout shows, fetched from the server.
+function selectSort(s, btn) {
+  if (btn && !RM()) gsap.fromTo(btn, { scale: 1 }, { scale: 1.06, duration: .15, yoyo: true, repeat: 1, clearProps: "transform" });
+  if (s === pickSort) return;
+  pickSort = s; try { localStorage.setItem("a1-scout-pick-sort", s); } catch {}
+  paintChips(); syncUrl(); refreshList();
+}
+// The next page (offset = rows loaded) is appended; focus moves to its first row since the button it replaces is gone.
+async function showMore(btn) {
+  btn.disabled = true; btn.textContent = "Loading…";
+  const seq = ++scoutSeq, rows = await call(picksUrl(scoutPicks.length)).catch(fetchFailed);
+  if (seq !== scoutSeq) return;
+  if (!Array.isArray(rows)) { scoutErr = listError(rows); scoutPicks.length ? paintMore() : paintList(false); return; }
+  const have = new Set(scoutPicks.map(p => p.id)), add = rows.filter(p => !have.has(p.id));
+  scoutPicks = scoutPicks.concat(add); scoutErr = ""; scoutFull = rows.length >= PICKS_PAGE;
+  const list = $("#list"); if (!list) return;
+  if (add.length) list.querySelector(":scope > .empty")?.remove();
+  const html = rowsHtml(add, scoutPicks[scoutPicks.length - add.length - 1]?.kind ?? null), foot = list.querySelector(".pk-more");
+  foot ? foot.insertAdjacentHTML("beforebegin", html) : list.insertAdjacentHTML("beforeend", html);
+  const els = add.length ? [...list.querySelectorAll(".pick")].slice(-add.length) : [];
+  paintMore(); wireList(); riseIn(els);
+  els[0]?.focus({ preventScroll: true });
+}
+// The Scout selection is in the URL only while Scout shows (replaceState, no history entries); other params and the hash stay.
+function syncUrl() {
+  const q = new URLSearchParams(location.search), on = view === "scout";
+  const want = { status: on ? filter : null, kind: on && kindFilter !== "all" ? kindFilter : null, sort: on && grouped() ? "type" : null };
+  if (q.get("status") === want.status && q.get("kind") === want.kind && q.get("sort") === want.sort) return;
+  for (const [k, v] of Object.entries(want)) v == null ? q.delete(k) : q.set(k, v);
+  const s = q.toString();
+  history.replaceState(history.state, "", location.pathname + (s ? `?${s}` : "") + location.hash);
+}
+// A link like ?status=new&kind=model opens Scout on that selection; values that aren't a tab or a type are ignored.
+function selectionFromUrl() {
+  const q = new URLSearchParams(location.search), s = q.get("status"), k = q.get("kind");
+  if (PICK_STATUSES.includes(s)) { filter = s; view = "scout"; }
+  if (Object.hasOwn(KIND_CHIP, k)) { kindFilter = k; view = "scout"; }
+  if (["score", "type"].includes(q.get("sort"))) { pickSort = q.get("sort"); view = "scout"; }
 }
 // The agent's last check of stashed items against the Hub (runs on every A1 mount).
 function updatesBlock(u) {
@@ -802,28 +1003,55 @@ function row(p) {
    <div class="acts">${btns}</div></div>`;
 }
 function wireScout(first) {
-  $$(".tabs .tab").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
-  $$("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); act(b.dataset.id, b.dataset.act, b.closest(".pick")); });
-  // Clicking a pick (anywhere but its buttons and links) opens an info card that flips over.
-  const openPick = el => { const p = picks.find(x => x.id === el.dataset.pick); if (p) MapView.pickCard({ ...p, hub: hubUrl(p) }, el, status => act(p.id, status, el)); };
-  $$("[data-pick]").forEach(el => {
+  const rm = RM();
+  $$(".tabs .tab").forEach(b => b.onclick = () => selectPicks(b.dataset.f, kindFilter, b));
+  wireChips(); wireList();
+  $("#scan").onclick = async e => { e.target.textContent = "Scanning…"; await call("/api/scan?trigger=page", { method: "POST" }); await load(); view = "scout"; render(); };
+  $$(".bar i").forEach(i => rm ? i.style.width = (i.dataset.w*100)+"%" : gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : .3, ease: "power3.out" }));
+  $$("[data-n]").forEach(el => first ? tweenNum(el, +el.dataset.n, .9) : el.textContent = el.dataset.n);
+  if (first && !rm) {
+    gsap.fromTo(".stat,.theme", { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: .03, clearProps: "transform,opacity" });
+    gsap.from("#kchips .kchip", { scale: .7, opacity: 0, duration: .35, stagger: .035, ease: "back.out(2)", clearProps: "transform,opacity" });
+  }
+  if (scoutPicks) riseIn($$("#list .pick")); else refreshList();
+}
+const wireChips = () => { $$("#kchips .kchip").forEach(b => b.onclick = () => selectPicks(filter, b.dataset.kf, b));
+  $$("#ksort [data-sort]").forEach(b => b.onclick = () => selectSort(b.dataset.sort, b)); };
+// Row buttons, the info card and Show more: re-applied after every list swap, append or row change.
+function wireList() {
+  const list = $("#list"); if (!list) return;
+  list.querySelectorAll("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); act(b.dataset.id, b.dataset.act, b.closest(".pick")); });
+  list.querySelectorAll("[data-pick]").forEach(el => {
     el.onclick = e => { if (!e.target.closest("button, a")) openPick(el); };
     el.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); openPick(el); } };
   });
-  $("#scan").onclick = async e => { e.target.textContent = "Scanning…"; await call("/api/scan?trigger=page", { method: "POST" }); await load(); view = "scout"; render(); };
-  $$(".bar i").forEach(i => gsap.to(i, { width: (i.dataset.w*100)+"%", duration: first ? 1 : .3, ease: "power3.out" }));
-  $$("[data-n]").forEach(el => { const o = { v: first ? 0 : +el.dataset.n }; gsap.to(o, { v: +el.dataset.n, duration: first ? .9 : 0, onUpdate: () => el.textContent = Math.round(o.v) }); });
-  gsap.fromTo(".pick", { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: { each: .02, amount: .5 }, ease: "power2.out", clearProps: "all" });
-  if (first) gsap.fromTo(".stat,.theme", { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: .3, stagger: .03, clearProps: "all" });
+  const m = list.querySelector("[data-more]"); if (m) m.onclick = () => showMore(m);
+}
+// Clicking a pick (anywhere but its buttons and links) opens an info card that flips over.
+function openPick(el) {
+  const p = (scoutPicks || []).find(x => x.id === el.dataset.pick);
+  if (p) MapView.pickCard({ ...p, hub: hubUrl(p) }, el, status => act(p.id, status, el));
 }
 async function act(id, status, el) {
-  await gsap.to(el, { x: status === "skipped" ? -30 : 30, opacity: 0, duration: .25, ease: "power2.in" });
+  if (el && !RM()) await gsap.to(el, { x: status === "skipped" ? -30 : 30, opacity: 0, duration: .25, ease: "power2.in" });
   const r = await call("/api/picks/status", { method: "POST", body: JSON.stringify({ id, status }) });
-  if (r.expanded) { picks = await call("/api/picks"); }
-  else { const p = picks.find(x => x.id === id); if (p) p.status = status; }
-  state.counts = picks.reduce((a, x) => (a[x.status] = (a[x.status]||0)+1, a), {});
-  render();
+  // C1: approving a collection queued its items and stashed it ("expanded" is there even for zero items):
+  // refresh the all-status picks as before, refetch this list and the counts, then render.
+  if (r && typeof r === "object" && "expanded" in r) { [picks] = await Promise.all([call("/api/picks"), fetchPicks()]); render(); return; }
+  // C2: the row changes here, and leaves the list if it no longer matches the status tab; the counts come from the server.
+  const g = picks.find(x => x.id === id); if (g) g.status = status;
+  const p = scoutPicks?.find(x => x.id === id), cur = $$("#list .pick").find(x => x.dataset.pick === id);
+  if (p) p.status = status;
+  if (p && filter !== "all" && filter !== status) {
+    scoutPicks = scoutPicks.filter(x => x !== p); cur?.remove();
+    if (!scoutPicks.length) $("#list")?.insertAdjacentHTML("afterbegin", `<div class="empty">Nothing here.</div>`);
+  } else if (p && cur) {
+    const t = document.createElement("template"); t.innerHTML = row(p);
+    const n = t.content.firstElementChild; cur.replaceWith(n); wireList(); riseIn([n]);
+  }
+  refreshCounts();
 }
+selectionFromUrl();
 load();
 </script>
 </body>
