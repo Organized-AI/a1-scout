@@ -10,6 +10,7 @@ const ctx = { window: {}, document: { head: { appendChild() {} }, createElement:
   matchMedia: () => ({ matches: true }), console };
 ctx.window.window = ctx.window; Object.assign(ctx, ctx.window);
 vm.createContext(ctx);
+vm.runInContext(read("public/consider-core.js"), ctx);
 vm.runInContext(read("public/bench.js"), ctx);
 vm.runInContext(read("public/lab.js"), ctx);
 const { LabView: Lab, BenchView: Bench } = ctx.window;

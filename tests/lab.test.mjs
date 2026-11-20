@@ -13,6 +13,7 @@ ctx.window.window = ctx.window; Object.assign(ctx, ctx.window);
 vm.createContext(ctx);
 const fixture = new URL("fixtures/catalog.json", import.meta.url);
 const catalog = existsSync(fixture) ? JSON.parse(readFileSync(fixture, "utf8")) : null;
+vm.runInContext(read("public/consider-core.js"), ctx);
 vm.runInContext(read("public/lab.js"), ctx);
 const Lab = ctx.window.LabView;
 
