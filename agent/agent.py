@@ -1982,6 +1982,9 @@ def main():
         if not present:
             print("A1 not present"); return
         sys.path.insert(0, str(Path(__file__).resolve().parent))
+        if len(sys.argv) > 2 and sys.argv[2] == "speed":
+            import speed_runner
+            return speed_runner.main(sys.argv[3:], sys.modules[__name__])
         import bench
         bench.main(sys.argv[2:], sys.modules[__name__]); return
     if mode == "status":
