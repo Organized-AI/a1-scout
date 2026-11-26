@@ -24,7 +24,7 @@ BANKS = ROOT / "tests" / "bench"
 RUNNER = Path(__file__).resolve().parent / "bench_runner.py"
 DECISION_RUNNER = Path(__file__).resolve().parent / "decision_runner.py"
 QUALITY_SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select", "stape-select"]
-SUITES = QUALITY_SUITES + ["speed"]
+SUITES = QUALITY_SUITES + ["speed", "long-write"]
 DECISION_SUITES = {"gtm-gate", "skill-select", "stape-select"}           # typed questions to decision models (decision_runner.py), not chat prompts
 TYPES = {"exact", "sql_result", "json_schema", "click_in_box", "decision"}
 MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32, "decision": 0}
@@ -803,8 +803,8 @@ def parse_args(argv):
 def main(argv, A, runner_cmd=None, ram_bytes=None):
     """Called by agent.py with the A1 mounted and scout.lock held."""
     suite, model_arg, fresh = parse_args(argv)
-    if suite == "speed":
-        raise SystemExit("Speed bank is timing-only; use the Speed Lab runner rather than the quality runner")
+    if suite in ("speed", "long-write"):
+        raise SystemExit("Speed/long-write banks use the Speed Lab/hybrid runners rather than the quality runner")
     env = A.ENV
     cache = A.STATE_DIR / "bench"
     queue = cache / "pending.jsonl"
