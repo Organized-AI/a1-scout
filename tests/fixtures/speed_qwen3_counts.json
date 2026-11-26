@@ -1,0 +1,81 @@
+{
+  "tokenizer": "Qwen3-0.6B",
+  "source": "mlx-community/Qwen3-0.6B-4bit/tokenizer.json",
+  "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+  "encoding": {
+    "add_special_tokens": false,
+    "chat_template": false
+  },
+  "cases": [
+    {
+      "id": "speed-agent-release-1000-prefill",
+      "prompt_sha256": "9c3b3e2f0f1bc794588257315c42a5d4154e7d2da2305692adce93fc7e2cf46d",
+      "tokens": 1000
+    },
+    {
+      "id": "speed-agent-release-1000-decode",
+      "prompt_sha256": "9c3b3e2f0f1bc794588257315c42a5d4154e7d2da2305692adce93fc7e2cf46d",
+      "tokens": 1000
+    },
+    {
+      "id": "speed-agent-release-4000-prefill",
+      "prompt_sha256": "2a0a81f83dfa96348ed83c3834b9c3b408ef538f899d552f7c64282bb3775f6e",
+      "tokens": 4000
+    },
+    {
+      "id": "speed-agent-release-4000-decode",
+      "prompt_sha256": "2a0a81f83dfa96348ed83c3834b9c3b408ef538f899d552f7c64282bb3775f6e",
+      "tokens": 4000
+    },
+    {
+      "id": "speed-agent-release-8000-prefill",
+      "prompt_sha256": "e79ce6eca75bb2eaae844300a72a92d9c8d484c80ac995e7b7770313d414406e",
+      "tokens": 8000
+    },
+    {
+      "id": "speed-agent-release-8000-decode",
+      "prompt_sha256": "e79ce6eca75bb2eaae844300a72a92d9c8d484c80ac995e7b7770313d414406e",
+      "tokens": 8000
+    },
+    {
+      "id": "speed-agent-release-16000-prefill",
+      "prompt_sha256": "c7f0e67e82b39f9b602fa9b9e85b2b17362b0663054453723b63e3d63db58539",
+      "tokens": 16000
+    },
+    {
+      "id": "speed-agent-release-16000-decode",
+      "prompt_sha256": "c7f0e67e82b39f9b602fa9b9e85b2b17362b0663054453723b63e3d63db58539",
+      "tokens": 16000
+    },
+    {
+      "id": "speed-agent-release-32000-prefill",
+      "prompt_sha256": "26d7d2a0e78730964090d4e1813ac4402c98609aa30c38dd65df669b640678ab",
+      "tokens": 32000
+    },
+    {
+      "id": "speed-agent-release-32000-decode",
+      "prompt_sha256": "26d7d2a0e78730964090d4e1813ac4402c98609aa30c38dd65df669b640678ab",
+      "tokens": 32000
+    },
+    {
+      "id": "speed-chat-release-500-prefill",
+      "prompt_sha256": "a8cf42ccd2df789d1f901158a1df557e04fc3e2fe81cd3f66ed0b1c2c673b139",
+      "tokens": 500
+    },
+    {
+      "id": "speed-chat-release-500-decode",
+      "prompt_sha256": "a8cf42ccd2df789d1f901158a1df557e04fc3e2fe81cd3f66ed0b1c2c673b139",
+      "tokens": 500
+    },
+    {
+      "id": "speed-chat-garden-500-prefill",
+      "prompt_sha256": "3ecf073537a81e1f027edbd0e41821b4facebddf54b52ec3739b961ba77076a3",
+      "tokens": 500
+    },
+    {
+      "id": "speed-chat-garden-500-decode",
+      "prompt_sha256": "3ecf073537a81e1f027edbd0e41821b4facebddf54b52ec3739b961ba77076a3",
+      "tokens": 500
+    }
+  ]
+}
