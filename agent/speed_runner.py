@@ -6,6 +6,7 @@ execution takes that same lock. No server settings or cache contents are changed
 import argparse
 import fcntl
 import importlib.metadata
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -287,7 +288,7 @@ class MLXAdapter:
 
 
 def run_tasks(tasks, model, target, *, endpoint=None, machine=None, env=None, adapter=None,
-              probe=None, free_probe=None, rss_probe=None, cache_dir=DEFAULT_CACHE, cache_pair=True):
+              probe=None, free_probe=None, rss_probe=None, cache_dir=DEFAULT_CACHE, cache_pair=True, tokenizer=None, precision=None):
     """Return one row per measurement. Inject adapters/probes for offline tests."""
     env = env or {}
     probe = probe or machine_probe
@@ -296,6 +297,14 @@ def run_tasks(tasks, model, target, *, endpoint=None, machine=None, env=None, ad
     info = probe()
     info.update(cache_read_probe(cache_dir) if target == "omlx" else {})
     rows = []
+    bank_tokenizer = "Qwen3"
+    actual_tokenizer = tokenizer or env.get("SPEED_TOKENIZER")
+    if not actual_tokenizer and target in ("mlx", "omlx"):
+        try:
+            actual_tokenizer = "sha256:" + hashlib.sha256((Path(model) / "tokenizer.json").read_bytes()).hexdigest()
+        except OSError:
+            pass
+    actual_tokenizer = actual_tokenizer or "unknown"
     local = target in ("mlx", "omlx")
     base_url = endpoint if target == "endpoint" else env.get("OMLX_URL", DEFAULT_OMLX_URL)
     if target not in ("mlx", "omlx", "endpoint") or target == "endpoint" and not endpoint:
@@ -330,6 +339,7 @@ def run_tasks(tasks, model, target, *, endpoint=None, machine=None, env=None, ad
             rows.append({"uid": uuid.uuid4().hex, "suite": "speed", "machine": machine or bench.machine_id(env),
                          "model": str(model) if target == "endpoint" else Path(model).name, "target": target, "bank": speed_bank.bank_hash(),
                          **{key: task[key] for key in ("workload", "phase", "target_prompt_tokens", "max_tokens", "tokenizer")},
+                         "bank_tokenizer": bank_tokenizer, "tokenizer": actual_tokenizer, "precision": precision,
                          "task_id": task["id"], "started": started, "finished": utcnow(),
                          "cache_state": cache_state, "cache_pair_uid": pair_uid if len(repeats) == 2 else None,
                          "timing_basis": "client TTFT includes transport/queue; write interval ends at stream completion",
@@ -345,6 +355,8 @@ def main(argv, A):
     ap.add_argument("--target", choices=("mlx", "omlx", "endpoint"), default="omlx")
     ap.add_argument("--endpoint")
     ap.add_argument("--model", required=True)
+    ap.add_argument("--tokenizer", help="assert actual endpoint tokenizer identity; otherwise unknown")
+    ap.add_argument("--precision", help="model precision/quantization identity")
     ap.add_argument("--machine", help="target machine identity; remote hardware probes remain client-scoped")
     ap.add_argument("--smoke", action="store_true", help="one 1k reading request, no cache pair")
     args = ap.parse_args(argv)
@@ -355,7 +367,7 @@ def main(argv, A):
     if args.smoke:
         tasks = [next(t for t in tasks if t["phase"] == "prefill" and t["target_prompt_tokens"] == 1000)]
     rows = run_tasks(tasks, model, args.target, endpoint=args.endpoint, env=A.ENV,
-                     machine=args.machine or bench.machine_id(A.ENV), cache_pair=not args.smoke)
+                     machine=args.machine or bench.machine_id(A.ENV), cache_pair=not args.smoke, tokenizer=args.tokenizer, precision=args.precision)
     destination = A.STATE_DIR / "bench" / "speed"
     destination.mkdir(parents=True, exist_ok=True)
     for row in rows:

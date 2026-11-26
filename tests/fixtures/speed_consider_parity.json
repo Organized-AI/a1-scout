@@ -1,0 +1,1309 @@
+{
+  "cases": [
+    {
+      "id": "scaled",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": 200,
+        "write": 40,
+        "seconds": 437.5,
+        "fit": true
+      }
+    },
+    {
+      "id": "direct",
+      "input": {
+        "machine": {
+          "id": "m1",
+          "chip": "M1 Pro",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": 100,
+        "write": 20,
+        "seconds": 875,
+        "fit": true,
+        "prefill_measured": true
+      }
+    },
+    {
+      "id": "no-data",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "precision-mismatch",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q8",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "incomparable-compute",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP4"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": 40,
+        "seconds": null,
+        "fit": true
+      }
+    },
+    {
+      "id": "no-fit",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 1
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": 200,
+        "write": 40,
+        "seconds": null,
+        "fit": false
+      }
+    },
+    {
+      "id": "mismatch-bank",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "other-bank",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "mismatch-model",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "other-model",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "mismatch-tokenizer",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "other-tokenizer",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "mismatch-cache_state",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "warm-repeat",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "mismatch-target",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "endpoint",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "mismatch-engine_version",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-2"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "exact-fit-refusal",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m4",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": false,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100,
+            "reason": "prefill guard"
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m4",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": false,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20,
+            "reason": "prefill guard"
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": false
+      }
+    },
+    {
+      "id": "unknown-tokenizer",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "unknown",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "unknown",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "unknown",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {
+          "M1 Pro": {
+            "bandwidth_gbs": 200,
+            "gpu_tflops": 5,
+            "compute_basis": "test_FP16"
+          },
+          "M4": {
+            "bandwidth_gbs": 400,
+            "gpu_tflops": 10,
+            "compute_basis": "test_FP16"
+          }
+        }
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": null
+      }
+    },
+    {
+      "id": "default-M6-16GB-bin",
+      "input": {
+        "machine": {
+          "id": "default-M6-16GB-bin",
+          "chip": "M6",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {}
+      },
+      "expect": {
+        "read": null,
+        "write": 15.3,
+        "seconds": null,
+        "fit": true
+      }
+    },
+    {
+      "id": "default-M5Max-36GB-bin",
+      "input": {
+        "machine": {
+          "id": "default-M5Max-36GB-bin",
+          "chip": "M5 Max",
+          "memory_gb": 36
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {}
+      },
+      "expect": {
+        "read": null,
+        "write": 46,
+        "seconds": null,
+        "fit": true
+      }
+    },
+    {
+      "id": "missing-specs",
+      "input": {
+        "machine": {
+          "id": "m4",
+          "chip": "M4",
+          "memory_gb": 16
+        },
+        "request": {
+          "model": "fake-q4",
+          "bank": "bank-v1",
+          "tokenizer": "Qwen3",
+          "cache_state": "not_applicable",
+          "target": "mlx",
+          "precision": "q4",
+          "engine_version": "test-1"
+        },
+        "runs": [
+          {
+            "id": 1,
+            "uid": "prefill",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "prefill",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "prompt_tok_s": 100
+          },
+          {
+            "id": 2,
+            "uid": "decode",
+            "machine": "m1",
+            "chip": "M1 Pro",
+            "phase": "decode",
+            "target_prompt_tokens": 8000,
+            "fit": true,
+            "probes": {
+              "rss_scope": "model-process",
+              "peak_rss_bytes": 2147483648
+            },
+            "model": "fake-q4",
+            "bank": "bank-v1",
+            "tokenizer": "Qwen3",
+            "cache_state": "not_applicable",
+            "target": "mlx",
+            "precision": "q4",
+            "engine_version": "test-1",
+            "write_tok_s": 20
+          }
+        ],
+        "calibration": {},
+        "specs": {}
+      },
+      "expect": {
+        "read": null,
+        "write": null,
+        "seconds": null,
+        "fit": true
+      }
+    }
+  ]
+}

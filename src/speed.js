@@ -69,14 +69,14 @@ export function cleanSpeedRun(b) {
   for (const key of ["ttft_ms", "latency_ms", "prompt_tok_s", "write_tok_s", "load_s", "bandwidth_used_gbs"]) row[key] = metric(b[key]);
   for (const key of ["prompt_tokens", "reply_tokens", "target_prompt_tokens", "max_tokens", "active_weight_bytes"]) row[key] = integer(b[key]);
   for (const key of ["started", "finished"]) row[key] = text(b[key], 40);
-  for (const key of ["runtime", "engine_version", "tokenizer"]) row[key] = text(b[key], 80);
+  for (const key of ["runtime", "engine_version", "tokenizer", "bank_tokenizer", "precision"]) row[key] = text(b[key], 80);
   row.timing_basis = text(b.timing_basis, 200);
   row.cache_state = oneOf(b.cache_state, ["not_applicable", "first-use-unconfirmed", "warm-repeat"]);
   row.cache_pair_uid = identifier(b.cache_pair_uid, 128);
   return { row };
 }
 
-export async function speedApi(req, env, url, { json }) {
+export async function speedApi(req, env, url, { json, recordSpeedCheck }) {
   if (req.method !== "POST" && req.method !== "GET") return json({ error: "GET or POST only" }, 405);
   if (req.method === "POST") {
     const raw = await req.text();
@@ -91,7 +91,10 @@ export async function speedApi(req, env, url, { json }) {
       .bind(row.uid, row.machine, row.model, row.target, row.phase, row.bank, row.fit == null ? null : Number(row.fit),
         row.ttft_ms, row.prompt_tok_s, row.write_tok_s, row.prompt_tokens, row.reply_tokens,
         row.probes.free_ram_bytes, row.probes.peak_rss_bytes, JSON.stringify(row), row.started, new Date().toISOString()).first();
-    if (inserted) return json({ ok: true, id: inserted.id, duplicate: false });
+    if (inserted) {
+      if (recordSpeedCheck) await recordSpeedCheck(env, row);
+      return json({ ok: true, id: inserted.id, duplicate: false });
+    }
     const existing = await env.DB.prepare("SELECT id FROM bench_speed_runs WHERE uid=?").bind(row.uid).first();
     return json({ ok: true, id: existing.id, duplicate: true });
   }

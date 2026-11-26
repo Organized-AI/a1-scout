@@ -249,6 +249,17 @@ class SpeedRuns(unittest.TestCase):
         self.assertTrue(rows[0]["fit"])
         self.assertEqual(rows[0]["cache_state"], "not_applicable")
 
+    def test_runtime_tokenizer_identity_is_separate_from_bank_tokenizer(self):
+        kwargs = {"machine": "remote", "endpoint": "http://localhost/v1", "probe": self.probes,
+                  "free_probe": lambda: 0, "rss_probe": lambda: 2,
+                  "adapter": lambda *args: {"fit": True, "usage": {}}}
+        unknown = S.run_tasks([self.task()], "org/fake", "endpoint", **kwargs)[0]
+        self.assertEqual(unknown["tokenizer"], "unknown")
+        self.assertEqual(unknown["bank_tokenizer"], "Qwen3")
+        explicit = S.run_tasks([self.task()], "org/fake", "endpoint", tokenizer="sha256:fixture", precision="q4", **kwargs)[0]
+        self.assertEqual(explicit["tokenizer"], "sha256:fixture")
+        self.assertEqual(explicit["precision"], "q4")
+
     def test_omlx_custom_url_and_endpoint_token_used_without_persisting(self):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(S, "memory_guard", return_value=None), mock.patch.object(S, "measure_endpoint", return_value={"fit": True, "usage": {}}) as call:
