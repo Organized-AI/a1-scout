@@ -89,3 +89,12 @@ CREATE INDEX IF NOT EXISTS bench_considers_machine ON bench_considers(machine_id
 -- bench_consider_checks: when a real bench run arrives for a considered Mac, how far the estimate was from it.
 CREATE TABLE IF NOT EXISTS bench_consider_checks (id INTEGER PRIMARY KEY AUTOINCREMENT, consider_id INTEGER NOT NULL,
   machine_id TEXT NOT NULL, suite TEXT NOT NULL, model TEXT NOT NULL, est_tok_s REAL, measured_tok_s REAL, error_pct REAL, created TEXT NOT NULL);
+
+-- Speed Lab: append-only measurements, separate from scored quality runs.
+-- UID uniquely identifies an offline retransmission; payload is a validated row.
+CREATE TABLE IF NOT EXISTS bench_speed_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT NOT NULL UNIQUE,
+  machine TEXT NOT NULL, model TEXT NOT NULL, target TEXT NOT NULL, phase TEXT NOT NULL, bank TEXT NOT NULL,
+  fit INTEGER, ttft_ms REAL, prompt_tok_s REAL, write_tok_s REAL, prompt_tokens INTEGER, reply_tokens INTEGER,
+  free_ram_bytes INTEGER, peak_rss_bytes INTEGER, payload TEXT NOT NULL, started TEXT, created TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS bench_speed_runs_key ON bench_speed_runs(machine, model, phase, bank, id);

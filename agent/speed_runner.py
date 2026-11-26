@@ -362,6 +362,8 @@ def main(argv, A):
         # Responses need not be retained for timing; avoid writing arbitrary data.
         row.pop("output", None)
         (destination / f"{row['uid']}.json").write_text(json.dumps(row, indent=2, allow_nan=False))
+    from speed_upload import publish_rows
+    publish_rows(rows, A)
     return rows
 
 
