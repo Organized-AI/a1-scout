@@ -1,0 +1,52 @@
+{
+  "command": "python3 agent/agent.py bench speed --target omlx --model models/mlx/Qwen3-0.6B-4bit --smoke --precision q4",
+  "lock_held": true,
+  "mount_verified": true,
+  "upload": "queued locally; undeployed Worker was not contacted",
+  "rows": [
+    {
+      "uid": "7f638333c143448183bcb1df6a1a75bc",
+      "suite": "speed",
+      "machine": "m1",
+      "model": "Qwen3-0.6B-4bit",
+      "target": "omlx",
+      "bank": "9c563215da51",
+      "workload": "agent",
+      "phase": "prefill",
+      "target_prompt_tokens": 1000,
+      "max_tokens": 1,
+      "tokenizer": "sha256:aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "bank_tokenizer": "Qwen3",
+      "precision": "q4",
+      "task_id": "speed-agent-release-1000-prefill",
+      "started": "2026-11-26T04:51:13.344606+00:00",
+      "finished": "2026-11-26T04:51:13.354459+00:00",
+      "cache_state": "not_applicable",
+      "cache_pair_uid": null,
+      "timing_basis": "client TTFT includes transport/queue; write interval ends at stream completion",
+      "fit": false,
+      "reason": "free RAM 195706880 bytes below model weights 335454680 + margin 536870912 bytes",
+      "error": null,
+      "usage": {},
+      "runtime": "omlx",
+      "active_weight_bytes": null,
+      "bandwidth_used_gbs": null,
+      "probes": {
+        "chip": "M1 Pro",
+        "memory_bytes": 17179869184,
+        "bandwidth_gbs": 200,
+        "bandwidth_source": "https://support.apple.com/kb/SP854",
+        "cache_drive": "/Volumes/A1/omlx-cache",
+        "cache_read_gbs": 0.013189842117876969,
+        "cache_read_basis": "read-only existing file; filesystem cache may apply",
+        "cache_read_bytes": 4096,
+        "free_ram_bytes": 195706880,
+        "free_ram_basis": "free pages only",
+        "peak_rss_bytes": 47480832,
+        "rss_scope": "client",
+        "probe_scope": "local-machine"
+      }
+    }
+  ],
+  "consider_checks": "No successful live speed rates available; no estimate errors can be measured yet."
+}
