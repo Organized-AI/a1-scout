@@ -31,7 +31,7 @@
   let data = null, loading = null, err = null;
   let tab = store.get("a1-bench-tab", "board"), suite = store.get("a1-bench-suite", "rag-notes"), machine = store.get("a1-bench-mach", "");
   if (!SUITES[suite]) suite = "rag-notes";             // a suite saved by an older version
-  if (tab !== "board" && tab !== "battle") tab = "board";
+  if (!["board", "battle", "speed"].includes(tab)) tab = "board";
   let battle = null, reveal = null, bErr = null, bBusy = false;
   let callFn = null, rerenderFn = () => {};
 
@@ -146,6 +146,7 @@
   function setSuite(id) { if (SUITES[id] && id !== suite) { suite = id; store.set("a1-bench-suite", suite); battle = null; reveal = null; bErr = null; } }
   function html(opts = {}) {
     if (opts.suite) setSuite(opts.suite);
+    if (tab === "speed" && window.SpeedView) return `<div class="bn"><div class="bn-tabs" role="tablist" aria-label="Bench views">${["board", "battle", "speed"].map(id => `<button type="button" role="tab" class="bn-tab" data-tab="${id}" aria-selected="${id === tab}">${{ board: "Leaderboard", battle: "Blind battle", speed: "Speed" }[id]}</button>`).join("")}</div>${window.SpeedView.html()}</div>`;
     const counts = Object.fromEntries((data?.suites || []).map(s => [s.id, s.models]));
     const machines = data?.machines || [];
     return `<div class="bn${opts.embedded ? " bn-embed" : ""}">
@@ -154,7 +155,8 @@
         <p>Every number here came from a real run off the A1: one model loaded at a time, the same synthetic tasks, scored by code. The Lab uses these numbers in place of its estimates once a model has been benchmarked.</p></header>`}
       <div class="bn-tabs" role="tablist" aria-label="Bench views">
         <button type="button" role="tab" class="bn-tab" data-tab="board" aria-selected="${tab === "board"}">Leaderboard</button>
-        <button type="button" role="tab" class="bn-tab" data-tab="battle" aria-selected="${tab === "battle"}">Blind battle</button></div>
+        <button type="button" role="tab" class="bn-tab" data-tab="battle" aria-selected="${tab === "battle"}">Blind battle</button>
+        <button type="button" role="tab" class="bn-tab" data-tab="speed" aria-selected="${tab === "speed"}">Speed</button></div>
       ${opts.embedded ? "" : `<div class="bn-suites" role="group" aria-label="Suite">${Object.entries(SUITES).map(([id, s]) => `
         <button type="button" class="bn-suite" data-suite="${id}" aria-pressed="${id === suite}"><b>${esc(s.label)}</b><small>${counts[id] ? `${counts[id]} model${counts[id] > 1 ? "s" : ""}` : "no runs"}</small></button>`).join("")}</div>`}
       <section class="bn-panel">
@@ -223,6 +225,7 @@
     const root = $(".bn"); if (!root) return;
     if (!data && !loading) load().then(rerender);
     $$("[data-tab]", root).forEach(b => b.onclick = () => { tab = b.dataset.tab; store.set("a1-bench-tab", tab); rerender(); if (tab === "battle" && !battle && !bBusy) nextBattle(); else if (tab === "board") animateBoard(root); });
+    if (tab === "speed" && window.SpeedView) { window.SpeedView.wire(first, rerender, callFn); return; }
     $$("[data-suite]", root).forEach(b => b.onclick = () => { suite = b.dataset.suite; store.set("a1-bench-suite", suite); battle = null; reveal = null; bErr = null;
       rerender(); if (tab === "battle") nextBattle(); else animateBoard($(".bn")); });
     $("[data-mach]", root)?.addEventListener("change", e => { machine = e.target.value; store.set("a1-bench-mach", machine); rerender(); animateBoard($(".bn")); });
