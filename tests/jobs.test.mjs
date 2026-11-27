@@ -10,6 +10,7 @@ const ctx = { window: {}, document: { head: { appendChild() {} }, createElement:
   matchMedia: () => ({ matches: true }), console };
 ctx.window.window = ctx.window; Object.assign(ctx, ctx.window);
 vm.createContext(ctx);
+vm.runInContext(read("public/consider-core.js"), ctx);
 for (const f of ["public/bench.js", "public/lab.js", "public/jobs.js"]) vm.runInContext(read(f), ctx);
 const { JobsView: Jobs, LabView: Lab, BenchView: Bench } = ctx.window;
 const catalog = { categories: [{ id: "models", items: [] }] };

@@ -77,15 +77,17 @@
   const ram = () => catalog.ram_bytes || 16 * 2 ** 30;
   const ramLabel = () => `${Math.round(ram() / 2 ** 30)} GB`;
 
-  // The Macs Jordan owns or is weighing. macOS lets the GPU use about 75% of memory by default.
+  // The Macs Jordan owns or is weighing, then the combinations he watches in RAM Scout (ram-scout-macs.js),
+  // read at call time so a new RAM Scout list shows without a reload. macOS lets the GPU use about 75% of memory.
   const MACHINES = [
     { id: "m1", label: "M1 16GB", gb: 16 }, { id: "m4", label: "M4 16GB", gb: 16 },
     { id: "m6", label: "M6 32GB", gb: 32 }, { id: "m5p", label: "M5 Pro 64GB", gb: 64 },
   ];
+  const allMachines = () => MACHINES.concat(window.RamScoutMacs ? window.RamScoutMacs.extra(MACHINES) : []);
   const memNeed = (bytes, name) => (/jev-style-2b-decision-v3/i.test(name || "") ? 2.0e9 : bytes) * 1.2;
   function fitsOn(bytes, name) {
     const need = memNeed(bytes, name);
-    return MACHINES.map(m => ({ ...m, need, fits: need <= m.gb * 2 ** 30 * 0.75 }));
+    return allMachines().map(m => ({ ...m, need, fits: need <= m.gb * 2 ** 30 * 0.75 }));
   }
   window.MachineFit = fitsOn;
   window.A1Classify = classify;

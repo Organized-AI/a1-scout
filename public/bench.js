@@ -26,7 +26,7 @@
   const unit = s => SUITES[s]?.speed || "tok/s", firstLabel = s => SUITES[s]?.first || "First token";
   // Lab machine ids; anything else shows as reported.
   const MACH = { m1: "M1 Pro 16GB", m4: "M4 16GB", m6: "M6 32GB", m5p: "M5 Pro 64GB" };
-  const machLabel = id => MACH[id] || id;
+  const machLabel = id => MACH[id] || window.RamScoutMacs?.label(id) || id;   // RAM Scout Macs: ram-scout-macs.js
 
   let data = null, loading = null, err = null;
   let tab = store.get("a1-bench-tab", "board"), suite = store.get("a1-bench-suite", "rag-notes"), machine = store.get("a1-bench-mach", "");
@@ -237,7 +237,9 @@
   }
 
   const runCount = s => (data?.suites || []).find(x => x.id === s)?.models || 0;
-  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel, setSuite, runCount };
+  // Lab machine ids with bench runs: the Macs you own (a Mac you're weighing has none).
+  const ownedMachines = () => (data?.machines || []).filter(m => m.n > 0).map(m => m.machine);
+  window.BenchView = { html, wire, load, setData, measured, suiteResult, best, suites: SUITES, machLabel, setSuite, runCount, ownedMachines, loaded: () => !!data };
 
   const css = document.createElement("style");
   css.textContent = `

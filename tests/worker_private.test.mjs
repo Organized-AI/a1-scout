@@ -54,3 +54,29 @@ test("rotating SCOUT_TOKEN signs old cookies out", async () => {
   const r = await worker.fetch(new Request("https://scout.example/", { headers: { accept: "text/html", cookie: session } }), rotated);
   assert.equal(r.status, 302);
 });
+
+// RAM Scout's "Test in A1 Scout" link: its Macs (after the #) survive signing in, and land on Bench.
+const signInWith = (token, next) => worker.fetch(new Request("https://scout.example/login", { method: "POST", body: new URLSearchParams({ token, next }) }), env);
+test("signing in from a RAM Scout link returns to Bench with the Macs, and nothing else is ever a redirect target", async () => {
+  const hash = "#ram-scout-macs=eyJzY2hlbWEiOiJyYW0tc2NvdXQtYTEtbWFjcy92MSJ9";
+  const ok = await signInWith("secret-token", hash);
+  assert.equal(ok.status, 303);
+  assert.equal(ok.headers.get("location"), "/?view=bench" + hash);
+  for (const bad of ["", "#map", "//evil.example/#ram-scout-macs=abc", "https://evil.example", "#ram-scout-macs=a<b", "#ram-scout-macs=", "/?view=bench#ram-scout-macs=abc"]) {
+    assert.equal((await signInWith("secret-token", bad)).headers.get("location"), "/", JSON.stringify(bad));
+  }
+  // a wrong token keeps the Macs on the page for the next try, and still sets no cookie
+  const wrong = await signInWith("nope", hash);
+  assert.equal(wrong.status, 401);
+  assert.equal(wrong.headers.get("set-cookie"), null);
+  const html = await wrong.text();
+  assert.match(html, new RegExp(`name="next" value="${hash}"`));
+  assert.match(html, /<p id="rs" >Signing in opens Bench with the Macs from RAM Scout\./);
+  const injected = await (await signInWith("nope", '#ram-scout-macs=x"><script>alert(1)</script>')).text();
+  assert.match(injected, /name="next" value=""/);
+  assert.doesNotMatch(injected, /alert\(1\)/);
+  // the plain sign-in page offers the field empty, and its script only ever copies that exact shape
+  const page = await (await get("/login")).text();
+  assert.match(page, /name="next" value=""/);
+  assert.match(page, /\/\^#ram-scout-macs=\[A-Za-z0-9_-\]\+\$\/\.test\(h\)/);
+});

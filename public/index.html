@@ -285,15 +285,24 @@ details.st-m pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.45 "IBM
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script src="lessons.js"></script>
 <script src="explain.js"></script>
+<script src="consider-core.js"></script>
+<script src="ram-scout-macs.js"></script>
 <script src="map.js"></script>
 <script src="lab.js"></script>
 <script src="jobs.js"></script>
 <script src="bench.js"></script>
+<script src="consider.js"></script>
 <script src="sessions.js"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 let token = ""; try { token = localStorage.getItem("a1-scout-token") || ""; } catch {}
-let view = "map", state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
+// ?view= opens a tab directly: map, scout, bench, or simulate (Bench → Simulate). RAM Scout's "Test in A1 Scout"
+// link uses ?view=bench with the watched Macs after the #, and Bench opens with them as Macs you're considering.
+const START_VIEW = (() => { try { const q = new URLSearchParams(location.search), v = q.get("view"), c = q.get("consider");
+  // ?consider=<machine_id> (RAM Scout, the A1 consider route): Bench → Simulate with that Mac weighed.
+  if (c && /^[\w.\-]{1,40}$/.test(c)) { window.__a1ConsiderOpen = c; return "lab"; }
+  return v === "simulate" ? "lab" : ["map","scout","bench"].includes(v) ? v : "map"; } catch { return "map"; } })();
+let view = START_VIEW, state = null, picks = [], catalog = null, filter = "new", path = [], selected = null;
 // Scout's list is its own server query (status x type, paged); `picks` stays the all-status list for Bench and the Lab.
 // scoutPicks is null until loaded; pickCounts is the last /api/picks/counts; the seq numbers drop superseded responses.
 let kindFilter = "all", scoutPicks = null, scoutErr = "", scoutFull = false, pickCounts = null, scoutSeq = 0, countsSeq = 0;
