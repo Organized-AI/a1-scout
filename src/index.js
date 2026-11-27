@@ -1,5 +1,7 @@
 import { waitlistApi, waitlistList, waitlistOwner } from "./waitlist.js";
 import { considerApi, recordConsiderCheck } from "./consider.js";
+import { speedApi } from "./speed.js";
+import { recordSpeedCheck } from "./speed-checks.js";
 import { sessionsApi, sessionOrders, sessionAlerts, workIndex, workBoost } from "./sessions.js";
 // a1-scout: weekly Hugging Face scout for the Organized-AI repos.
 // Scores models, datasets, Spaces, papers and collections against what the org is
@@ -782,6 +784,7 @@ async function api(req, env, url, ctx) {
   if (!(await signedIn(req, env))) return json({ error: "unauthorized" }, 401);
   if (p === "/api/waitlist" && req.method === "GET") return waitlistList(env);
   if (p.startsWith("/api/waitlist/")) { const o = await waitlistOwner(req, env, url, ctx); if (o) return o; }
+  if (p === "/api/bench/speed") return speedApi(req, env, url, { json, recordSpeedCheck });
   if (p.startsWith("/api/bench/")) return benchApi(req, env, url, p);
   const sess = await sessionsApi(req, env, url, p, { kvGet, kvSet });
   if (sess) return sess;

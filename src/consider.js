@@ -9,6 +9,7 @@
 // Speeds are estimates: a measured tok/s on the nearest benched Mac, scaled by Apple's memory bandwidth. Nothing has
 // run on the Mac being considered, so the response says measured:false.
 import "../public/consider-core.js";
+import { speedConsiderApi } from "./speed-consider.js";
 
 const CORE = globalThis.ConsiderCore;
 const SCOPE = "bench:consider";
@@ -193,6 +194,7 @@ export async function considerApi(req, env, { json, kvGet }) {
   if (enc.encode(raw).length > 20000) return json({ error: "request too large" }, 413);
   let body = null;
   try { body = JSON.parse(raw); } catch { body = null; }
+  if (body?.speed != null) return speedConsiderApi(body, env, { json });
   const parsed = parseRequest(body);
   if (parsed.error) return json({ error: parsed.error }, 400);
 

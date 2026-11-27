@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BANKS = ROOT / "tests" / "bench"
 RUNNER = Path(__file__).resolve().parent / "bench_runner.py"
 DECISION_RUNNER = Path(__file__).resolve().parent / "decision_runner.py"
-SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select", "stape-select"]
+QUALITY_SUITES = ["gtm-debug", "sql-ga4", "html-json", "rag-notes", "asr", "screen", "gtm-gate", "skill-select", "stape-select"]
+SUITES = QUALITY_SUITES + ["speed", "long-write"]
 DECISION_SUITES = {"gtm-gate", "skill-select", "stape-select"}           # typed questions to decision models (decision_runner.py), not chat prompts
 TYPES = {"exact", "sql_result", "json_schema", "click_in_box", "decision"}
 MAX_TOKENS = {"exact": 64, "sql_result": 320, "json_schema": 400, "click_in_box": 32, "decision": 0}
@@ -34,6 +35,9 @@ NOT_CHAT = re.compile(r"embed|rerank|router|guard|jev|laya|clef|docling|ocr|tts|
 # ---------------------------------------------------------------- banks
 
 def load_bank(suite, root=BANKS):
+    if suite == "speed":
+        import speed_bank
+        return speed_bank.load_bank(root)
     if suite not in SUITES:
         raise ValueError(f"unknown suite {suite!r}; one of {', '.join(SUITES)}")
     tasks = []
@@ -49,6 +53,9 @@ def load_bank(suite, root=BANKS):
 
 def bank_hash(suite, root=BANKS):
     """Short content hash: leaderboards compare runs of the same bank."""
+    if suite == "speed":
+        import speed_bank
+        return speed_bank.bank_hash(root)
     h = hashlib.sha256((root / f"{suite}.jsonl").read_bytes())
     if suite == "sql-ga4":
         h.update((root / "fixtures" / "ga4_sample.sql").read_bytes())
@@ -384,6 +391,8 @@ def score_decision(task, output):
 def score(task, output, db=None):
     """(pass, score 0..1, why) for one task."""
     t = task["type"]
+    if t == "speed":
+        raise ValueError("speed tasks measure timing and have no quality score")
     if t == "decision":
         return score_select(task, output) if "select_gold" in task else score_decision(task, output)
     if t == "exact":
@@ -794,6 +803,8 @@ def parse_args(argv):
 def main(argv, A, runner_cmd=None, ram_bytes=None):
     """Called by agent.py with the A1 mounted and scout.lock held."""
     suite, model_arg, fresh = parse_args(argv)
+    if suite in ("speed", "long-write"):
+        raise SystemExit("Speed/long-write banks use the Speed Lab/hybrid runners rather than the quality runner")
     env = A.ENV
     cache = A.STATE_DIR / "bench"
     queue = cache / "pending.jsonl"
@@ -818,7 +829,7 @@ def main(argv, A, runner_cmd=None, ram_bytes=None):
     if sent:
         A.log(f"bench: posted {sent} queued run(s)")
     rows, picks = [], []
-    for s in (SUITES if suite == "all" else [suite]):
+    for s in (QUALITY_SUITES if suite == "all" else [suite]):
         tasks = load_bank(s)
         cmd = runners["asr" if s == "asr" else "decision" if s in DECISION_SUITES else "text"]
         if model_arg:                # one named model, full bank, no pick
