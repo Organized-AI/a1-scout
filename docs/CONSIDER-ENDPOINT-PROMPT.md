@@ -1,0 +1,23 @@
+# A1 Scout: POST /api/bench/consider (hypothetical bench for RAM Scout)
+
+Run in: /Users/supabowl/nvme-stash/a1-scout   (claude --dangerously-skip-permissions)
+Plan doc (section "A1 Scout 'Considering a Mac' bench endpoint"): https://claude.ai/artifact/JKFWivYFR6iRR4zc88DfrL
+
+First: apply the Organized Codebase agent templates (organized-codebase-applicator) if not already in place; keep the existing structure.
+
+Goal: RAM Scout (Organized-AI/ram-scout-lab, runner/a1-gate.js) needs to ask A1 Scout: "would this Mac Jordan does NOT own do his workflows better than his M1 Pro 16GB (m1) and M4 16GB (m4)?" PR #15 (commit 12b6469, branch feat/bench-hypothetical-mac, "Weigh a Mac before buying it: Bench runs every workflow on it as a hypothetical") already does this in the browser (Bench -> Simulate: time, memory, biggest model it could run that yours can't, verdict opens up / faster / about the same). Move that logic onto the Worker as an API; do not write a second, different model.
+
+Start by checking state, read-only: which branch is checked out, whether 12b6469 is on it, and whether the deployed a1-scout Worker (a1-scout.jordan-691.workers.dev) serves the PR #15 Simulate view. Report before changing branches. Work on a new branch off the deployed line (feat/bench-consider-api).
+
+Read first: src/index.js (benchApi, BENCH_SUITES, bench_runs, bench_best, auth), the PR #15 files (git show --stat 12b6469; the Simulate code in public/), public/lab.js (BW table), public/map.js (fit), public/ram-scout-macs.js, agent/bench.py (machine_id, discover_models 75% rule, SUITES, DECISION_SUITES), src/sessions.js (work profile), tests/test_bench.py. Also ../../ram-scout-lab/runner/chip-speed.js (Apple-spec bandwidth) and ../../ram-scout-lab/runner/a1-handoff.js + runner/a1-gate.js (what RAM Scout sends and expects).
+
+Build, tests green before each commit:
+A. Extract PR #15's Simulate math into a shared pure module (e.g. src/consider.js) that the browser and the Worker both use (or a byte-identical port with a parity test on the same inputs). Contract fixtures from the live leaderboard + stash catalog. machine_id parity test with bench.py for m1, m4, m6, m5p, m4-max-64gb, m5-pro-64gb.
+B. Route POST /api/bench/consider in benchApi. Input {machine:{chip,variant,memory_gb,storage_gb?}, suites?, owned?}. Auth: Bearer token with scope bench:consider; tokens kept hashed in a new secret A1_CONSIDER_TOKENS, never logged; this token can call only this route. Output {machine_id, bandwidth:{gbs,source}, fit:'fits'|'no_gain'|'doesnt_fit', verdict (PR #15 wording: opens up / faster / about the same), suites:[{suite,weight,best_model,score,score_delta_vs_owned,tok_s_est,speedup_vs_owned,newly_runnable[]}], headline, measured:false, estimate_basis, bank_hash}. Speeds are estimates (measured tok_s on the nearest benched Mac x bandwidth ratio) and labelled so. Bandwidth from the Apple-spec table; replace lab.js 'assumed' m6/m5p values.
+C. Weight suites by the synced session profile; check p95 context fits in memory left after model weights.
+D. D1 bench_considers (append-only) + KV cache consider:<machine_id>:<bank_hash> 24h. When a real bench run arrives for a matching machine_id, store estimate-vs-measured error.
+E. ?consider=<machine_id> deep link opens Bench -> Simulate with that Mac.
+F. Token handoff: generate one bench:consider token; put the plaintext ONLY in Doppler ram-scout/prd as A1_SCOUT_TOKEN (doppler secrets set, value via stdin, never printed) and its hash in A1_CONSIDER_TOKENS (wrangler secret). Then in ../../ram-scout-lab push A1_SCOUT_TOKEN from Doppler to both RAM Scout Workers with wrangler secret put (same pattern as APIFY_TOKEN), and update runner/a1-gate.js to call /api/bench/consider and map: doesnt_fit -> 'doesn't fit' badge, no_gain -> cap walk_away at comps median, fits -> no cap; add the headline to the appraisal. Tests in both repos.
+G. Deploy a1-scout (check the deploy target first; do not touch unrelated deployed code). Smoke test: Mac Studio M4 Max 64GB returns fit + suites + headline; m1 vs itself returns no_gain. Then deploy the RAM Scout PREVIEW Worker only and confirm appraise_listing on https://www.facebook.com/marketplace/item/1140833911962648/ now shows a1.fit other than 'unknown'. Do not run any RAM Scout scan.
+
+Git: commit with Jordan's existing git identity, never add Co-Authored-By or Claude trailers, explicit paths only (never git add -A / git add .). Push to Organized-AI/a1-scout (if gh can't see the repo, `gh auth switch -u jhillbht && gh auth setup-git`, push, switch back to jordaaan-SBD). Open a PR, don't merge. No time estimates in docs. Stop and ask Jordan before anything destructive or outward-facing beyond the above.
